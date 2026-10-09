@@ -3,6 +3,10 @@ import { HEIGHT } from "../render.js";
 import { batteryText } from "./placeholder.jsx";
 import { formatTime, untilNextMinute } from "../time.js";
 
+// Only black and white: the firmware then uses its fast partial refresh, without the flashing of
+// a 4-gray refresh, which matters for a screen that changes every minute.
+export const colors = 2;
+
 const ROW_HEIGHT = 44;
 // A row with notes gets a second, smaller line under the destination
 const NOTE_ROW_HEIGHT = 64;
