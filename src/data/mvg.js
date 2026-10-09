@@ -77,7 +77,11 @@ async function fetchDepartures(stationId) {
       time: Number(d.realtimeDepartureTime ?? d.plannedDepartureTime),
       planned: Number(d.plannedDepartureTime ?? d.realtimeDepartureTime),
       cancelled: Boolean(d.cancelled),
-      messages: (d.infos ?? []).map((info) => info.message).filter(Boolean),
+      // "Fährt nur bis …" first: it matters more than general incidents on the line
+      messages: (d.infos ?? [])
+        .toSorted((a, b) => (b.type === "EARLY_TERMINATION") - (a.type === "EARLY_TERMINATION"))
+        .map((info) => info.message)
+        .filter(Boolean),
     }))
     .filter((d) => Number.isFinite(d.time))
     .sort((a, b) => a.time - b.time); // MVG doesn't sort by the actual (realtime) departure
