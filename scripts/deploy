@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+# Exit on first error
+set -e
+
+cd "$(dirname "$0")/.."
+
+. scripts/connect
+
+if [ ! -f dist/server.js ]; then
+  echo 'dist/server.js does not exist, run `npm run build` first.' >&2
+  exit 1
+fi
+
+# On the server, start the docker process, clear old docker images and then set up port forwarding
+# (assuming the server is set up as in this gist:
+# https://gist.github.com/c-harding/59686990f42f4dddae01dffa56618ea4, if not then this stage is
+# simply skipped).
+(
+  RAW_DOMAIN="${SERVER_DOMAIN/#*\/\//}"
+  DEPLOY_COMMAND="$(printf '
+    docker compose -f%q/docker-compose.yml up --build -d &&
+    docker system prune -f &&
+    (command -v add-site > /dev/null && add-site %q %d; true)
+  ' "${DEPLOY_DIR:-.}" "$RAW_DOMAIN" "${SERVER_PORT:-7777}")"
+
+  rsync -re"ssh $DEPLOY_FLAG" --exclude='*.env' --exclude-from=dist/.rsyncignore \
+    dist/ "$DEPLOY_TARGET":"${DEPLOY_DIR:-.}"
+
+  # Send the env file separately, as it is excluded above
+  rsync -e"ssh $DEPLOY_FLAG" dist/.env "$DEPLOY_TARGET":"${DEPLOY_DIR:-.}/.env"
+
+  ssh "${DEPLOY_SSH_ARGS[@]}" "$DEPLOY_TARGET" "$DEPLOY_COMMAND"
+)

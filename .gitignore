@@ -1,0 +1,16 @@
+.DS_Store
+node_modules
+devices.yaml
+
+# Build output: only the deployment files in dist/ are tracked
+/dist/*
+!/dist/Dockerfile
+!/dist/docker-compose.yml
+!/dist/.dockerignore
+!/dist/.rsyncignore
+!/dist/sample.env
+
+# env files and key files
+*.env
+!sample.env
+*.pem

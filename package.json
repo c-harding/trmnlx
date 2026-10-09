@@ -1,0 +1,26 @@
+{
+  "name": "trmnl-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A self-hosted server for TRMNL e-ink displays",
+  "type": "module",
+  "scripts": {
+    "build": "scripts/build",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "connect": "scripts/connect",
+    "deploy": "scripts/deploy",
+    "build-deploy": "scripts/build && scripts/deploy"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "preact": "^11.0.1",
+    "satori": "^0.47.1",
+    "sharp": "^0.35.5",
+    "yaml": "^2.9.1"
+  }
+}

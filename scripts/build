@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+(echo "building server"; npx esbuild src/server.js --bundle --platform=node --format=esm \
+  --jsx=automatic --jsx-import-source=preact --packages=external \
+  --outfile=dist/server.js --log-level=warning)
+
+(echo "copying install info"; cp package.json package-lock.json dist/)
+
+if [ -f devices.yaml ]; then
+  (echo "copying devices.yaml"; cp devices.yaml dist/)
+fi

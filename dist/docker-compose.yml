@@ -1,0 +1,14 @@
+services:
+  trmnl:
+    env_file:
+      - ./.env
+    # Inside the container the server always listens on 7777. SERVER_PORT in .env only picks the
+    # port on the host, which Caddy forwards to.
+    environment:
+      - SERVER_PORT=7777
+    restart: always
+    build: .
+    # Bound to localhost only: Caddy on the host provides HTTPS, and nothing should reach the
+    # server over plain HTTP from outside.
+    ports:
+      - '127.0.0.1:${SERVER_PORT:-7777}:7777'
