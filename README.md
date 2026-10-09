@@ -65,14 +65,16 @@ This is the main endpoint, called on every wake.
 | `RSSI`            | Wi-Fi signal strength, e.g. `-69`                      |
 | `Width`, `Height` | Screen size in pixels (`800` × `480` for the OG)       |
 | `Model`           | Device model                                           |
-| `Special-Function`| `true` if the user triggered the button's special function |
+| `Update-Source`   | What woke the device, e.g. the timer or the button     |
+| `Temperature-Profile` | `true`: the device understands the `temperature_profile` response field |
+| `special_function`| `true` if the user triggered the button's special function. Note the underscore: this is not `Special-Function` |
 
-Newer firmware may send more telemetry headers (`Percent-Charged`, `Battery-Charging`, `USB-Connected`, `Image-Cached`, `Wake-Time`, …). All of them are optional, and a server can ignore any it doesn't care about.
+Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connected`, `Image-Cached`, `Wake-Time`, `WiFi-Band`, …). All of them are optional, and a server can ignore any it doesn't care about.
 
 ```json
 {
   "status": 0,
-  "image_url": "https://example.com/screens/abc123.bmp",
+  "image_url": "https://example.com/screens/abc123.png",
   "filename": "abc123",
   "refresh_rate": 900,
   "update_firmware": false,
@@ -85,12 +87,24 @@ Newer firmware may send more telemetry headers (`Percent-Charged`, `Battery-Char
 | Response field     | Meaning |
 |--------------------|---------|
 | `status`           | `0` = OK. TRMNL uses `202` for "device not yet linked to a user" and `500` (with `error`) for an unknown token |
-| `image_url`        | Absolute URL of the image to show. It can be hosted anywhere, including on this server |
+| `image_url`        | Absolute URL of the image to show. It can be hosted anywhere, but only images on this server receive the device's credentials (see below) |
 | `filename`         | Cache key. If it equals the last one, the device skips the download and the redraw |
 | `refresh_rate`     | Seconds to sleep before the next poll. **This is how the server controls the schedule.** Older examples send it as a string |
 | `update_firmware`, `firmware_url` | Tell the device to OTA-update from `firmware_url` |
 | `reset_firmware`   | Tell the device to forget its credentials and re-run setup |
 | `special_function` | What the device should do when the button's special function is used (e.g. `identify`) |
+| `temperature_profile` | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays) |
+
+### `GET <image_url>`: the image download
+
+The device sends the same `ID` and `Access-Token` headers as on `/api/display`, but only if `image_url` starts with the exact server URL configured on the device. It's a plain string prefix check, so a different scheme, a `www.` or an explicit port counts as a different server and the image is fetched without credentials. Build image URLs from the same base URL the device uses.
+
+This means image routes can require a valid `Access-Token` too, so screens aren't readable by anyone who knows the URL. It was added in firmware v1.8.10 ([bl.cpp](https://github.com/usetrmnl/trmnl-firmware/blob/main/src/bl.cpp)); older firmware fetches images without any headers.
+
+The device sends no `Accept` header, but it checks the response:
+
+- **`Content-Type` must be exactly `image/png`** (or `image/jpeg`). The firmware compares the whole header value, so `image/png; charset=binary` or `application/octet-stream` means the PNG isn't decoded as a PNG. BMPs are recognised by their first bytes, whatever the header says.
+- **Send a `Content-Length`.** With it, the firmware streams the image into a buffer of that size. Without it, the firmware falls back to reading the whole response as a string.
 
 ### `POST /api/log`: diagnostics
 
