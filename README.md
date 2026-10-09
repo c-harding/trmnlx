@@ -19,7 +19,7 @@ wake ─► Wi-Fi ─► have API key? ──no──► GET /api/setup ─► s
                      ├─ filename unchanged? ─► skip download
                      ├─ otherwise GET image_url, draw it
                      ├─ update_firmware? ─► download firmware_url, flash, reboot
-                     ├─ reset_firmware?  ─► wipe API key etc., re-run setup
+                     ├─ reset_firmware?  ─► wipe API key and Wi-Fi, back to captive portal
                      ▼
                deep sleep for refresh_rate seconds
 ```
@@ -86,12 +86,12 @@ Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connect
 
 | Response field     | Meaning |
 |--------------------|---------|
-| `status`           | `0` = OK. TRMNL uses `202` for "device not yet linked to a user" and `500` (with `error`) for an unknown token |
+| `status`           | `0` = OK. `202` ("device not yet linked to a user") makes the device poll again every 5 seconds. `500` (TRMNL's answer to an unknown token) makes it clear all its settings, including Wi-Fi, like `reset_firmware`. An HTTP error status (e.g. 401) only shows an error screen and keeps the settings |
 | `image_url`        | Absolute URL of the image to show. It can be hosted anywhere, but only images on this server receive the device's credentials (see below) |
 | `filename`         | Cache key. If it equals the last one, the device skips the download and the redraw |
 | `refresh_rate`     | Seconds to sleep before the next poll. **This is how the server controls the schedule.** Older examples send it as a string |
 | `update_firmware`, `firmware_url` | Tell the device to OTA-update from `firmware_url` |
-| `reset_firmware`   | Tell the device to forget its credentials and re-run setup |
+| `reset_firmware`   | Tell the device to clear **all** its settings, including Wi-Fi, and restart into the captive portal |
 | `special_function` | What the device should do when the button's special function is used (e.g. `identify`) |
 | `temperature_profile` | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays) |
 
