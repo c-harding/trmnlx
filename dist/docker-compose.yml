@@ -10,7 +10,16 @@ services:
       - SERVER_PORT=7777
       - SETUP_ENABLED=${SETUP_ENABLED:-0}
     restart: always
-    build: .
+    # The build cache is stored inside the image (inline cache), and the next build reads it from
+    # there. So `docker system prune` emptying the build cache, by any project's deploy, doesn't
+    # make the next build run every step again.
+    image: trmnl-server
+    build:
+      context: .
+      cache_from:
+        - trmnl-server
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     # Bound to localhost only: Caddy on the host provides HTTPS, and nothing should reach the
     # server over plain HTTP from outside.
     ports:
