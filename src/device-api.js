@@ -75,9 +75,23 @@ deviceApi.get("/setup.png", async (req, res) => {
   res.type("png").send(pairedPng);
 });
 
+// The shortest sleep we ask for, e.g. when a request arrives just before the screen changes
+const MIN_REFRESH_RATE = 5;
+
+/**
+ * Seconds the device should sleep: until the screen changes, but at least every refreshRate seconds.
+ * The firmware starts its sleep timer only after downloading and drawing the image, so subtract the
+ * time it was awake in its last cycle (Wake-Time, in ms); otherwise every wake lands that much late.
+ */
+function refreshRate(req, device, ttl) {
+  const wakeMs = Number(req.get("Wake-Time"));
+  const wakeSeconds = Number.isFinite(wakeMs) && wakeMs > 0 ? Math.min(wakeMs / 1000, 120) : 0;
+  return Math.min(device.refreshRate, Math.max(Math.round(ttl - wakeSeconds), MIN_REFRESH_RATE));
+}
+
 deviceApi.get("/api/display", requireDevice, async (req, res) => {
   const device = req.device;
-  const png = await renderDeviceScreen(device);
+  const { png, ttl } = await renderDeviceScreen(device);
   // Named after its content: the firmware skips the download and the redraw if it's unchanged
   const filename = createHash("sha256").update(png).digest("hex").slice(0, 16);
   rememberImage(device, filename, png);
@@ -85,7 +99,7 @@ deviceApi.get("/api/display", requireDevice, async (req, res) => {
     status: 0,
     image_url: `${baseUrl(req)}/images/${filename}.png`,
     filename,
-    refresh_rate: device.refreshRate,
+    refresh_rate: refreshRate(req, device, ttl),
     update_firmware: false,
     firmware_url: null,
     reset_firmware: false,

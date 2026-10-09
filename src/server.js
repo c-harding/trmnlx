@@ -26,8 +26,9 @@ app.get("/", (req, res) => {
 app.get("/screen.png", async (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.status(401).type("text").send("Not logged in\n");
-  const png = await renderDeviceScreen(device);
-  res.type("png").set("Cache-Control", "no-store").send(png);
+  const { png, ttl } = await renderDeviceScreen(device);
+  // X-TTL tells the page's script when to fetch the next image
+  res.type("png").set({ "Cache-Control": "no-store", "X-TTL": String(ttl) }).send(png);
 });
 
 app.get("/login", (req, res) => {

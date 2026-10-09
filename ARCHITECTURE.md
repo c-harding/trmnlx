@@ -35,8 +35,8 @@ device ──► GET <image_url> (with Access-Token) ──► cached PNG
 | `GET /images/<filename>.png` | Serves one of the device's last 3 rendered PNGs (cached in memory). Requires the same `ID` and `Access-Token` headers as `/api/display`, which also identify the device. Sends `Content-Type: image/png` exactly, and a `Content-Length` |
 | `POST /api/log` | Checks the token and answers `204`. For now the entries are dropped; later they go to the device's log stream (see [Logs](#logs)) |
 | `GET /login`, `POST /login`, `POST /logout` | Browser login with the username and password from `devices.yaml` (see [Browser login](#browser-login)) |
-| `GET /` | The logged-in user's device screen, as a plain HTML page with an `<img>` |
-| `GET /screen.png` | The PNG shown on that page, rendered on each request |
+| `GET /` | The logged-in user's device screen: a plain HTML page whose small script fetches `/screen.png` and fetches it again when its `X-TTL` runs out |
+| `GET /screen.png` | The PNG shown on that page, rendered on each request, with the screen's `ttl` in an `X-TTL` header |
 | `GET /logs` | Streams the logged-in user's device logs to the browser as Server-Sent Events |
 
 Image URLs are built from the same base URL the device is configured with, so the firmware sends its credentials with the image request.
@@ -67,6 +67,7 @@ export async function load(config) { /* fetch data, return plain object */ }
 export function view(data) { /* return JSX layout */ }
 ```
 
+- `ttl(props)` returns how many seconds the screen stays valid, including a small safety margin; the placeholder's lasts until the next minute plus 2 seconds. The device gets `refresh_rate = min(refreshRate, max(ttl − wake time, 5))`, and the browser preview refetches the image when it runs out. The wake time comes from the firmware's `Wake-Time` header (how long its last cycle was awake, in ms): the firmware starts its sleep timer only after downloading and drawing the image, so without the correction each wake lands that much after the screen changed.
 - `load` does any fetching, filtering and calculation; this replaces TRMNL's polling and transform scripts.
 - `view` returns a layout in JSX: flexbox only, inline styles, the four panel grays (`#000`, `#555`, `#aaa`, `#fff`). Shared pieces (tables, headers, charts as inline SVG) live in a `components/` module.
 - Satori sizes boxes like CSS's default `content-box`, so a full-size container with `width: "100%"` and padding ends up wider than the screen. Give such containers `boxSizing: "border-box"`.
@@ -116,7 +117,7 @@ devices:
 | `username` | Yes      | User name for the browser login; it selects which device's screen is shown |
 | `password` | Yes      | Password for the browser login |
 | `timezone` | No       | IANA time zone for the device's screens, e.g. `Europe/Berlin`. Defaults to `TZ`, then UTC |
-| `refreshRate` | No     | Seconds the device sleeps between polls (`refresh_rate`), at least 60. Default 900, the firmware's own default |
+| `refreshRate` | No     | The longest the device sleeps between polls, in seconds, at least 60. Default 900, the firmware's own default. It wakes sooner when the screen's `ttl` runs out first |
 | `token`    | No       | The device's existing token, for a device paired with another server. If set, it is used instead of a derived token (see [Authentication](#authentication)) |
 
 The server checks the file at startup (required fields, unique usernames, valid time zones) and refuses to start if it's wrong. Still to be designed: the device's playlist (see [Playlists](#playlists)) and the settings for each screen.
