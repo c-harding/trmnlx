@@ -260,10 +260,11 @@ export function view({ inputs, now, timeZone, telemetry, data }) {
           marginBottom: HEADER_GAP,
         }}
       >
-        <div style={{ display: "flex", fontSize: 36, fontWeight: 700 }}>
+        {/* A long station name is cut off with "…", leaving room for battery and clock */}
+        <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: 16, fontSize: 36, fontWeight: 700, ...ellipsis }}>
           {data?.station?.name ?? inputs.station}
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", fontSize: 20 }}>
+        <div style={{ display: "flex", flexShrink: 0, alignItems: "baseline", fontSize: 20 }}>
           {`${batteryText(telemetry)} · `}
           <span style={{ fontWeight: 700, fontSize: 28, marginLeft: 6 }}>{formatTime(now, timeZone)}</span>
         </div>
