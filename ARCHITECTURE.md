@@ -158,7 +158,7 @@ Modelled on heatmapper, onto a server set up with the [virtual server gist](http
 - The container listens on 7777; `SERVER_PORT` only picks the host port, which is published on `127.0.0.1` only, so the server can only be reached through Caddy's HTTPS.
 - `scripts/pair` restarts the container with `SETUP_ENABLED=1`, waits until Enter is pressed, then restarts it with setup off (also on Ctrl+C or an error). `scripts/deploy` always starts it with `SETUP_ENABLED=0`.
 
-Expected footprint: roughly 60–100 MB of RAM and a `node:slim` image with sharp's prebuilt binaries. The current server has about 800 MB of RAM available and 24 GB of disk.
+Footprint: a `node:slim` image with sharp's prebuilt binaries. Measured on a Mac (M2 Max), the process uses about 175 MB of RAM after rendering (a plain Node process: 45 MB), with sharp's cache off and one thread (about 240 MB with sharp's defaults); `docker stats` on the server gives the Linux figure. A screen takes about 26 ms to render there (Satori 2 ms, sharp 24 ms), so caching rendered PNGs isn't worth it; real screens should cache their data instead. The current server has about 800 MB of RAM available and 24 GB of disk.
 
 ## Dependencies
 

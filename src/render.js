@@ -2,6 +2,11 @@ import { readFile } from "node:fs/promises";
 import satori from "satori";
 import sharp from "sharp";
 
+// Screens are rendered one at a time and rarely, so sharp's cache and thread pool only cost
+// memory: without them the process used about 65 MB less, for about 3 ms more per render.
+sharp.cache(false);
+sharp.concurrency(1);
+
 export const WIDTH = 800;
 export const HEIGHT = 480;
 
