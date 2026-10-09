@@ -1,5 +1,26 @@
 # A server for an e-ink display
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how the server is built and configured.
+
+## Running
+
+Locally:
+
+```sh
+npm install
+cp sample.env .env                    # then set TOKEN_SECRET (openssl rand -base64 32)
+cp devices.yaml.sample devices.yaml   # then add your devices
+npm run build && npm start            # http://localhost:7777
+```
+
+Deploying:
+
+```sh
+cp dist/sample.env dist/.env          # once: fill in the deploy settings and TOKEN_SECRET
+npm run build-deploy
+npm run connect -- 'docker compose -f trmnl/docker-compose.yml logs -f'   # follow the server's logs
+```
+
 ## Protocol
 
 The TRMNL device does all the talking. It sleeps most of the time, wakes up on a timer (or on a button press), polls the server over HTTP(S), downloads one image, draws it, and goes back to deep sleep. The server never pushes anything to the device. It can only steer the device through the response to the next poll.
