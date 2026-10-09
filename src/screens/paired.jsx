@@ -1,4 +1,8 @@
-/** Shown once, as the setup image, right after a device has paired. */
+// Shown once, as the setup image, right after a device has paired; also selectable as a screen.
+
+/** It never changes: devices wake at their refreshRate, and the browser page doesn't refetch it. */
+export const ttl = () => Infinity;
+
 export function view() {
   return (
     <div

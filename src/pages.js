@@ -28,7 +28,8 @@ export const screenPage = ({ name }) =>
 <noscript><p><img src="/screen.png" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p></noscript>
 <form method="post" action="/logout"><button>Log out</button></form>
 <script>
-// Fetches the screen, shows it, and fetches it again when its X-TTL (seconds) runs out.
+// Fetches the screen, shows it, and fetches it again when its X-TTL (seconds) runs out. An X-TTL
+// of Infinity means the screen never changes: no further fetch.
 const img = document.getElementById("screen");
 async function refresh() {
   let delay = 30;
@@ -39,10 +40,14 @@ async function refresh() {
       const old = img.src;
       img.src = URL.createObjectURL(await res.blob());
       if (old) URL.revokeObjectURL(old);
-      delay = Number(res.headers.get("X-TTL")) || 60;
+      // Number(null) would be 0, so a missing header needs its own check
+      const header = res.headers.get("X-TTL");
+      const ttl = header === null ? NaN : Number(header);
+      delay = Number.isNaN(ttl) ? 60 : Math.max(ttl, 1);
     }
   } catch {}
-  setTimeout(refresh, delay * 1000);
+  // setTimeout treats delays beyond 2^31 - 1 ms (about 24.8 days), and Infinity, as 0
+  if (Number.isFinite(delay)) setTimeout(refresh, Math.min(delay * 1000, 2 ** 31 - 1));
 }
 refresh();
 </script>`,

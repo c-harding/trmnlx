@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
+import { screens } from "./screen.js";
 
 const DEVICES_FILE = new URL("./devices.yaml", import.meta.url);
 
@@ -18,6 +19,18 @@ function checkTimeZone(timeZone, source) {
     fail(`Unknown time zone ${JSON.stringify(timeZone)} in ${source}`);
   }
   return timeZone;
+}
+
+/**
+ * The screen for devices that don't name one: devices.yaml's defaultScreen if set, otherwise the
+ * placeholder if there is one, otherwise the first screen found.
+ */
+function chooseDefaultScreen(configured) {
+  const available = Object.keys(screens);
+  if (available.length === 0) fail("No screens found next to the server (screens/*.js)");
+  if (configured === undefined) return available.includes("placeholder") ? "placeholder" : available[0];
+  if (!available.includes(configured)) fail(`defaultScreen must be one of ${available.join(", ")}`);
+  return configured;
 }
 
 function loadDevices() {
@@ -39,6 +52,7 @@ function loadDevices() {
   }
 
   const defaultTimeZone = checkTimeZone(process.env.TZ || "UTC", "TZ");
+  const defaultScreen = chooseDefaultScreen(data.defaultScreen);
   const usernames = new Set();
   const macs = new Set();
 
@@ -71,6 +85,7 @@ function loadDevices() {
       token: device.token,
       timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
+      screen: defaultScreen,
     };
   });
 }

@@ -13,6 +13,14 @@ cp devices.yaml.sample devices.yaml   # then add your devices
 npm run build && npm start            # http://localhost:7777
 ```
 
+Developing screens:
+
+```sh
+npm run dev                           # http://localhost:7778: render any screen with device data from a form
+```
+
+No `devices.yaml` or `.env` needed. Saving a file rebuilds and restarts it; reload the page (or click Load) to see the change.
+
 Deploying:
 
 ```sh

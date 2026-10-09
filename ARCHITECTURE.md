@@ -60,20 +60,34 @@ Image URLs are built from the same base URL the device is configured with, so th
 
 ### Screens
 
-Each screen is a module with two functions:
+Every file in `src/screens/` is a screen, named after the file (helpers belong elsewhere). `scripts/build` builds each one as its own entry point with esbuild's code splitting, into `dist/screens/<name>.js` (shared code goes into chunk files next to `server.js`, so it exists once), and `src/screen.js` imports whatever it finds there at startup. Adding a screen means adding a file; no list to maintain.
+
+A screen module exports:
 
 ```js
-export async function load(config) { /* fetch data, return plain object */ }
-export function view(data) { /* return JSX layout */ }
+export const inputs = { station: { type: "string", default: "Marienplatz" } }; // optional: its settings
+export const colors = 2;                                // optional: 2 (black and white) or 4 (default)
+export async function load(props) { /* optional: fetch data, returned as props.data */ }
+export function view(props) { /* return JSX layout */ }
+export function ttl(props) { /* seconds the screen stays valid */ }
 ```
 
-- `ttl(props)` returns how many seconds the screen stays valid, including a small safety margin; the placeholder's lasts until the next minute plus 2 seconds. The device gets `refresh_rate = min(refreshRate, max(ttl − wake time, 5))`, and the browser preview refetches the image when it runs out. The wake time comes from the firmware's `Wake-Time` header (how long its last cycle was awake, in ms): the firmware starts its sleep timer only after downloading and drawing the image, so without the correction each wake lands that much after the screen changed.
+Every function gets the same `props`: `device`, `name`, `now`, `timeZone`, `telemetry`, `inputs` and, after `load`, `data`.
+
+- `ttl(props)` returns how many seconds the screen stays valid, including a small safety margin, or `Infinity` if it never changes (the device then wakes at its `refreshRate`, and the browser page doesn't fetch it again); the placeholder's lasts until the next minute plus 2 seconds. The device gets `refresh_rate = min(refreshRate, max(ttl − wake time, 5))`, and the browser preview refetches the image when it runs out. The wake time comes from the firmware's `Wake-Time` header (how long its last cycle was awake, in ms): the firmware starts its sleep timer only after downloading and drawing the image, so without the correction each wake lands that much after the screen changed.
 - Screens also get the device's latest telemetry (`telemetry`: battery voltage, `RSSI`, firmware version, charging/USB if reported, time seen), taken from the headers of its last `/api/display` and kept in memory per device (`src/telemetry.js`). `/api/display` records it before rendering, so the device's screen shows the readings from that same wake; the browser preview shows the latest ones, or none after a restart until the device polls. The DIY kit reports only a voltage; `batteryPercent` estimates a percentage from a typical lithium discharge curve (4.2 V full, 3.3 V empty), so it's only approximate.
 - `load` does any fetching, filtering and calculation; this replaces TRMNL's polling and transform scripts.
 - `view` returns a layout in JSX: flexbox only, inline styles, the four panel grays (`#000`, `#555`, `#aaa`, `#fff`). Shared pieces (tables, headers, charts as inline SVG) live in a `components/` module.
 - Satori sizes boxes like CSS's default `content-box`, so a full-size container with `width: "100%"` and padding ends up wider than the screen. Give such containers `boxSizing: "border-box"`.
 - Long text is cut off with `whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"` on one line, or `display: "block", overflow: "hidden", lineClamp: 2` for two lines (both tested). Text that isn't cut off can overflow its box.
-- Screen-specific settings (coordinates, calendar URL, …) come from `devices.yaml`; secrets such as API keys come from environment variables.
+- `inputs` declares a screen's settings, each with a type (`string`, `number` or `boolean`) and a default. `resolveInputs` converts the given values to their type and fills in the defaults; the result is `props.inputs`. On the server they can't be configured per device yet, so screens always get their defaults; secrets such as API keys will come from environment variables.
+- Which screen a device shows: `defaultScreen` in `devices.yaml` (see [Configuration](#configuration)).
+
+### Screen development server
+
+`npm run dev` starts a separate server on http://localhost:7778 (`DEV_PORT`) for developing screens, without `devices.yaml`, `TOKEN_SECRET` or a device (`src/dev-server.js`). Its page has a screen dropdown (kept in the URL as `?screen=`), the screen's settings (the time, and a field for each of its `inputs`), the device's settings (name, time zone) and what a device sends (battery, charging, USB, `RSSI`, firmware version). Load renders the screen with the same code as the server and shows the PNG with its ttl, colours, size and render time.
+
+`scripts/dev` builds into `.dev/` and watches the code: every save rebuilds (esbuild `--watch`) and restarts the server (`node --watch`). A new file in `src/screens/` needs a restart, since the watcher only knows the entry points it started with.
 
 ### Rendering
 
@@ -121,7 +135,9 @@ devices:
 | `refreshRate` | No     | The longest the device sleeps between polls, in seconds, at least 60. Default 900, the firmware's own default. It wakes sooner when the screen's `ttl` runs out first |
 | `token`    | No       | The device's existing token, for a device paired with another server. If set, it is used instead of a derived token (see [Authentication](#authentication)) |
 
-The server checks the file at startup (required fields, unique usernames, valid time zones) and refuses to start if it's wrong. Still to be designed: the device's playlist (see [Playlists](#playlists)) and the settings for each screen.
+At the top level, `defaultScreen` names the screen devices show, e.g. `defaultScreen: placeholder`. Without it, the server uses `placeholder` if that screen exists, otherwise the first screen found (alphabetically).
+
+The server checks the file at startup (required fields, unique usernames, valid time zones, an existing `defaultScreen`) and refuses to start if it's wrong. Still to be designed: the device's playlist (see [Playlists](#playlists)) and the settings for each screen.
 
 Everything else comes from environment variables: `dist/.env` when deployed (copied to the server by `scripts/deploy`, see [Deployment](#deployment)), `.env` for `npm start` locally. Both are gitignored; `sample.env` and `dist/sample.env` document them.
 
@@ -150,7 +166,7 @@ No database or Docker volume is needed. If a screen ever depends on data pushed 
 
 Modelled on heatmapper, onto a server set up with the [virtual server gist](https://gist.github.com/c-harding/59686990f42f4dddae01dffa56618ea4) (Docker and Caddy with `add-site`):
 
-- `scripts/build` bundles `src/` with esbuild into `dist/server.js` and copies `package.json`, `package-lock.json` and `devices.yaml` into `dist/`. Only the deployment files in `dist/` are tracked: `Dockerfile` (`node:24-slim`, `npm ci --omit=dev`), `docker-compose.yml`, `.dockerignore`, `.rsyncignore` and `sample.env`.
+- `scripts/build` bundles `src/` with esbuild into `dist/server.js`, `dist/screens/*.js` (one per screen, see [Screens](#screens)) and shared chunk files, and copies `package.json`, `package-lock.json` and `devices.yaml` into `dist/`. Only the deployment files in `dist/` are tracked: `Dockerfile` (`node:24-slim`, `npm ci --omit=dev`), `docker-compose.yml`, `.dockerignore`, `.rsyncignore` and `sample.env`.
 - `scripts/deploy` rsyncs `dist/` to `DEPLOY_DIR` on the server (without `*.env`), copies `dist/.env` separately as `.env`, runs `docker compose up --build -d` and `docker system prune -f`, and registers `SERVER_DOMAIN` with Caddy on `SERVER_PORT` (`add-site`).
 - `scripts/connect` runs a command on the server, e.g. `npm run connect -- 'docker compose -f trmnl/docker-compose.yml logs -f'`.
 - The image (`trmnl-server`) is built with BuildKit's inline cache: the cache information for each step is stored in the image itself, and the next build reads it from there (`cache_from`). `docker system prune` empties the separate build cache on every deploy (ours and the other projects' on the same server), but as long as the running image exists, unchanged steps such as `npm ci` are still reused.

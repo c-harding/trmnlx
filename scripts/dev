@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# Builds and starts the screen development server (src/dev-server.js) on http://localhost:7778
+# (or DEV_PORT). Watches the code: every save rebuilds the bundle (esbuild --watch), and every
+# rebuild restarts the server (node --watch). Reload the page, or click Load, to see the change.
+# Ctrl+C stops both. A new file in src/screens/ needs a restart: the watcher only knows the screens
+# that existed when it started.
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+shopt -s nullglob
+
+# Like scripts/build: each screen is its own entry point, built into .dev/screens/
+ESBUILD_ARGS=(src/dev-server.js src/screens/*.{js,jsx} --bundle --splitting --platform=node --format=esm
+  --jsx=automatic --jsx-import-source=preact --packages=external
+  --outdir=.dev --outbase=src --log-level=warning)
+
+rm -rf .dev
+mkdir -p .dev
+cp -R assets/fonts .dev/fonts
+
+# Build once before starting, so node has something to run
+npx esbuild "${ESBUILD_ARGS[@]}"
+
+# "forever": keep watching even though stdin isn't attached to the background process
+npx esbuild "${ESBUILD_ARGS[@]}" --watch=forever &
+ESBUILD_PID=$!
+trap 'kill "$ESBUILD_PID" 2>/dev/null' EXIT
+
+# --watch-preserve-output: don't clear the terminal on every restart
+node --watch --watch-preserve-output .dev/dev-server.js

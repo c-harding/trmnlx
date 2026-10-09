@@ -10,7 +10,8 @@
     "connect": "scripts/connect",
     "deploy": "scripts/deploy",
     "build-deploy": "scripts/build && scripts/deploy",
-    "pair": "scripts/pair"
+    "pair": "scripts/pair",
+    "dev": "scripts/dev"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
