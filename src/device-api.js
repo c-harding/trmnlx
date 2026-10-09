@@ -10,6 +10,7 @@ import { authenticateDevice, deviceToken, friendlyId } from "./device-auth.js";
 import { renderPng } from "./render.js";
 import { renderDeviceScreen } from "./screen.js";
 import { view as paired } from "./screens/paired.jsx";
+import { recordTelemetry } from "./telemetry.js";
 
 export const deviceApi = express.Router();
 
@@ -91,6 +92,8 @@ function refreshRate(req, device, ttl) {
 
 deviceApi.get("/api/display", requireDevice, async (req, res) => {
   const device = req.device;
+  // Before rendering, so the screen shows the readings from this very wake
+  recordTelemetry(device, req);
   const { png, ttl } = await renderDeviceScreen(device);
   // Named after its content: the firmware skips the download and the redraw if it's unchanged
   const filename = createHash("sha256").update(png).digest("hex").slice(0, 16);
