@@ -1,0 +1,6 @@
+# Copy to devices.yaml and fill in your devices. devices.yaml is gitignored.
+devices:
+  - mac: "AA:BB:CC:DD:EE:FF"  # Quote MACs: some parsers read unquoted all-digit values as numbers
+    username: kitchen
+    password: change-me
+    # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one
