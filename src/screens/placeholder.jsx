@@ -1,17 +1,10 @@
 import { batteryPercent } from "../telemetry.js";
+import { untilNextMinute } from "../time.js";
 
-// Seconds added to the ttl, so a device or browser that wakes slightly early doesn't redraw the
-// minute that is just ending and then wake again straight away.
-const SAFETY_SECONDS = 2;
+/** Valid until the displayed time changes. */
+export const ttl = ({ now }) => untilNextMinute(now);
 
-/** Seconds until the displayed time changes, i.e. until the next minute starts (plus a margin). */
-export function ttl({ now }) {
-  // Every time zone in use is offset from UTC by whole minutes, so minutes tick together everywhere
-  const msLeft = 60_000 - (now.getTime() % 60_000);
-  return Math.ceil(msLeft / 1000) + SAFETY_SECONDS;
-}
-
-function batteryText(telemetry) {
+export function batteryText(telemetry) {
   const voltage = telemetry?.batteryVoltage;
   if (voltage === undefined) return "Battery unknown";
   const charging = telemetry.charging || telemetry.usbConnected ? " · charging" : "";

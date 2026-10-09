@@ -54,9 +54,13 @@ const info = document.getElementById("info");
 function showScreenInputs() {
   inputsBox.replaceChildren();
   for (const [name, definition] of Object.entries(SCREEN_INPUTS[select.value] ?? {})) {
-    const field = document.createElement("input");
+    // A list is a textarea with one entry per line
+    const field = document.createElement(definition.type === "list" ? "textarea" : "input");
     field.name = "input." + name;
-    if (definition.type === "boolean") {
+    if (definition.type === "list") {
+      field.rows = Math.max(2, (definition.default ?? []).length);
+      field.value = (definition.default ?? []).join("\\n"); // "\\n": this script is inside a template literal
+    } else if (definition.type === "boolean") {
       field.type = "checkbox";
       field.checked = Boolean(definition.default);
     } else {

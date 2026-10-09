@@ -72,6 +72,9 @@ function loadDevices() {
     ) {
       fail(`${where}.refreshRate must be a whole number of seconds, at least 60`);
     }
+    if (device.screen !== undefined && !Object.hasOwn(screens, device.screen)) {
+      fail(`${where}.screen must be one of ${Object.keys(screens).join(", ")}`);
+    }
     if (usernames.has(device.username)) fail(`${where}.username ${device.username} is used twice`);
     usernames.add(device.username);
     const mac = device.mac.toUpperCase();
@@ -85,7 +88,7 @@ function loadDevices() {
       token: device.token,
       timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
-      screen: defaultScreen,
+      screen: device.screen ?? defaultScreen,
     };
   });
 }

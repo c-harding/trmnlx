@@ -11,7 +11,7 @@ import { telemetryFor } from "./telemetry.js";
 // - optionally load(props): async, fetches and caches its data, passed on as props.data;
 // - optionally colors: 2 or 4 (default 4);
 // - optionally inputs: its settings, e.g. { station: { type: "string", default: "Marienplatz" } },
-//   with type "string", "number" or "boolean". The values (on the server, for now always the
+//   with type "string", "number", "boolean" or "list" (of strings). The values (on the server, for now always the
 //   defaults; in the dev server, from its form) are passed to load, view and ttl as props.inputs,
 //   with defaults filled in.
 const SCREENS_DIR = new URL("./screens/", import.meta.url);
@@ -32,7 +32,11 @@ export function resolveInputs(definitions = {}, given = {}) {
   const inputs = {};
   for (const [name, definition] of Object.entries(definitions)) {
     const raw = given[name];
-    if (raw === undefined || raw === "") {
+    if (definition.type === "list") {
+      // An array, or text with one entry per line (the dev server's form); empty text is an empty list
+      if (raw === undefined) inputs[name] = definition.default ?? [];
+      else inputs[name] = (Array.isArray(raw) ? raw : String(raw).split(/\r?\n/)).map((v) => String(v).trim()).filter(Boolean);
+    } else if (raw === undefined || raw === "") {
       inputs[name] = definition.default;
     } else if (definition.type === "number") {
       inputs[name] = Number(raw);
