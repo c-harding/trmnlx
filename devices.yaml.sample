@@ -3,4 +3,6 @@ devices:
   - mac: "AA:BB:CC:DD:EE:FF"  # Quote MACs: some parsers read unquoted all-digit values as numbers
     username: kitchen
     password: change-me
+    # timezone: Europe/Berlin  # Defaults to TZ, then UTC
+    # refreshRate: 900  # Seconds between polls, at least 60
     # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one

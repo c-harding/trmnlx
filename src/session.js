@@ -1,13 +1,9 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { findDeviceByUsername, tokenSecret } from "./config.js";
+import { safeEqual, sha256 } from "./crypto.js";
 
 export const SESSION_COOKIE = "session";
 const SESSION_DAYS = 30;
-
-const sha256 = (value) => createHash("sha256").update(value).digest();
-
-// Compares two strings in constant time, whatever their lengths.
-const safeEqual = (a, b) => timingSafeEqual(sha256(a), sha256(b));
 
 /** The device whose username and password these are, or undefined. */
 export function checkLogin(username, password) {

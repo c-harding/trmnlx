@@ -29,10 +29,11 @@ device ──► GET <image_url> (with Access-Token) ──► cached PNG
 
 | Route | Purpose |
 |-------|---------|
-| `GET /api/setup` | Registers a device from `devices.yaml` by MAC. Only answers while setup is enabled (see [Authentication](#authentication)) |
+| `GET /api/setup` | Registers a device from `devices.yaml` by MAC: returns its token, a `friendly_id` (6 hex digits derived from the MAC) and the URL of `/setup.png`. Only while setup is enabled; otherwise HTTP 200 with a body `status` of 404 and a message, which the device shows before trying again in 15 minutes (see [Authentication](#authentication)) |
+| `GET /setup.png` | A fixed "Paired" image, downloaded by the firmware right after setup without its token, so it's public |
 | `GET /api/display` | Checks the token, renders or reuses the next screen, returns its URL, `filename` and `refresh_rate` |
-| `GET /images/<device>/<filename>.png` | Serves the cached PNG. Requires the same `ID` and `Access-Token` headers as `/api/display`. Must send `Content-Type: image/png` exactly, and a `Content-Length` |
-| `POST /api/log` | Checks the token, passes the entries to the device's log stream (see [Logs](#logs)) and answers `204` |
+| `GET /images/<filename>.png` | Serves one of the device's last 3 rendered PNGs (cached in memory). Requires the same `ID` and `Access-Token` headers as `/api/display`, which also identify the device. Sends `Content-Type: image/png` exactly, and a `Content-Length` |
+| `POST /api/log` | Checks the token and answers `204`. For now the entries are dropped; later they go to the device's log stream (see [Logs](#logs)) |
 | `GET /login`, `POST /login`, `POST /logout` | Browser login with the username and password from `devices.yaml` (see [Browser login](#browser-login)) |
 | `GET /` | The logged-in user's device screen, as a plain HTML page with an `<img>` |
 | `GET /screen.png` | The PNG shown on that page, rendered on each request |
@@ -49,12 +50,12 @@ Image URLs are built from the same base URL the device is configured with, so th
 
 ### Authentication
 
-- **Tokens are derived, not stored**: `api_key = HMAC-SHA256(TOKEN_SECRET, MAC)`, compared in constant time. Deleting a device from `devices.yaml` revokes it, changing `TOKEN_SECRET` revokes all of them.
+- **Tokens are derived, not stored**: `api_key` is the first 22 characters of base64url(HMAC-SHA256(`TOKEN_SECRET`, `"device-token\n" + MAC`)), compared in constant time. The label keeps device tokens apart from session signatures made with the same secret. Deleting a device from `devices.yaml` revokes it, changing `TOKEN_SECRET` revokes all of them.
 - **Except for adopted devices**: a device that was paired with another server keeps the token it already has, since the firmware can't be given a new one without a reset. Its `token` field in `devices.yaml` is then used instead of a derived one, both for checking requests and in `/api/setup` answers. Changing a derived token means re-pairing; changing a stored one means editing `devices.yaml` and re-pairing.
 - **Rejected tokens get HTTP 401.** The firmware treats any HTTP status other than 200, 301 or 429 as an error: it retries 5 times, shows an error screen and sleeps for its last refresh rate, keeping its token and Wi-Fi settings. Re-adding the device (or restoring the secret) makes it work again on its next wake.
 - **Never answer with a body `status` of 500, and only send `reset_firmware: true` deliberately.** Both make the firmware clear all its preferences, including the Wi-Fi credentials, and restart into the captive portal, so someone has to set up Wi-Fi again with a phone.
 - **Rotating tokens means re-pairing.** The firmware only calls `/api/setup` when it has no stored token, and the only way to clear it remotely also clears Wi-Fi. A new `TOKEN_SECRET` therefore means setting up each device again by hand.
-- **Setup is off by default.** `/api/setup` identifies the device only by its MAC, which isn't secret, so it only answers while `SETUP_ENABLED=1`. A `pair` script turns it on while a device is being set up, and the deploy script forces it off again, whatever `dist/.env` says.
+- **Setup is off by default.** `/api/setup` identifies the device only by its MAC, which isn't secret, so it only answers while `SETUP_ENABLED=1`. `npm run pair` turns it on while a device is being set up and off again afterwards (even on Ctrl+C), and `npm run deploy` forces it off, whatever `dist/.env` says. Rejected requests (wrong token, unknown MAC) get HTTP 401 and are logged with their MAC.
 - The server logs a warning at startup while setup is enabled.
 
 ### Screens
@@ -115,6 +116,7 @@ devices:
 | `username` | Yes      | User name for the browser login; it selects which device's screen is shown |
 | `password` | Yes      | Password for the browser login |
 | `timezone` | No       | IANA time zone for the device's screens, e.g. `Europe/Berlin`. Defaults to `TZ`, then UTC |
+| `refreshRate` | No     | Seconds the device sleeps between polls (`refresh_rate`), at least 60. Default 900, the firmware's own default |
 | `token`    | No       | The device's existing token, for a device paired with another server. If set, it is used instead of a derived token (see [Authentication](#authentication)) |
 
 The server checks the file at startup (required fields, unique usernames, valid time zones) and refuses to start if it's wrong. Still to be designed: the device's playlist (see [Playlists](#playlists)) and the settings for each screen.
@@ -128,7 +130,7 @@ Everything else comes from environment variables: `dist/.env` when deployed (cop
 | `SERVER_DOMAIN` | Deploy   | The public address, e.g. `https://trmnl.charding.dev`; registered with Caddy on deploy |
 | `TZ`            | No       | Default time zone for devices without `timezone` |
 | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEYPAIR`, `DEPLOY_DIR` | Deploy | Where `scripts/deploy` and `scripts/connect` connect to |
-| `SETUP_ENABLED` | No       | Planned: `1` to answer `/api/setup` while pairing a device. Default `0` |
+| `SETUP_ENABLED` | No       | `1` to answer `/api/setup` while pairing a device. Set only from the shell by `npm run pair`; a value in `.env` is ignored. Default `0` |
 
 API keys for data sources will be added here as screens need them.
 
@@ -150,7 +152,7 @@ Modelled on heatmapper, onto a server set up with the [virtual server gist](http
 - `scripts/deploy` rsyncs `dist/` to `DEPLOY_DIR` on the server (without `*.env`), copies `dist/.env` separately as `.env`, runs `docker compose up --build -d` and `docker system prune -f`, and registers `SERVER_DOMAIN` with Caddy on `SERVER_PORT` (`add-site`).
 - `scripts/connect` runs a command on the server, e.g. `npm run connect -- 'docker compose -f trmnl/docker-compose.yml logs -f'`.
 - The container listens on 7777; `SERVER_PORT` only picks the host port, which is published on `127.0.0.1` only, so the server can only be reached through Caddy's HTTPS.
-- Planned: a `pair` script, next to `deploy`, that restarts the container with `SETUP_ENABLED=1`, waits for the device to pair, then restarts it with setup off.
+- `scripts/pair` restarts the container with `SETUP_ENABLED=1`, waits until Enter is pressed, then restarts it with setup off (also on Ctrl+C or an error). `scripts/deploy` always starts it with `SETUP_ENABLED=0`.
 
 Expected footprint: roughly 60–100 MB of RAM and a `node:slim` image with sharp's prebuilt binaries. The current server has about 800 MB of RAM available and 24 GB of disk.
 

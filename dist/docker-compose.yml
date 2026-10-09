@@ -4,8 +4,11 @@ services:
       - ./.env
     # Inside the container the server always listens on 7777. SERVER_PORT in .env only picks the
     # port on the host, which Caddy forwards to.
+    # SETUP_ENABLED comes from the shell only (scripts/pair turns it on, scripts/deploy forces it off),
+    # overriding any value in .env.
     environment:
       - SERVER_PORT=7777
+      - SETUP_ENABLED=${SETUP_ENABLED:-0}
     restart: always
     build: .
     # Bound to localhost only: Caddy on the host provides HTTPS, and nothing should reach the

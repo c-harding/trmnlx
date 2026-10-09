@@ -18,8 +18,9 @@ fi
 # simply skipped).
 (
   RAW_DOMAIN="${SERVER_DOMAIN/#*\/\//}"
+  # SETUP_ENABLED=0: a deploy always ends a pairing window opened by scripts/pair
   DEPLOY_COMMAND="$(printf '
-    docker compose -f%q/docker-compose.yml up --build -d &&
+    SETUP_ENABLED=0 docker compose -f%q/docker-compose.yml up --build -d &&
     docker system prune -f &&
     (command -v add-site > /dev/null && add-site %q %d; true)
   ' "${DEPLOY_DIR:-.}" "$RAW_DOMAIN" "${SERVER_PORT:-7777}")"

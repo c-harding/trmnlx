@@ -1,8 +1,9 @@
 import cookieParser from "cookie-parser";
 import express from "express";
+import { serverDomain, setupEnabled } from "./config.js";
+import { deviceApi } from "./device-api.js";
 import { loginPage, screenPage } from "./pages.js";
-import { renderPng } from "./render.js";
-import { view as placeholder } from "./screens/placeholder.jsx";
+import { renderDeviceScreen } from "./screen.js";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.js";
 
 const port = Number(process.env.SERVER_PORT ?? 7777);
@@ -13,6 +14,7 @@ app.disable("x-powered-by");
 // Docker's bridge network rather than loopback, so trust any proxy: the port is only published on
 // 127.0.0.1, so nothing else can reach the server to fake these headers.
 app.set("trust proxy", true);
+app.use(deviceApi);
 app.use(cookieParser());
 
 app.get("/", (req, res) => {
@@ -24,7 +26,7 @@ app.get("/", (req, res) => {
 app.get("/screen.png", async (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.status(401).type("text").send("Not logged in\n");
-  const png = await renderPng(placeholder({ name: device.username, now: new Date(), timeZone: device.timeZone }));
+  const png = await renderDeviceScreen(device);
   res.type("png").set("Cache-Control", "no-store").send(png);
 });
 
@@ -55,4 +57,8 @@ app.use((err, req, res, next) => {
   res.status(status).type("text").send(status === 500 ? "Internal error\n" : `${err.message}\n`);
 });
 
-app.listen(port, () => console.log(`Listening on port ${port}`));
+app.listen(port, () => {
+  console.log(`Listening on port ${port}`);
+  if (!serverDomain) console.warn("SERVER_DOMAIN is not set: image URLs are built from each request's Host header");
+  if (setupEnabled) console.warn("SETUP_ENABLED=1: /api/setup hands out tokens to any listed MAC. Turn it off after pairing.");
+});

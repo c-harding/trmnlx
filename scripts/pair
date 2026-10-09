@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+
+# Opens a pairing window on the deployed server: /api/setup hands out tokens until Enter is pressed
+# (or the script is interrupted), then setup is turned off again. The device must already be listed
+# in devices.yaml and deployed.
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+. scripts/connect
+
+COMPOSE="$(printf 'docker compose -f%q/docker-compose.yml' "${DEPLOY_DIR:-.}")"
+
+setup() {
+  ssh "${DEPLOY_SSH_ARGS[@]}" "$DEPLOY_TARGET" "SETUP_ENABLED=$1 $COMPOSE up -d"
+}
+
+# Turn setup off however the script ends, including Ctrl+C
+trap 'echo "Turning setup off..." >&2; setup 0' EXIT
+trap 'exit 130' INT TERM
+
+echo "Turning setup on..." >&2
+setup 1
+
+echo >&2
+echo 'Setup is on. Now pair the device:' >&2
+echo '  - a device without a token (new, or reset) calls /api/setup as soon as it is online;' >&2
+echo '  - wake it with a short press of KEY3 (under 1 second; longer presses clear its settings).' >&2
+echo 'Follow the server log in another terminal to see "Paired <name>":' >&2
+echo "  npm run connect -- '$COMPOSE logs -f'" >&2
+echo >&2
+read -rp 'Press Enter once the device shows "Paired"... '

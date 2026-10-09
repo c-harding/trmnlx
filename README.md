@@ -21,6 +21,12 @@ npm run build-deploy
 npm run connect -- 'docker compose -f trmnl/docker-compose.yml logs -f'   # follow the server's logs
 ```
 
+Pairing a new device (after adding it to `devices.yaml` and deploying):
+
+```sh
+npm run pair    # turns /api/setup on until you press Enter, then off again
+```
+
 ## Protocol
 
 The TRMNL device does all the talking. It sleeps most of the time, wakes up on a timer (or on a button press), polls the server over HTTP(S), downloads one image, draws it, and goes back to deep sleep. The server never pushes anything to the device. It can only steer the device through the response to the next poll.
