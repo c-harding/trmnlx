@@ -158,3 +158,70 @@ For reference, black-and-white 1-bit images in BMP3 or PNG also still work.
 - Firmware README, "Web Server Endpoints": <https://github.com/usetrmnl/trmnl-firmware/blob/main/README.md#web-server-endpoints>
 - TRMNL OpenAPI spec: <https://trmnl.com/api-docs/openapi.yaml>
 - TRMNL ImageMagick guide (image formats): <https://docs.trmnl.com/go/diy/imagemagick-guide>
+
+## TRMNL plugins
+
+On TRMNL's hosted service, everything a screen shows comes from a plugin: calendar, weather, a custom dashboard. Plugins run entirely on the server. The device knows nothing about them; it only downloads the finished image through `/api/display`, as described above. A plugin is a recipe for producing that image from some data.
+
+### What a plugin consists of
+
+- **A data source** (the "strategy"), which supplies the variables.
+- **Markup**: [Liquid](https://shopify.github.io/liquid/) templates (`{{ variable }}`, loops, filters) that turn the variables into HTML, styled with TRMNL's CSS framework.
+- **Settings**: form fields that whoever installs the plugin fills in (e.g. a city or an API key), plus the fastest refresh rate the plugin allows.
+
+### Data strategies
+
+| Strategy     | How the data arrives |
+|--------------|----------------------|
+| Polling      | TRMNL fetches one or more URLs on each refresh (GET by default, POST possible, with custom headers). Responses can be JSON, RSS, XML, plain text or CSV. With several URLs, each response is available as `IDX_0`, `IDX_1`, … |
+| Webhook      | Your own code POSTs the data to TRMNL. The stored variables are limited to 5 KB (10 KB with TRMNL+) |
+| Plugin merge | The template gets the data of your other plugins |
+
+Form field values can be used in the markup and in polling URLs, headers and bodies, e.g. `{{ city }}`. TRMNL also provides globals such as `{{ trmnl.user.first_name }}`.
+
+### Layouts
+
+A plugin has one template per size, so it can share the screen with other plugins in a "mashup":
+
+| Template          | Space on the screen |
+|-------------------|---------------------|
+| `full`            | The whole screen |
+| `half_horizontal` | Top or bottom half |
+| `half_vertical`   | Left or right half |
+| `quadrant`        | One quarter |
+
+The markup uses the framework's CSS classes (e.g. `view view--full`), which are designed for the e-ink panel's resolution and gray levels. A `shared` template holds markup used by all four.
+
+### Rendering
+
+TRMNL merges the variables into the template and renders the result as an image for the device. TRMNL's own documentation doesn't describe the pipeline, but the tools that reproduce it (trmnlp, LaraPaper) render the HTML in a headless browser, take a screenshot and convert it to a PNG for the device with ImageMagick. If the variables haven't changed since the last refresh, TRMNL doesn't render a new screen.
+
+**Playlists** decide which plugin (or mashup) the device shows on each refresh. **Recipes** are plugins other people have published, which you can install as they are.
+
+### Building plugins locally
+
+[trmnlp](https://github.com/usetrmnl/trmnlp) is TRMNL's local development server for plugins. A plugin project looks like this:
+
+```
+src/
+  full.liquid
+  half_horizontal.liquid
+  half_vertical.liquid
+  quadrant.liquid
+  shared.liquid
+  settings.yml        # strategy, polling URLs, form fields; uploaded to TRMNL
+.trmnlp.yml           # local settings, e.g. variable overrides; not uploaded
+```
+
+`trmnlp serve` previews the plugin as HTML or as PNG (PNG needs Firefox and ImageMagick 7), and `trmnlp push` uploads it to your TRMNL account.
+
+### Relevance for this server
+
+Our server has to produce the images itself, so it plays the role of TRMNL's plugin system. We can copy the same model: Liquid templates (e.g. with [LiquidJS](https://liquidjs.com/)) and the TRMNL framework CSS, rendered in a headless browser and converted to a 2-bit grayscale PNG. That would also let us develop screens with trmnlp. Of the existing self-hosted servers, Terminus, LaraPaper, Inker and BYOS Next.js support plugins; only Terminus supports recipes.
+
+### Plugin sources
+
+- Custom plugins (help article): <https://help.trmnl.com/en/articles/9510536-custom-plugins>
+- Framework docs (views and mashups): <https://trmnl.com/framework/docs/3.4/view>
+- trmnlp: <https://github.com/usetrmnl/trmnlp>
+- BYOS overview and feature matrix: <https://docs.trmnl.com/go/diy/byos>
