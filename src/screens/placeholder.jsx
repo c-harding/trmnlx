@@ -15,8 +15,7 @@ function batteryText(telemetry) {
   const voltage = telemetry?.batteryVoltage;
   if (voltage === undefined) return "Battery unknown";
   const charging = telemetry.charging || telemetry.usbConnected ? " · charging" : "";
-  // "~" rather than "≈": the latter isn't in the Latin subset of Inter that we load
-  return `Battery ${voltage.toFixed(2)} V · ~${batteryPercent(voltage)}%${charging}`;
+  return `Battery ${voltage.toFixed(2)} V · ≈${batteryPercent(voltage)}%${charging}`;
 }
 
 export function view({ name, now, timeZone, telemetry }) {

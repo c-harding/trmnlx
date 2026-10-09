@@ -163,7 +163,7 @@ Expected footprint: roughly 60–100 MB of RAM and a `node:slim` image with shar
 ## Dependencies
 
 - `satori` for layout and SVG, `sharp` for PNG conversion
-- `@fontsource/inter` for the Inter font (its `.woff` files; Satori can't read `.woff2`)
+- Inter 4.1, as the static `Inter-Regular.ttf` and `Inter-Bold.ttf` from [Inter's release](https://github.com/rsms/inter/releases), committed in `assets/fonts` with its licence (SIL Open Font License) and copied into `dist/fonts` by `scripts/build`. Satori 0.47.1 fails on the variable `InterVariable.ttf`, and the Google Fonts subsets (e.g. `@fontsource/inter`) lack symbols such as ≈ and →
 - `preact`, only for its JSX runtime (`jsxImportSource: "preact"`); JSX is bundled with esbuild. Our components (`Frame`, `Table`, …) are plain functions of their props, with no hooks or state, so nothing else from Preact is used. Tested: Satori 0.47.1 accepts Preact 11.0.1's elements, including function components
 - `yaml` for `devices.yaml`
 - Express 5 with `cookie-parser` (chosen over `node:http` and Fastify for its familiar routing, built-in body parsing and automatic handling of rejected async handlers)
@@ -177,3 +177,4 @@ Expected footprint: roughly 60–100 MB of RAM and a `node:slim` image with shar
 
 - Which `temperature_profile` (`default`, `a`, `b`) gives the best grayscale on our panel?
 - `npm audit` reports 2 moderate issues: Satori 0.47.1 pins `fflate` to exactly 0.7.3 (directly and through `@shuding/opentype.js`), which has an infinite loop in `unzipSync` on malformed ZIP64 archives ([GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98)). Probably not reachable here: Satori only uses `fflate` to decompress font files, and we only load our own fonts. `npm audit fix --force` would downgrade Satori to 0.32.0, a breaking change. Better: an `overrides` entry forcing `fflate` 0.8.x, checking that rendering still works, or waiting for a Satori release that updates it.
+- Once there are playlists: give KEY3 presses a meaning. A short press arrives as a normal `/api/display` with `Update-Source: EXT0` on the DIY kit (`EXT1` on an ESP32, `button` on the C3-based OG); a 1–5 s press arrives with a `special_function: true` header and runs whichever special function the server last sent in `special_function` (e.g. `restart_playlist`, `identify`). Other keys on the board would need a firmware change (the S3 build wakes on one pin via `ext0`).

@@ -16,7 +16,6 @@
     "esbuild": "^0.28.2"
   },
   "dependencies": {
-    "@fontsource/inter": "^5.3.0",
     "cookie-parser": "^1.4.7",
     "express": "^5.3.0",
     "preact": "^11.0.1",

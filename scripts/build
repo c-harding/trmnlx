@@ -10,6 +10,8 @@ cd "$(dirname "$0")/.."
 
 (echo "copying install info"; cp package.json package-lock.json dist/)
 
+(echo "copying fonts"; rm -rf dist/fonts; cp -R assets/fonts dist/fonts)
+
 if [ -f devices.yaml ]; then
   (echo "copying devices.yaml"; cp devices.yaml dist/)
 fi
