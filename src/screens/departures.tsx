@@ -175,11 +175,11 @@ export default defineScreen({
   // a 4-gray refresh, which matters for a screen that changes every minute.
   colors: 2,
 
-  async load({ inputs }) {
+  async load({ inputs, now }) {
     const pins = inputs.pinned.map(parsePin).filter((pin) => pin !== undefined);
     const [departures, ...connections] = await Promise.all([
-      departuresFor(inputs.station),
-      ...pins.map((pin) => nextDirectFor(inputs.station, pin.target, pin.types)),
+      departuresFor(inputs.station, now),
+      ...pins.map((pin) => nextDirectFor(inputs.station, pin.target, pin.types, now)),
     ]);
     return { ...departures, pins: connections };
   },

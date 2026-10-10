@@ -5,6 +5,10 @@
 // - station names → station IDs (e.g. "Marienplatz" → "de:09162:2"), kept until the server restarts,
 //   since IDs practically never change;
 // - departures per station, kept for under a minute.
+//
+// Data is fetched for the time being shown (props.now), which is the current time except in the
+// dev server, so caches are kept per minute of difference from the current time: on the server,
+// that's always 0.
 
 const BASE_URL = "https://www.mvg.de/api/bgw-pt/v3";
 
@@ -138,10 +142,16 @@ async function findStation(name: string): Promise<Station> {
 
 const departureCache = new Map<string, CacheEntry<Departure[]>>();
 
+/** Whole minutes from the current time to `time`, e.g. 0 for now and 60 for an hour from now. */
+const minutesFromNow = (time: Date) => Math.round((time.getTime() - Date.now()) / 60_000);
+
 // More than fit on the screen, so the next departure on the same line and direction is usually
-// among them, even for lines that run every 20 minutes
-async function fetchDepartures(stationId: string): Promise<Departure[]> {
-  const data = (await getJson(`${BASE_URL}/departures?globalId=${encodeURIComponent(stationId)}&limit=100&transportTypes=${TRANSPORT_TYPES}`)) as MvgDeparture[];
+// among them, even for lines that run every 20 minutes. MVG answers from the current time plus
+// `offsetInMinutes`, and ignores negative offsets: the past isn't available.
+async function fetchDepartures(stationId: string, offsetMinutes: number): Promise<Departure[]> {
+  const data = (await getJson(
+    `${BASE_URL}/departures?globalId=${encodeURIComponent(stationId)}&limit=100&transportTypes=${TRANSPORT_TYPES}&offsetInMinutes=${offsetMinutes}`,
+  )) as MvgDeparture[];
   if (!Array.isArray(data)) throw new Error(`Unexpected MVG response for ${stationId}`);
 
   return data
@@ -167,11 +177,12 @@ async function fetchDepartures(stationId: string): Promise<Departure[]> {
 }
 
 /**
- * The latest departures for a station, given by name: `{ station, departures, fetchedAt, error }`.
+ * The latest departures for a station, given by name, from `time` on (no earlier than the current
+ * time): `{ station, departures, fetchedAt, error }`.
  * Fetches again if the cached list is older than a minute; if that fails, keeps the old list and
  * sets `error`. `station` is `{ id, name }`, or undefined if the name couldn't be looked up yet.
  */
-export async function departuresFor(stationName: string): Promise<DeparturesResult> {
+export async function departuresFor(stationName: string, time: Date): Promise<DeparturesResult> {
   let station;
   try {
     station = await findStation(stationName);
@@ -179,12 +190,14 @@ export async function departuresFor(stationName: string): Promise<DeparturesResu
     return { error: asError(error) };
   }
 
-  let entry = departureCache.get(station.id);
-  if (!entry) departureCache.set(station.id, (entry = {}));
+  const offset = Math.max(minutesFromNow(time), 0);
+  const key = `${station.id}|${offset}`;
+  let entry = departureCache.get(key);
+  if (!entry) departureCache.set(key, (entry = {}));
 
   if (!entry.value || Date.now() - entry.fetchedAt! >= MAX_AGE_MS) {
     // Requests arriving while a fetch is running wait for that one
-    entry.pending ??= fetchDepartures(station.id)
+    entry.pending ??= fetchDepartures(station.id, offset)
       .then((departures) => Object.assign(entry, { value: departures, fetchedAt: Date.now(), error: undefined }))
       .catch((error) => {
         console.error(`Fetching departures for ${station.name} failed: ${asError(error).message}`);
@@ -202,11 +215,11 @@ const directCache = new Map<string, CacheEntry<Departure[]>>();
 // MVG's route search returns its few best connections (5 at a time), possibly with changes. The
 // direct ones of the wanted transport type answer "the next S-Bahn to Ostbahnhof", including trains
 // that end there (which never appear in the target's own departures).
-async function fetchNextDirect(from: Station, to: Station, types: string[]): Promise<Departure[]> {
+async function fetchNextDirect(from: Station, to: Station, types: string[], time: Date): Promise<Departure[]> {
   const query = new URLSearchParams({
     originStationGlobalId: from.id,
     destinationStationGlobalId: to.id,
-    routingDateTime: new Date().toISOString(),
+    routingDateTime: time.toISOString(),
     routingDateTimeIsArrival: "false",
   });
   const routes = (await getJson(`${BASE_URL}/routes?${query}`)) as MvgRoute[];
@@ -236,11 +249,16 @@ async function fetchNextDirect(from: Station, to: Station, types: string[]): Pro
 
 /**
  * The next direct connections of any of some transport types (e.g. ["SBAHN", "UBAHN"]) from one
- * station to another, both given by name: `{ target, connections, error }`. `connections` are shaped
+ * station to another, both given by name, leaving from `time` on: `{ target, connections, error }`. `connections` are shaped
  * like departures, earliest first (several, since the first may have left by the time it's shown).
  * Cached like the departures; if a fetch fails, the last result is kept and `error` set.
  */
-export async function nextDirectFor(stationName: string, targetName: string, types: string[]): Promise<ConnectionsResult> {
+export async function nextDirectFor(
+  stationName: string,
+  targetName: string,
+  types: string[],
+  time: Date,
+): Promise<ConnectionsResult> {
   let from, to;
   try {
     [from, to] = await Promise.all([findStation(stationName), findStation(targetName)]);
@@ -248,12 +266,12 @@ export async function nextDirectFor(stationName: string, targetName: string, typ
     return { target: targetName, error: asError(error) };
   }
 
-  const key = `${from.id}|${to.id}|${[...types].sort().join("|")}`;
+  const key = `${from.id}|${to.id}|${[...types].sort().join("|")}|${minutesFromNow(time)}`;
   let entry = directCache.get(key);
   if (!entry) directCache.set(key, (entry = {}));
 
   if (entry.value === undefined || Date.now() - entry.fetchedAt! >= MAX_AGE_MS) {
-    entry.pending ??= fetchNextDirect(from, to, types)
+    entry.pending ??= fetchNextDirect(from, to, types, time)
       .then((connections) => Object.assign(entry, { value: connections, fetchedAt: Date.now(), error: undefined }))
       .catch((error) => {
         console.error(`Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`);
