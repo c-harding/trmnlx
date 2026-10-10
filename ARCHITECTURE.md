@@ -116,7 +116,42 @@ Rendering happens during `/api/display` itself, which is fast enough that no sch
 
 ### Playlists
 
-Each device in `devices.yaml` lists the screens it rotates through, with an optional refresh rate per screen. The current position is kept in memory and restarts from the beginning after a restart.
+Not built yet; this is the plan. Each device in `devices.yaml` gets a `playlist` of entries instead of a single `screen`:
+
+```yaml
+    playlist:
+      - screen: departures
+        when: Mon-Fri 06:30-09:00
+        inputs: { station: Marienplatz, pinned: [UBAHN Hauptbahnhof] }
+      - screen: departures
+        for: 15m
+        inputs: { station: Hauptbahnhof }
+      - screen: weather
+        for: 30m
+```
+
+| Field | Meaning |
+|-------|---------|
+| `screen` | The screen to show |
+| `inputs` | The screen's settings for this entry, so the same screen can appear more than once (e.g. two stations) |
+| `for` | How long the entry stays before the next one (its dwell). Without it, the entry stays until its `when` window ends, or for good if it is the only entry that applies |
+| `when` | When the entry applies, e.g. `Mon-Fri 06:30-09:00`. Without it, always. Entries that don't apply right now are skipped |
+
+- **Two timings**: the screen's `ttl` says when to render it again (the clock, departure times); the entry's `for` says when to move on. On each `/api/display`, the server moves to the next entry that applies if the current one's dwell has run out or its `when` has ended, and otherwise renders the same entry again. The device is told to sleep until the earliest of the screen's `ttl`, the end of the dwell, the next start or end of a `when` window, and `refreshRate`.
+- **Position**: kept in memory per device. After a restart, the device starts at the first entry that applies. It isn't derived from the clock, so the button and the browser can move it.
+- **Nothing applies**: the device shows `defaultScreen`.
+- **KEY3**: a short press arrives straight away as a normal `/api/display` with `Update-Source: EXT0` on the DIY kit (`EXT1` on an ESP32, `button` on the C3-based OG) and moves to the next entry, which then stays for its full dwell. A 1–5 s press arrives with a `special_function: true` header and runs whichever special function the server last sent in `special_function`: `restart_playlist`, back to the first entry that applies. Other keys on the board would need a firmware change (the S3 build wakes on one pin via `ext0`).
+- **Browser**: the screen page shows the device's current entry and has a "Next" button that moves the device's position. The device only picks this up when it next checks in, so the page shows when that is expected: the time of its last `/api/display` plus the `refresh_rate` it was sent. A check-in with an unchanged `filename` costs only the wake (no download, no redraw), so capping `refresh_rate` (e.g. at 5 minutes) shortens this delay for screens that rarely change, at the cost of more wakes.
+- **Battery**: the cost is mostly in the wake itself (Wi-Fi and an HTTPS request, around 5–10 s at roughly 100 mA or more), much less in the download and e-ink refresh (a few seconds at tens of mA). At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months, so roughly 10,000 wakes per charge (the DIY kit's battery and sleep current may differ). Rough estimates:
+
+  | Pattern | Wakes per day | Battery lasts |
+  |---------|---------------|---------------|
+  | Departures all day, every minute | 1,440 | About 1 week |
+  | Departures 06:30–09:00 every minute, otherwise every 15 minutes | About 235 | About 6 weeks |
+  | Every 5 minutes | 288 | About 5 weeks |
+  | Every 15 minutes | 96 | 3–4 months |
+
+  So the number of wakes matters far more than the number of redraws, and a `when` window around a screen that updates every minute saves the most.
 
 ### Logs
 
@@ -153,7 +188,7 @@ devices:
 
 At the top level, `defaultScreen` names the screen for devices without their own `screen`, e.g. `defaultScreen: placeholder`. Without it, the server uses `placeholder` if that screen exists, otherwise the first screen found (alphabetically).
 
-The server checks the file at startup (required fields, unique usernames, valid time zones, an existing `defaultScreen`) and refuses to start if it's wrong. Still to be designed: the device's playlist (see [Playlists](#playlists)) and the settings for each screen.
+The server checks the file at startup (required fields, unique usernames, valid time zones, an existing `defaultScreen`) and refuses to start if it's wrong. Planned but not built yet: the device's playlist, which also holds the settings for each screen (see [Playlists](#playlists)).
 
 Everything else comes from environment variables: `dist/.env` when deployed (copied to the server by `scripts/deploy`, see [Deployment](#deployment)), `.env` for `npm start` locally. Both are gitignored; `sample.env` and `dist/sample.env` document them.
 
@@ -210,5 +245,6 @@ Footprint: a `node:slim` image with sharp's prebuilt binaries. Measured on a Mac
 
 - Which `temperature_profile` (`default`, `a`, `b`) gives the best grayscale on our panel?
 - `npm audit` reports 2 moderate issues: Satori 0.47.1 pins `fflate` to exactly 0.7.3 (directly and through `@shuding/opentype.js`), which has an infinite loop in `unzipSync` on malformed ZIP64 archives ([GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98)). Probably not reachable here: Satori only uses `fflate` to decompress font files, and we only load our own fonts. `npm audit fix --force` would downgrade Satori to 0.32.0, a breaking change. Better: an `overrides` entry forcing `fflate` 0.8.x, checking that rendering still works, or waiting for a Satori release that updates it.
-- Once there are playlists: give KEY3 presses a meaning. A short press arrives as a normal `/api/display` with `Update-Source: EXT0` on the DIY kit (`EXT1` on an ESP32, `button` on the C3-based OG); a 1–5 s press arrives with a `special_function: true` header and runs whichever special function the server last sent in `special_function` (e.g. `restart_playlist`, `identify`). Other keys on the board would need a firmware change (the S3 build wakes on one pin via `ext0`).
+- Once there are playlists: preview every entry of a device's playlist in the browser, not just the one the device is showing.
+- Measure battery use instead of estimating it (see [Playlists](#playlists)): log the `Battery-Voltage` from every `/api/display` for a few days and compare wake patterns.
 - Long-distance trains (ICE, IC, EC, Railjet) are missing from the departures screen: MVG's data only covers local and regional services (plus night trains), and the interface rejects other transport types. Showing them needs a second source, merged by time and cached separately: e.g. the community interface `v6.db.transport.rest` (DB data, no key, unofficial, about 100 requests per minute, with its own station IDs), DB's official Timetables API (free key, German stations only) or ÖBB's interface for Austrian stations (unofficial).
