@@ -7,6 +7,11 @@ const DEVICES_FILE = new URL("./devices.yaml", import.meta.url);
 // The firmware's own default: 15 minutes
 const DEFAULT_REFRESH_RATE = 900;
 
+// How the firmware drives the panel. For the 7.5" panel: "default" uses the EP75_800x480 driver,
+// "a" the panel's built-in fast and 4-gray modes (EP75_800x480_GEN2), "b" darker grays.
+const TEMPERATURE_PROFILES = ["default", "a", "b"] as const;
+type TemperatureProfile = (typeof TEMPERATURE_PROFILES)[number];
+
 /** A device from devices.yaml, checked and with defaults filled in. */
 export interface Device {
   mac: string;
@@ -16,6 +21,8 @@ export interface Device {
   timeZone: string;
   refreshRate: number;
   screen: string;
+  temperatureProfile: TemperatureProfile | undefined;
+  fullRefresh: boolean;
 }
 
 function fail(message: string): never {
@@ -87,6 +94,12 @@ function loadDevices(): Device[] {
     if (device.screen !== undefined && !Object.hasOwn(screens, device.screen)) {
       fail(`${where}.screen must be one of ${Object.keys(screens).join(", ")}`);
     }
+    if (device.temperatureProfile !== undefined && !TEMPERATURE_PROFILES.includes(device.temperatureProfile)) {
+      fail(`${where}.temperatureProfile must be one of ${TEMPERATURE_PROFILES.join(", ")}`);
+    }
+    if (device.fullRefresh !== undefined && typeof device.fullRefresh !== "boolean") {
+      fail(`${where}.fullRefresh must be true or false`);
+    }
     if (usernames.has(device.username)) fail(`${where}.username ${device.username} is used twice`);
     usernames.add(device.username);
     const mac = device.mac.toUpperCase();
@@ -101,6 +114,10 @@ function loadDevices(): Device[] {
       timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
       screen: device.screen ?? defaultScreen,
+      temperatureProfile: device.temperatureProfile,
+      // Partial refreshes leave traces of earlier screens on the DIY kit (see ARCHITECTURE.md), so
+      // full refreshes are the default until that's understood
+      fullRefresh: device.fullRefresh ?? true,
     };
   });
 }

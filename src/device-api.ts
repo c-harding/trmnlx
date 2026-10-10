@@ -109,6 +109,11 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
     update_firmware: false,
     firmware_url: null,
     reset_firmware: false,
+    // A full refresh on every update, rather than the partial refreshes the firmware uses for
+    // black-and-white images (which flash less, but leave traces on the DIY kit)
+    maximum_compatibility: device.fullRefresh,
+    // Saved by the firmware and used from its next wake on; leaving it out means "default"
+    ...(device.temperatureProfile && { temperature_profile: device.temperatureProfile }),
   });
 });
 
