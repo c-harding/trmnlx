@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# Builds and starts the screen development server (src/dev-server.js) on http://localhost:7778
+# Builds and starts the screen development server (src/dev-server.ts) on http://localhost:7778
 # (or DEV_PORT). Watches the code: every save rebuilds the bundle (esbuild --watch), and every
 # rebuild restarts the server (node --watch). Reload the page, or click Load, to see the change.
-# Ctrl+C stops both. A new file in src/screens/ needs a restart: the watcher only knows the screens
-# that existed when it started.
+# Types aren't checked here (see npm run check, or the editor). Ctrl+C stops both. A new file in
+# src/screens/ needs a restart: the watcher only knows the screens that existed when it started.
 
 set -e
 
@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 shopt -s nullglob
 
 # Like scripts/build: each screen is its own entry point, built into .dev/screens/
-ESBUILD_ARGS=(src/dev-server.js src/screens/*.{js,jsx} --bundle --splitting --platform=node --format=esm
+ESBUILD_ARGS=(src/dev-server.ts src/screens/*.{ts,tsx} --bundle --splitting --platform=node --format=esm
   --jsx=automatic --jsx-import-source=preact --packages=external
   --outdir=.dev --outbase=src --log-level=warning)
 

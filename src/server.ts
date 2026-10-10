@@ -1,10 +1,10 @@
 import cookieParser from "cookie-parser";
-import express from "express";
-import { serverDomain, setupEnabled } from "./config.js";
-import { deviceApi } from "./device-api.js";
-import { loginPage, screenPage } from "./pages.js";
-import { renderDeviceScreen } from "./screen.js";
-import { checkLogin, endSession, sessionDevice, startSession } from "./session.js";
+import express, { type ErrorRequestHandler } from "express";
+import { serverDomain, setupEnabled } from "./config.ts";
+import { deviceApi } from "./device-api.ts";
+import { loginPage, screenPage } from "./pages.ts";
+import { renderDeviceScreen } from "./screen.ts";
+import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 
 const port = Number(process.env.SERVER_PORT ?? 7777);
 
@@ -50,13 +50,13 @@ app.post("/logout", (req, res) => {
   res.redirect(303, "/login");
 });
 
-app.use((err, req, res, next) => {
+app.use(((err, req, res, next) => {
   // Client errors (e.g. 413 from body parsing) come with a status and need no stack trace
   const status = err.status >= 400 && err.status < 500 ? err.status : 500;
   if (status === 500) console.error(err);
   if (res.headersSent) return next(err);
   res.status(status).type("text").send(status === 500 ? "Internal error\n" : `${err.message}\n`);
-});
+}) satisfies ErrorRequestHandler);
 
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);

@@ -1,8 +1,9 @@
 // A local server for developing screens: renders any screen with device data entered in a form,
 // without devices.yaml, TOKEN_SECRET or a real device. Run with `npm run dev`, which rebuilds and
 // restarts it whenever the code changes.
-import express from "express";
-import { InputError, renderScreen, screens } from "./screen.js";
+import express, { type ErrorRequestHandler } from "express";
+import type { InputDefinitions } from "./define-screen.ts";
+import { renderScreen, screens } from "./screen.ts";
 
 const port = Number(process.env.DEV_PORT ?? 7778);
 
@@ -123,11 +124,42 @@ form.addEventListener("submit", async (event) => {
 
 app.get("/", (req, res) => res.type("html").send(page));
 
-const number = (value) => (value === undefined || value === "" ? undefined : Number(value));
+const number = (value: string | undefined) => (value === undefined || value === "" ? undefined : Number(value));
+
+class InputError extends Error {}
+
+/**
+ * The screen's inputs from the form, where they arrive as text named input.<name>, converted to
+ * their types: a list has one entry per line (empty text is an empty list), a checkbox is "true" or
+ * "false", and an empty field means the default.
+ */
+function formInputs(definitions: InputDefinitions, q: Record<string, string>) {
+  const inputs: Record<string, unknown> = {};
+  for (const [name, definition] of Object.entries(definitions)) {
+    const text = q[`input.${name}`];
+    if (text === undefined) continue;
+    if (definition.type === "list") {
+      inputs[name] = text.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+    } else if (definition.type === "boolean") {
+      inputs[name] = text === "true";
+    } else if (text === "") {
+      continue;
+    } else if (definition.type === "number") {
+      inputs[name] = Number(text);
+      if (!Number.isFinite(inputs[name])) throw new InputError(`${name} must be a number`);
+    } else {
+      inputs[name] = text;
+    }
+  }
+  return inputs;
+}
 
 app.get("/render", async (req, res) => {
-  const q = req.query;
-  const screen = Object.hasOwn(screens, q.screen) ? screens[q.screen] : undefined;
+  // Only plain values count: a repeated parameter arrives as an array
+  const q = Object.fromEntries(
+    Object.entries(req.query).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+  const screen = q.screen !== undefined && Object.hasOwn(screens, q.screen) ? screens[q.screen] : undefined;
   if (!screen) return res.status(400).type("text").send(`Unknown screen ${q.screen}`);
 
   const timeZone = q.timeZone || "UTC";
@@ -148,21 +180,16 @@ app.get("/render", async (req, res) => {
     usbConnected: q.usbConnected === "on",
     seenAt: now,
   };
-  // The screen's inputs arrive as input.<name>
-  const inputs = Object.fromEntries(
-    Object.entries(q)
-      .filter(([key]) => key.startsWith("input."))
-      .map(([key, value]) => [key.slice("input.".length), value]),
-  );
-
-  const start = performance.now();
-  let result;
+  let inputs;
   try {
-    result = await renderScreen(screen, { device, now, telemetry, inputs });
+    inputs = formInputs(screen.inputs, q);
   } catch (error) {
     if (error instanceof InputError) return res.status(400).type("text").send(error.message);
     throw error;
   }
+
+  const start = performance.now();
+  const result = await renderScreen(screen, { device, now, telemetry, inputs });
   res
     .type("png")
     .set({
@@ -174,10 +201,10 @@ app.get("/render", async (req, res) => {
     .send(result.png);
 });
 
-app.use((err, req, res, next) => {
+app.use(((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);
   res.status(500).type("text").send(err.message);
-});
+}) satisfies ErrorRequestHandler);
 
 app.listen(port, () => console.log(`Screen development server on http://localhost:${port}`));

@@ -6,11 +6,14 @@ cd "$(dirname "$0")/.."
 
 shopt -s nullglob
 
+# esbuild ignores the types, so check them first
+(echo "checking types"; npx tsc)
+
 # The server and every screen are separate entry points: screens end up in dist/screens/, where
 # the server finds them at startup, and code they share sits in chunk files next to server.js.
 (echo "building server"
   rm -rf dist/server.js dist/chunk-*.js dist/screens
-  npx esbuild src/server.js src/screens/*.{js,jsx} --bundle --splitting --platform=node --format=esm \
+  npx esbuild src/server.ts src/screens/*.{ts,tsx} --bundle --splitting --platform=node --format=esm \
     --jsx=automatic --jsx-import-source=preact --packages=external \
     --outdir=dist --outbase=src --log-level=warning)
 

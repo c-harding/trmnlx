@@ -19,7 +19,7 @@ Developing screens:
 npm run dev                           # http://localhost:7778: render any screen with device data from a form
 ```
 
-No `devices.yaml` or `.env` needed. Saving a file rebuilds and restarts it; reload the page (or click Load) to see the change.
+No `devices.yaml` or `.env` needed. Saving a file rebuilds and restarts it; reload the page (or click Load) to see the change. It doesn't check types: `npm run check` does (and so does `npm run build`).
 
 Deploying:
 

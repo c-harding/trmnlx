@@ -60,22 +60,27 @@ Image URLs are built from the same base URL the device is configured with, so th
 
 ### Screens
 
-Every file in `src/screens/` is a screen, named after the file (helpers belong elsewhere). `scripts/build` builds each one as its own entry point with esbuild's code splitting, into `dist/screens/<name>.js` (shared code goes into chunk files next to `server.js`, so it exists once), and `src/screen.js` imports whatever it finds there at startup. Adding a screen means adding a file; no list to maintain.
+Every file in `src/screens/` is a screen, named after the file (helpers belong elsewhere). `scripts/build` builds each one as its own entry point with esbuild's code splitting, into `dist/screens/<name>.js` (shared code goes into chunk files next to `server.js`, so it exists once), and `src/screen.ts` imports whatever it finds there at startup. Adding a screen means adding a file; no list to maintain.
 
-A screen module exports:
+A screen module default-exports `defineScreen({ ... })` (`src/define-screen.ts`):
 
-```js
-export const inputs = { station: { type: "string", default: "Marienplatz" } }; // optional: its settings
-export const colors = 2;                                // optional: 2 (black and white) or 4 (default)
-export async function load(props) { /* optional: fetch data, returned as props.data */ }
-export function view(props) { /* return JSX layout */ }
-export function ttl(props) { /* seconds the screen stays valid */ }
+```tsx
+export default defineScreen({
+  inputs: { station: { type: "string", default: "Marienplatz" } }, // optional: its settings
+  colors: 2,                                       // optional: 2 (black and white) or 4 (default)
+  async load(props) { /* optional: fetch data, returned as props.data */ },
+  view(props) { /* return JSX layout */ },
+  ttl(props) { /* seconds the screen stays valid */ },
+});
 ```
 
-Every function gets the same `props`: `device`, `name`, `now`, `timeZone`, `telemetry`, `inputs` and, after `load`, `data`.
+Every function gets the same `props`: `device` (with its `username` and `timeZone`), `now`, `telemetry`, `inputs` and (not `load`) `data`, which is undefined for screens without `load`.
+
+- `defineScreen` ties the types together: the values in `props.inputs` follow from the definitions (`"list"` gives `string[]`, and every input needs a `default` of its type), `props.data` has the type `load` returns, and `view` and `ttl` are checked against both. At startup, `src/screen.ts` refuses to start if a screen file's default export didn't come from `defineScreen`.
+- Other exports from a screen file are allowed (e.g. `paired`'s layout, which the device API also renders for `/setup.png`), but shared helpers belong outside `src/screens/`: each file there is built as a screen.
 
 - `ttl(props)` returns how many seconds the screen stays valid, including a small safety margin, or `Infinity` if it never changes (the device then wakes at its `refreshRate`, and the browser page doesn't fetch it again); the placeholder's lasts until the next minute plus 2 seconds. The device gets `refresh_rate = min(refreshRate, max(ttl − wake time, 5))`, and the browser preview refetches the image when it runs out. The wake time comes from the firmware's `Wake-Time` header (how long its last cycle was awake, in ms): the firmware starts its sleep timer only after downloading and drawing the image, so without the correction each wake lands that much after the screen changed.
-- Screens also get the device's latest telemetry (`telemetry`: battery voltage, `RSSI`, firmware version, charging/USB if reported, time seen), taken from the headers of its last `/api/display` and kept in memory per device (`src/telemetry.js`). `/api/display` records it before rendering, so the device's screen shows the readings from that same wake; the browser preview shows the latest ones, or none after a restart until the device polls. The DIY kit reports only a voltage; `batteryPercent` estimates a percentage from a typical lithium discharge curve (4.2 V full, 3.3 V empty), so it's only approximate.
+- Screens also get the device's latest telemetry (`telemetry`: battery voltage, `RSSI`, firmware version, charging/USB if reported, time seen), taken from the headers of its last `/api/display` and kept in memory per device (`src/telemetry.ts`, which also has the `batteryText` line used by screens). `/api/display` records it before rendering, so the device's screen shows the readings from that same wake; the browser preview shows the latest ones, or none after a restart until the device polls. The DIY kit reports only a voltage; `batteryPercent` estimates a percentage from a typical lithium discharge curve (4.2 V full, 3.3 V empty), so it's only approximate.
 - Screens so far: `placeholder` (name, time, date, battery), `departures` (see below) and `paired` (the image shown after pairing; never changes).
 - `departures` shows as many departures from its `station` input as fit, in order of their actual departure. Each row has:
   - the line: a black badge for U-Bahn, S-Bahn (with fully rounded ends) and trains, "Bus 54" or "Tram 18" written out; trains show their type ("REX") rather than their number; labels over 7 characters are set smaller and wrap within 180 px;
@@ -84,18 +89,18 @@ Every function gets the same `props`: `device`, `name`, `now`, `timeZone`, `tele
   - the next two actual departures on the same line in the same direction, small and stacked. MVG's `lineId` includes the direction (`…:H:…`/`…:R:…`) and groups trains that turn back early with the full runs (S3 to Maisach with Mammendorf).
 
   Times use tabular figures (`fontVariantNumeric: "tabular-nums"`) so they line up. Its `pinned` input lists connections that are always shown, as `<transport types> <station>`, e.g. `UBAHN Hauptbahnhof` or `SBAHN|UBAHN Ostbahnhof` (any of the types): the next direct connection there, in its place in the list if it fits, otherwise at the bottom under a thicker line. These come from MVG's route search, since a train ending at a station never appears in that station's departures; where the connection is also in the departures list, the list's real-time data takes precedence. If the latest fetch failed, an "As of" line gives the age of the data, and an exhausted stale list shows "Departures unavailable" rather than "No departures". Long-distance trains are missing (see the open questions).
-- `departures` uses `colors = 2`: black and white only, rendered at 1 bit per pixel with anti-aliasing thresholded away, so the firmware can use its fast partial refresh instead of a flashing 4-gray refresh every minute.
-- Fetched data is cached per source, not as rendered PNGs: `src/data/mvg.js` looks up a station's ID once (kept until restart; failed lookups retried at most once a minute), fetches its next 100 departures at most once per minute (all transport types: MVG leaves out regional trains and buses unless asked), and the route search for each pinned connection (station, target and transport types) at most once per minute, however many devices and browsers show them; concurrent requests share one fetch, and if a fetch fails the last result is kept and the screen notes its age. MVG's interface is unofficial (the one behind mvg.de) and may change without notice.
+- `departures` uses `colors: 2`: black and white only, rendered at 1 bit per pixel with anti-aliasing thresholded away, so the firmware can use its fast partial refresh instead of a flashing 4-gray refresh every minute.
+- Fetched data is cached per source, not as rendered PNGs: `src/data/mvg.ts` looks up a station's ID once (kept until restart; failed lookups retried at most once a minute), fetches its next 100 departures at most once per minute (all transport types: MVG leaves out regional trains and buses unless asked), and the route search for each pinned connection (station, target and transport types) at most once per minute, however many devices and browsers show them; concurrent requests share one fetch, and if a fetch fails the last result is kept and the screen notes its age. MVG's interface is unofficial (the one behind mvg.de) and may change without notice.
 - `load` does any fetching, filtering and calculation; this replaces TRMNL's polling and transform scripts.
 - `view` returns a layout in JSX: flexbox only, inline styles, the four panel grays (`#000`, `#555`, `#aaa`, `#fff`). Shared pieces (tables, headers, charts as inline SVG) live in a `components/` module.
 - Satori sizes boxes like CSS's default `content-box`, so a full-size container with `width: "100%"` and padding ends up wider than the screen. Give such containers `boxSizing: "border-box"`.
 - Long text is cut off with `whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"` on one line, or `display: "block", overflow: "hidden", lineClamp: 2` for two lines (both tested). Text that isn't cut off can overflow its box.
-- `inputs` declares a screen's settings, each with a type (`string`, `number`, `boolean` or `list` of strings) and a default. In the dev server a list is a text area with one entry per line; an emptied list stays empty. `resolveInputs` converts the given values to their type and fills in the defaults; the result is `props.inputs`. On the server they can't be configured per device yet, so screens always get their defaults; secrets such as API keys will come from environment variables.
+- `inputs` declares a screen's settings, each with a type (`string`, `number`, `boolean` or `list` of strings) and a default. In the dev server a list is a text area with one entry per line (an emptied list stays empty), and the dev server converts the form's text to each input's type. `resolveInputs` takes values that already have their type and fills in the defaults; a value of the wrong type is logged and replaced by the default. The result is `props.inputs`. On the server they can't be configured per device yet, so screens always get their defaults; secrets such as API keys will come from environment variables.
 - Which screen a device shows: its `screen` in `devices.yaml`, otherwise `defaultScreen` (see [Configuration](#configuration)).
 
 ### Screen development server
 
-`npm run dev` starts a separate server on http://localhost:7778 (`DEV_PORT`) for developing screens, without `devices.yaml`, `TOKEN_SECRET` or a device (`src/dev-server.js`). Its page has a screen dropdown (kept in the URL as `?screen=`), the screen's settings (the time, and a field for each of its `inputs`), the device's settings (name, time zone) and what a device sends (battery, charging, USB, `RSSI`, firmware version). Load renders the screen with the same code as the server and shows the PNG with its ttl, colours, size and render time.
+`npm run dev` starts a separate server on http://localhost:7778 (`DEV_PORT`) for developing screens, without `devices.yaml`, `TOKEN_SECRET` or a device (`src/dev-server.ts`). It doesn't check types: run `npm run check`, or rely on the editor. Its page has a screen dropdown (kept in the URL as `?screen=`), the screen's settings (the time, and a field for each of its `inputs`), the device's settings (name, time zone) and what a device sends (battery, charging, USB, `RSSI`, firmware version). Load renders the screen with the same code as the server and shows the PNG with its ttl, colours, size and render time.
 
 `scripts/dev` builds into `.dev/` and watches the code: every save rebuilds (esbuild `--watch`) and restarts the server (`node --watch`). A new file in `src/screens/` needs a restart, since the watcher only knows the entry points it started with.
 
@@ -177,7 +182,7 @@ No database or Docker volume is needed. If a screen ever depends on data pushed 
 
 Modelled on heatmapper, onto a server set up with the [virtual server gist](https://gist.github.com/c-harding/59686990f42f4dddae01dffa56618ea4) (Docker and Caddy with `add-site`):
 
-- `scripts/build` bundles `src/` with esbuild into `dist/server.js`, `dist/screens/*.js` (one per screen, see [Screens](#screens)) and shared chunk files, and copies `package.json`, `package-lock.json` and `devices.yaml` into `dist/`. Only the deployment files in `dist/` are tracked: `Dockerfile` (`node:24-slim`, `npm ci --omit=dev`), `docker-compose.yml`, `.dockerignore`, `.rsyncignore` and `sample.env`.
+- `scripts/build` first checks the types (`tsc`, see [Dependencies](#dependencies)), then bundles `src/` with esbuild into `dist/server.js`, `dist/screens/*.js` (one per screen, see [Screens](#screens)) and shared chunk files, and copies `package.json`, `package-lock.json` and `devices.yaml` into `dist/`. Only the deployment files in `dist/` are tracked: `Dockerfile` (`node:24-slim`, `npm ci --omit=dev`), `docker-compose.yml`, `.dockerignore`, `.rsyncignore` and `sample.env`.
 - `scripts/deploy` rsyncs `dist/` to `DEPLOY_DIR` on the server (without `*.env`), copies `dist/.env` separately as `.env`, runs `docker compose up --build -d` and `docker system prune -f`, and registers `SERVER_DOMAIN` with Caddy on `SERVER_PORT` (`add-site`).
 - `scripts/connect` runs a command on the server, e.g. `npm run connect -- 'docker compose -f trmnl/docker-compose.yml logs -f'`.
 - The image (`trmnl-server`) is built with BuildKit's inline cache: the cache information for each step is stored in the image itself, and the next build reads it from there (`cache_from`). `docker system prune` empties the separate build cache on every deploy (ours and the other projects' on the same server), but as long as the running image exists, unchanged steps such as `npm ci` are still reused.
@@ -193,6 +198,7 @@ Footprint: a `node:slim` image with sharp's prebuilt binaries. Measured on a Mac
 - Inter 4.1, as the static `Inter-Regular.ttf` and `Inter-Bold.ttf` from [Inter's release](https://github.com/rsms/inter/releases), committed in `assets/fonts` with its licence (SIL Open Font License) and copied into `dist/fonts` by `scripts/build`. Satori 0.47.1 fails on the variable `InterVariable.ttf`, and the Google Fonts subsets (e.g. `@fontsource/inter`) lack symbols such as ≈ and →
 - `preact`, only for its JSX runtime (`jsxImportSource: "preact"`); JSX is bundled with esbuild. Our components (`Frame`, `Table`, …) are plain functions of their props, with no hooks or state, so nothing else from Preact is used. Tested: Satori 0.47.1 accepts Preact 11.0.1's elements, including function components
 - `yaml` for `devices.yaml`
+- TypeScript, for type checking only (`npm run check`, and the first step of `scripts/build`): esbuild strips the types when building and doesn't check them. `tsconfig.json` is strict; imports name the `.ts`/`.tsx` files themselves. Express, cookie-parser and Node have their types from `@types/*`; Satori's types refer to React's, which aren't installed, so `skipLibCheck` is on and Satori accepts any element
 - Express 5 with `cookie-parser` (chosen over `node:http` and Fastify for its familiar routing, built-in body parsing and automatic handling of rejected async handlers)
 
 ## Alternatives considered

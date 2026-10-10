@@ -6,7 +6,7 @@ import { crc32, deflateSync } from "node:zlib";
 // ends up treating black as 1, which shows inverted on the display. sharp (libvips) only writes
 // 1-bit PNGs with a palette, so this small encoder writes the grayscale form instead.
 
-function chunk(type, data) {
+function chunk(type: string, data: Buffer) {
   const typeAndData = Buffer.concat([Buffer.from(type, "ascii"), data]);
   const length = Buffer.alloc(4);
   length.writeUInt32BE(data.length);
@@ -19,7 +19,7 @@ function chunk(type, data) {
  * Encodes 8-bit gray pixels (one byte per pixel, row by row) as a 1-bit PNG: values of 128 and
  * above become white, the rest black.
  */
-export function encodePng1Bit(pixels, width, height) {
+export function encodePng1Bit(pixels: Uint8Array, width: number, height: number) {
   const rowBytes = Math.ceil(width / 8);
   // Each row starts with a filter type byte (0: none), followed by 8 pixels per byte, first pixel
   // in the highest bit

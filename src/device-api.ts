@@ -4,40 +4,43 @@
 // token and Wi-Fi. Never answer with a body status of 500 or reset_firmware: true, which make it
 // wipe all its settings, Wi-Fi included.
 import { createHash } from "node:crypto";
-import express from "express";
-import { findDeviceByMac, serverDomain, setupEnabled } from "./config.js";
-import { authenticateDevice, deviceToken, friendlyId } from "./device-auth.js";
-import { renderPng } from "./render.js";
-import { renderDeviceScreen } from "./screen.js";
-import { view as paired } from "./screens/paired.jsx";
-import { recordTelemetry } from "./telemetry.js";
+import express, { type NextFunction, type Request, type Response } from "express";
+import { findDeviceByMac, serverDomain, setupEnabled, type Device } from "./config.ts";
+import { authenticateDevice, deviceToken, friendlyId } from "./device-auth.ts";
+import { renderPng } from "./render.ts";
+import { renderDeviceScreen } from "./screen.ts";
+import { Paired } from "./screens/paired.tsx";
+import { recordTelemetry } from "./telemetry.ts";
 
 export const deviceApi = express.Router();
 
 // The firmware only sends its token with the image request if the image URL starts with exactly
 // the server URL configured on the device, so prefer the configured SERVER_DOMAIN.
-const baseUrl = (req) => serverDomain ?? `${req.protocol}://${req.get("host")}`;
+const baseUrl = (req: Request) => serverDomain ?? `${req.protocol}://${req.get("host")}`;
 
-function requireDevice(req, res, next) {
+// Sets res.locals.device for the routes after it
+function requireDevice(req: Request, res: Response<unknown, { device: Device }>, next: NextFunction) {
   const device = authenticateDevice(req);
   if (!device) {
     console.log(`Rejected ${req.method} ${req.path} from ${req.get("ID") ?? "a device without ID"}`);
     return res.status(401).type("text").send("Unknown device or wrong token\n");
   }
-  req.device = device;
+  res.locals.device = device;
   next();
 }
 
+type DeviceResponse = Response<unknown, { device: Device }>;
+
 // The last few images rendered for each device, by filename. A device downloads its image right
 // after /api/display, so only recent ones are needed.
-const images = new Map();
+const images = new Map<string, Map<string, Buffer>>();
 const IMAGES_KEPT = 3;
 
-function rememberImage(device, filename, png) {
+function rememberImage(device: Device, filename: string, png: Buffer) {
   const forDevice = images.get(device.mac) ?? new Map();
   forDevice.delete(filename);
   forDevice.set(filename, png);
-  while (forDevice.size > IMAGES_KEPT) forDevice.delete(forDevice.keys().next().value);
+  while (forDevice.size > IMAGES_KEPT) forDevice.delete(forDevice.keys().next().value!);
   images.set(device.mac, forDevice);
 }
 
@@ -67,12 +70,12 @@ deviceApi.get("/api/setup", (req, res) => {
   });
 });
 
-let pairedPng;
+let pairedPng: Buffer | undefined;
 
 // Downloaded by the firmware right after setup, without its token, so it must be public. It shows
 // nothing about any device.
 deviceApi.get("/setup.png", async (req, res) => {
-  pairedPng ??= await renderPng(paired());
+  pairedPng ??= await renderPng(Paired());
   res.type("png").send(pairedPng);
 });
 
@@ -84,14 +87,14 @@ const MIN_REFRESH_RATE = 5;
  * The firmware starts its sleep timer only after downloading and drawing the image, so subtract the
  * time it was awake in its last cycle (Wake-Time, in ms); otherwise every wake lands that much late.
  */
-function refreshRate(req, device, ttl) {
+function refreshRate(req: Request, device: Device, ttl: number) {
   const wakeMs = Number(req.get("Wake-Time"));
   const wakeSeconds = Number.isFinite(wakeMs) && wakeMs > 0 ? Math.min(wakeMs / 1000, 120) : 0;
   return Math.min(device.refreshRate, Math.max(Math.round(ttl - wakeSeconds), MIN_REFRESH_RATE));
 }
 
-deviceApi.get("/api/display", requireDevice, async (req, res) => {
-  const device = req.device;
+deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) => {
+  const device = res.locals.device;
   // Before rendering, so the screen shows the readings from this very wake
   recordTelemetry(device, req);
   const { png, ttl } = await renderDeviceScreen(device);
@@ -109,8 +112,8 @@ deviceApi.get("/api/display", requireDevice, async (req, res) => {
   });
 });
 
-deviceApi.get("/images/:name", requireDevice, (req, res) => {
-  const png = images.get(req.device.mac)?.get(req.params.name.replace(/\.png$/, ""));
+deviceApi.get("/images/:name", requireDevice, (req: Request<{ name: string }>, res: DeviceResponse) => {
+  const png = images.get(res.locals.device.mac)?.get(req.params.name.replace(/\.png$/, ""));
   if (!png) return res.status(404).type("text").send("No such image\n");
   // The firmware needs exactly "image/png" to decode it as a PNG, and a Content-Length to stream it
   res.type("png").set("Cache-Control", "no-store").send(png);

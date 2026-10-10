@@ -1,18 +1,29 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
-import { screens } from "./screen.js";
+import { screens } from "./screen.ts";
 
 const DEVICES_FILE = new URL("./devices.yaml", import.meta.url);
 
 // The firmware's own default: 15 minutes
 const DEFAULT_REFRESH_RATE = 900;
 
-function fail(message) {
+/** A device from devices.yaml, checked and with defaults filled in. */
+export interface Device {
+  mac: string;
+  username: string;
+  password: string;
+  token: string | undefined;
+  timeZone: string;
+  refreshRate: number;
+  screen: string;
+}
+
+function fail(message: string): never {
   console.error(message);
   process.exit(1);
 }
 
-function checkTimeZone(timeZone, source) {
+function checkTimeZone(timeZone: string, source: string) {
   try {
     new Intl.DateTimeFormat("en", { timeZone });
   } catch {
@@ -25,15 +36,15 @@ function checkTimeZone(timeZone, source) {
  * The screen for devices that don't name one: devices.yaml's defaultScreen if set, otherwise the
  * placeholder if there is one, otherwise the first screen found.
  */
-function chooseDefaultScreen(configured) {
+function chooseDefaultScreen(configured: unknown) {
   const available = Object.keys(screens);
   if (available.length === 0) fail("No screens found next to the server (screens/*.js)");
   if (configured === undefined) return available.includes("placeholder") ? "placeholder" : available[0];
-  if (!available.includes(configured)) fail(`defaultScreen must be one of ${available.join(", ")}`);
+  if (typeof configured !== "string" || !available.includes(configured)) fail(`defaultScreen must be one of ${available.join(", ")}`);
   return configured;
 }
 
-function loadDevices() {
+function loadDevices(): Device[] {
   let text;
   try {
     text = readFileSync(DEVICES_FILE, "utf8");
@@ -41,22 +52,23 @@ function loadDevices() {
     fail(`Could not read ${DEVICES_FILE.pathname}: copy devices.yaml.sample to devices.yaml and run the build`);
   }
 
-  let data;
+  // Checked field by field below
+  let data: { devices?: unknown; defaultScreen?: unknown } | undefined;
   try {
     data = parse(text);
   } catch (error) {
-    fail(`devices.yaml is not valid YAML: ${error.message}`);
+    fail(`devices.yaml is not valid YAML: ${(error as Error).message}`);
   }
   if (!Array.isArray(data?.devices) || data.devices.length === 0) {
     fail("devices.yaml must contain a non-empty `devices` list");
   }
 
   const defaultTimeZone = checkTimeZone(process.env.TZ || "UTC", "TZ");
-  const defaultScreen = chooseDefaultScreen(data.defaultScreen);
-  const usernames = new Set();
-  const macs = new Set();
+  const defaultScreen = chooseDefaultScreen(data!.defaultScreen);
+  const usernames = new Set<string>();
+  const macs = new Set<string>();
 
-  return data.devices.map((device, i) => {
+  return (data!.devices as Record<string, any>[]).map((device, i) => {
     const where = `devices[${i}]`;
     for (const field of ["mac", "username", "password"]) {
       if (typeof device?.[field] !== "string" || device[field] === "") {
@@ -93,7 +105,7 @@ function loadDevices() {
   });
 }
 
-function loadTokenSecret() {
+function loadTokenSecret(): string {
   const secret = process.env.TOKEN_SECRET;
   if (!secret || secret.length < 32) {
     fail("TOKEN_SECRET must be set to at least 32 characters, e.g. from `openssl rand -base64 32`");
@@ -113,5 +125,5 @@ export const setupEnabled = process.env.SETUP_ENABLED === "1";
  */
 export const serverDomain = process.env.SERVER_DOMAIN?.replace(/\/+$/, "") || undefined;
 
-export const findDeviceByUsername = (username) => devices.find((device) => device.username === username);
-export const findDeviceByMac = (mac) => devices.find((device) => device.mac === mac.toUpperCase());
+export const findDeviceByUsername = (username: string) => devices.find((device) => device.username === username);
+export const findDeviceByMac = (mac: string) => devices.find((device) => device.mac === mac.toUpperCase());

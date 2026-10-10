@@ -11,10 +11,15 @@
     "deploy": "scripts/deploy",
     "build-deploy": "scripts/build && scripts/deploy",
     "pair": "scripts/pair",
-    "dev": "scripts/dev"
+    "dev": "scripts/dev",
+    "check": "tsc"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

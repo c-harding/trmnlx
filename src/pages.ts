@@ -1,7 +1,7 @@
-const escapeHtml = (value) =>
+const escapeHtml = (value: unknown) =>
   String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const page = (title, body) => `<!doctype html>
+const page = (title: string, body: string) => `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width">
@@ -10,7 +10,7 @@ ${body}
 </html>
 `;
 
-export const loginPage = ({ error }) =>
+export const loginPage = ({ error }: { error: boolean }) =>
   page(
     "TRMNL login",
     `<h1>TRMNL</h1>
@@ -21,7 +21,7 @@ ${error ? "<p>Wrong username or password.</p>\n" : ""}<form method="post" action
 </form>`,
   );
 
-export const screenPage = ({ name }) =>
+export const screenPage = ({ name }: { name: string }) =>
   page(
     `TRMNL: ${name}`,
     `<p><img id="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p>
