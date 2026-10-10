@@ -160,6 +160,47 @@ function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone:
   );
 }
 
+/**
+ * A rule for which departures are hidden, as "<MVG transport types> [line] [-> <destination>]":
+ * "BUS" hides all buses, "TRAM -> Amalienburgstraße" trams going there, "BUS 54" one bus line. Types
+ * as in `pinned` ("BUS|REGIONAL_BUS"), or "*" for any; line and destination are compared ignoring
+ * case. A "!" in front makes it an exception that shows matching departures again.
+ */
+interface HideRule {
+  show: boolean;
+  types: string[] | undefined;
+  line: string | undefined;
+  destination: string | undefined;
+}
+
+const parseHideRule = (text: string): HideRule | undefined => {
+  const show = text.startsWith("!");
+  const [departure, ...arrow] = text.slice(show ? 1 : 0).split("->");
+  const [types, line, ...extra] = departure.trim().split(/\s+/);
+  const destination = arrow.join("->").trim();
+  if (!types || extra.length > 0 || (arrow.length > 0 && !destination)) {
+    console.error(`Ignoring hide rule ${JSON.stringify(text)}: expected "<types> [line] [-> <destination>]"`);
+    return undefined;
+  }
+  return {
+    show,
+    types: types === "*" ? undefined : types.toUpperCase().split("|"),
+    line,
+    destination: destination || undefined,
+  };
+};
+
+const sameText = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+const matchesRule = (rule: HideRule, d: Departure) =>
+  (!rule.types || rule.types.includes(d.type)) &&
+  (!rule.line || sameText(rule.line, d.line)) &&
+  (!rule.destination || sameText(rule.destination, d.destination));
+
+/** Whether a departure is shown: the last rule matching it decides, and without one it is. */
+const isShown = (rules: HideRule[], d: Departure) =>
+  rules.reduce((shown, rule) => (matchesRule(rule, d) ? rule.show : shown), true);
+
 export default defineScreen({
   inputs: {
     // The station's name as MVG spells it
@@ -169,6 +210,9 @@ export default defineScreen({
     // mean any of them. Shown in their place if they fit, otherwise pinned at the bottom under a
     // thicker line.
     pinned: { type: "list", default: ["UBAHN Hauptbahnhof", "SBAHN Ostbahnhof"] },
+    // Departures left out, one rule per line (see HideRule); later rules win. They don't take up
+    // rows, and apply to pinned connections too.
+    hide: { type: "list", default: ["BUS|REGIONAL_BUS", "!BUS 54", "TRAM -> Amalienburgstraße"] },
   },
 
   // Only black and white: the firmware then uses its fast partial refresh, without the flashing of
@@ -188,18 +232,28 @@ export default defineScreen({
     ],
   },
 
-  prepare: ({ dependencies: { departures, pins } }) => ({ ...departures, pins }),
+  prepare: ({ inputs, dependencies: { departures, pins } }) => {
+    const rules = inputs.hide.map(parseHideRule).filter((rule) => rule !== undefined);
+    return {
+      // `departures` stays complete: pinned connections are looked up in it
+      ...departures,
+      shown: (departures.departures ?? []).filter((d) => isShown(rules, d)),
+      // Hidden connections are skipped, so a pin shows its next connection that isn't hidden
+      pins: pins.map((pin) => ({ ...pin, connections: pin.connections?.filter((c) => isShown(rules, c)) })),
+    };
+  },
 
   /** Valid until the minutes until departure change. */
   ttl: ({ now }) => untilNextMinute(now),
 
   view({ device, inputs, now, telemetry, data }) {
     const { timeZone } = device;
-    const departures = (data.departures ?? []).filter((d) => d.time >= now.getTime() - 30_000);
+    // The list, without hidden departures and those that have left
+    const departures = data.shown.filter((d) => d.time >= now.getTime() - 30_000);
     // Only shown when the latest fetch failed and the list is older
     const footer = data.error && data.fetchedAt ? `As of ${formatTime(new Date(data.fetchedAt), timeZone)}` : "";
 
-    // The next two departures on the same line and direction (same lineId), from the full list;
+    // The next two departures on the same line and direction (same lineId), among those shown;
     // `time` is the actual (real-time) departure
     const nextOf = (d: Departure) =>
       d.lineId
