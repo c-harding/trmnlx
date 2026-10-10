@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { departuresFor, nextDirectFor, type Departure } from "../data/mvg.ts";
+import { loadConnections, loadDepartures, type Departure } from "../sources/mvg.ts";
 import { defineScreen } from "../define-screen.ts";
 import { HEIGHT } from "../render.ts";
 import { batteryText } from "../telemetry.ts";
@@ -175,14 +175,20 @@ export default defineScreen({
   // a 4-gray refresh, which matters for a screen that changes every minute.
   colors: 2,
 
-  async load({ inputs, now }) {
-    const pins = inputs.pinned.map(parsePin).filter((pin) => pin !== undefined);
-    const [departures, ...connections] = await Promise.all([
-      departuresFor(inputs.station, now),
-      ...pins.map((pin) => nextDirectFor(inputs.station, pin.target, pin.types, now)),
-    ]);
-    return { ...departures, pins: connections };
+  dependencies: {
+    departures: [loadDepartures, { station: ({ inputs }) => inputs.station, time: ({ now }) => now }],
+    // One route search per pinned connection
+    pins: [
+      loadConnections,
+      ({ inputs, now }) =>
+        inputs.pinned
+          .map(parsePin)
+          .filter((pin) => pin !== undefined)
+          .map((pin) => ({ station: inputs.station, target: pin.target, types: pin.types, time: now })),
+    ],
   },
+
+  prepare: ({ dependencies: { departures, pins } }) => ({ ...departures, pins }),
 
   /** Valid until the minutes until departure change. */
   ttl: ({ now }) => untilNextMinute(now),

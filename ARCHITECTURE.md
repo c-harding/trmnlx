@@ -16,7 +16,7 @@ One Node process, running in Docker behind Caddy, which provides HTTPS:
 device ──► GET /api/display ──► pick next screen from the device's playlist
                                    │
                                    ├─ cached PNG still fresh? ─► reuse it
-                                   └─ otherwise: screen.load() ─► screen.view(data)
+                                   └─ otherwise: sources ─► screen.prepare() ─► screen.view(data)
                                                    ─► Frame ─► Satori (SVG) ─► sharp (2-bit PNG)
                                    │
                                    ◄── { image_url, filename: hash of PNG, refresh_rate }
@@ -68,15 +68,18 @@ A screen module default-exports `defineScreen({ ... })` (`src/define-screen.ts`)
 export default defineScreen({
   inputs: { station: { type: "string", default: "Marienplatz" } }, // optional: its settings
   colors: 2,                                       // optional: 2 (black and white) or 4 (default)
-  async load(props) { /* optional: fetch data, returned as props.data */ },
+  dependencies: {                                  // optional: sources, with params from the props
+    departures: [loadDepartures, { station: ({ inputs }) => inputs.station, time: ({ now }) => now }],
+  },
+  prepare({ dependencies }) { /* their results → props.data (synchronous) */ },
   view(props) { /* return JSX layout */ },
   ttl(props) { /* seconds the screen stays valid */ },
 });
 ```
 
-Every function gets the same `props`: `device` (with its `username` and `timeZone`), `now`, `telemetry`, `inputs` and (not `load`) `data`, which is undefined for screens without `load`.
+Every function gets the same `props`: `device` (with its `username` and `timeZone`), `now`, `telemetry` and `inputs`. The params functions of `dependencies` get them too; `prepare` also gets the dependencies' results as `dependencies`; `view` and `ttl` get what `prepare` returned as `data` (undefined for screens without `prepare`), not the dependencies themselves.
 
-- `defineScreen` ties the types together: the values in `props.inputs` follow from the definitions (`"list"` gives `string[]`, and every input needs a `default` of its type), `props.data` has the type `load` returns, and `view` and `ttl` are checked against both. At startup, `src/screen.ts` refuses to start if a screen file's default export didn't come from `defineScreen`.
+- `defineScreen` ties the types together: the values in `props.inputs` follow from the definitions (`"list"` gives `string[]`, and every input needs a `default` of its type), each dependency's params are checked against its source, `props.data` has the type `prepare` returns, and `view` and `ttl` are checked against both. Write `dependencies` before `prepare` (and, in a source, before `load`): TypeScript infers the dependencies' types from top to bottom. The other way round shows up as type errors, not as unchecked code. At startup, `src/screen.ts` refuses to start if a screen file's default export didn't come from `defineScreen`.
 - Other exports from a screen file are allowed (e.g. `paired`'s layout, which the device API also renders for `/setup.png`), but shared helpers belong outside `src/screens/`: each file there is built as a screen.
 
 - `ttl(props)` returns how many seconds the screen stays valid, including a small safety margin, or `Infinity` if it never changes (the device then wakes at its `refreshRate`, and the browser page doesn't fetch it again); the placeholder's lasts until the next minute plus 2 seconds. The device gets `refresh_rate = min(refreshRate, max(ttl − wake time, 5))`, and the browser preview refetches the image when it runs out. The wake time comes from the firmware's `Wake-Time` header (how long its last cycle was awake, in ms): the firmware starts its sleep timer only after downloading and drawing the image, so without the correction each wake lands that much after the screen changed.
@@ -90,13 +93,33 @@ Every function gets the same `props`: `device` (with its `username` and `timeZon
 
   Times use tabular figures (`fontVariantNumeric: "tabular-nums"`) so they line up. Its `pinned` input lists connections that are always shown, as `<transport types> <station>`, e.g. `UBAHN Hauptbahnhof` or `SBAHN|UBAHN Ostbahnhof` (any of the types): the next direct connection there, in its place in the list if it fits, otherwise at the bottom under a thicker line. These come from MVG's route search, since a train ending at a station never appears in that station's departures; where the connection is also in the departures list, the list's real-time data takes precedence. If the latest fetch failed, an "As of" line gives the age of the data, and an exhausted stale list shows "Departures unavailable" rather than "No departures". Long-distance trains are missing (see the open questions).
 - `departures` uses `colors: 2`: black and white only, rendered at 1 bit per pixel with anti-aliasing thresholded away, so the firmware can use its fast partial refresh instead of a flashing 4-gray refresh every minute.
-- Fetched data is cached per source, not as rendered PNGs: `src/data/mvg.ts` looks up a station's ID once (kept until restart; failed lookups retried at most once a minute), fetches its next 100 departures at most once per minute (all transport types: MVG leaves out regional trains and buses unless asked), and the route search for each pinned connection (station, target and transport types) at most once per minute, however many devices and browsers show them; concurrent requests share one fetch, and if a fetch fails the last result is kept and the screen notes its age. Both are fetched for `props.now`, so the dev server's time setting shows the departures at that time: the route search takes any time, the departures only future ones (`offsetInMinutes`; for a time in the past MVG answers from now). Caches are kept per minute of difference from the current time, which on the server is always 0. MVG's interface is unofficial (the one behind mvg.de) and may change without notice.
-- `load` does any fetching, filtering and calculation; this replaces TRMNL's polling and transform scripts.
+- Fetched data is cached per source, not as rendered PNGs: `src/sources/mvg.ts` (sources `lookupStation`, `loadDepartures`, `loadConnections`) looks up a station's ID once (kept until restart; failed lookups retried at most once a minute), fetches its next 100 departures at most once per minute (all transport types: MVG leaves out regional trains and buses unless asked), and the route search for each pinned connection (station, target and transport types) at most once per minute, however many devices and browsers show them; concurrent requests share one fetch, and if a fetch fails the last result is kept and the screen notes its age. Both are fetched for `props.now`, so the dev server's time setting shows the departures at that time: the route search takes any time, the departures only future ones (`offsetInMinutes`; for a time in the past MVG answers from now). Caches are kept per minute of difference from the current time, which on the server is always 0. MVG's interface is unofficial (the one behind mvg.de) and may change without notice.
+- Sources do the fetching and `prepare` the combining; with `view`, this replaces TRMNL's polling and transform scripts.
 - `view` returns a layout in JSX: flexbox only, inline styles, the four panel grays (`#000`, `#555`, `#aaa`, `#fff`). Shared pieces (tables, headers, charts as inline SVG) live in a `components/` module.
 - Satori sizes boxes like CSS's default `content-box`, so a full-size container with `width: "100%"` and padding ends up wider than the screen. Give such containers `boxSizing: "border-box"`.
 - Long text is cut off with `whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"` on one line, or `display: "block", overflow: "hidden", lineClamp: 2` for two lines (both tested). Text that isn't cut off can overflow its box.
 - `inputs` declares a screen's settings, each with a type (`string`, `number`, `boolean` or `list` of strings) and a default. In the dev server a list is a text area with one entry per line (an emptied list stays empty), and the dev server converts the form's text to each input's type. `resolveInputs` takes values that already have their type and fills in the defaults; a value of the wrong type is logged and replaced by the default. The result is `props.inputs`. On the server they can't be configured per device yet, so screens always get their defaults; secrets such as API keys will come from environment variables.
 - Which screen a device shows: its `screen` in `devices.yaml`, otherwise `defaultScreen` (see [Configuration](#configuration)).
+
+### Sources
+
+A source fetches data, e.g. MVG's departures (`src/sources/*.ts`, `src/define-source.ts`):
+
+```ts
+export const loadDepartures = defineSource({
+  name: "mvg.departures",
+  params: paramsOf<{ station: string; time: Date }>(),        // its params type, needed first
+  dependencies: {
+    station: [lookupStation, { name: ({ params }) => params.station }],
+  },
+  async load({ station: name, time }, { station }) { /* fetch, return the result */ },
+});
+```
+
+- A source is called like an async function with one params object, and has a `sourceName` (for logs, and later cache keys).
+- Screens and sources declare what they depend on as `name: [source, params]`: one function per param field, or one function returning the whole params object. If that function returns an array, the source is called once per entry and the result is an array (the departures screen's pinned connections). Dependencies are resolved in parallel before `prepare` or `load` runs.
+- A source that throws fails the whole render (HTTP 500). Failures a screen should show are returned as values instead: `lookupStation` returns `null` for an unknown station, and the departures source then returns an `error`, which the screen shows as "Departures unavailable".
+- Sources cache for themselves for now (see the caches bullet under [Screens](#screens)). The framework knows every source by name and params, so it could take caching over later.
 
 ### Screen development server
 

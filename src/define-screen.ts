@@ -1,11 +1,18 @@
 // What a screen is: every file in src/screens/ default-exports defineScreen({ ... }). The types tie
-// a screen's parts together (the inputs' values follow from their definitions, `data` from what
-// `load` returns), and screen.ts checks at startup that each default export came from here.
+// a screen's parts together (the inputs' values follow from their definitions, the dependencies'
+// params are checked against their sources, `data` is what `prepare` returns), and screen.ts checks
+// at startup that each default export came from here.
 //
 // Kept apart from screen.ts, which imports every screen: a screen importing screen.ts would be a
 // circular import.
 import { inspect } from "node:util";
 import type { VNode } from "preact";
+import {
+  resolveDependencies,
+  type AnyDependencies,
+  type CheckedDependencies,
+  type ResolvedDependencies,
+} from "./define-source.ts";
 import type { Telemetry } from "./telemetry.ts";
 
 /** A screen setting, with the type of its value and the value used when none is given. */
@@ -36,16 +43,21 @@ export interface ScreenDevice {
   timeZone: string;
 }
 
-/** Inputs for `load` */
-export interface LoadProps<I extends InputDefinitions> {
+/** What every part of a screen gets, and the context for its dependencies' params */
+export interface ScreenProps<I extends InputDefinitions> {
   device: ScreenDevice;
   now: Date;
   telemetry: Telemetry | undefined;
   inputs: InputValues<I>;
 }
 
-/** Inputs for `view` and `ttl` */
-export interface ViewProps<I extends InputDefinitions, D> extends LoadProps<I> {
+/** What `prepare` gets: also the results of the dependencies */
+export interface PrepareProps<I extends InputDefinitions, Deps> extends ScreenProps<I> {
+  dependencies: ResolvedDependencies<Deps>;
+}
+
+/** What `view` and `ttl` get: also what `prepare` returned (undefined without `prepare`) */
+export interface ViewProps<I extends InputDefinitions, D> extends ScreenProps<I> {
   data: D;
 }
 
@@ -60,14 +72,22 @@ interface CommonDefinition<I extends InputDefinitions, D> {
   view: (props: ViewProps<I, D>) => VNode;
 }
 
-/** A screen that fetches data: `load` returns it, and `view` and `ttl` get it as props.data. */
-export interface DefinitionWithLoad<I extends InputDefinitions, D> extends CommonDefinition<I, D> {
-  load: (props: LoadProps<I>) => Promise<D>;
+/**
+ * A screen with data: its dependencies (sources, with params computed from the props) are resolved
+ * first, then `prepare` turns their results into `data` for `view` and `ttl`, which don't see the
+ * dependencies themselves.
+ */
+export interface DefinitionWithData<I extends InputDefinitions, Deps extends AnyDependencies, D>
+  extends CommonDefinition<I, D> {
+  dependencies?: Deps & CheckedDependencies<Deps, ScreenProps<I>>;
+  /** Synchronous: anything that waits belongs in a source */
+  prepare: (props: PrepareProps<I, Deps>) => D;
 }
 
 /** A screen without data: props.data is undefined. */
-export interface DefinitionWithoutLoad<I extends InputDefinitions> extends CommonDefinition<I, undefined> {
-  load?: undefined;
+export interface DefinitionWithoutData<I extends InputDefinitions> extends CommonDefinition<I, undefined> {
+  dependencies?: undefined;
+  prepare?: undefined;
 }
 
 /** What screen.ts passes to a screen's `render`. */
@@ -132,24 +152,29 @@ export function resolveInputs<I extends InputDefinitions>(
 const defined = new WeakSet<object>();
 
 /**
- * Defines a screen. Infers the types of its inputs from `inputs` and of `data` from `load`, and
- * checks `view` and `ttl` against them.
+ * Defines a screen. Infers the types of its inputs from `inputs`, of its dependencies' results from
+ * their sources and of `data` from `prepare`, and checks everything that uses them.
  */
-export function defineScreen<const I extends InputDefinitions = {}, D = undefined>(definition: DefinitionWithLoad<I, D>): Screen;
-export function defineScreen<const I extends InputDefinitions = {}>(definition: DefinitionWithoutLoad<I>): Screen;
-export function defineScreen<I extends InputDefinitions, D>(definition: DefinitionWithLoad<I, D> | DefinitionWithoutLoad<I>): Screen {
+export function defineScreen<const I extends InputDefinitions = {}, const Deps extends AnyDependencies = {}, D = undefined>(
+  definition: DefinitionWithData<I, Deps, D>,
+): Screen;
+export function defineScreen<const I extends InputDefinitions = {}>(definition: DefinitionWithoutData<I>): Screen;
+export function defineScreen<I extends InputDefinitions, Deps extends AnyDependencies, D>(
+  definition: DefinitionWithData<I, Deps, D> | DefinitionWithoutData<I>,
+): Screen {
   const screen: Screen = {
     inputs: definition.inputs ?? {},
     colors: definition.colors ?? 4,
     async render({ device, now, telemetry, inputs }) {
-      const props: LoadProps<I> = {
+      const props: ScreenProps<I> = {
         device,
         now,
         telemetry,
         inputs: resolveInputs(definition.inputs, inputs),
       };
-      if (definition.load) {
-        const viewProps = { ...props, data: await definition.load(props) };
+      if (definition.prepare) {
+        const dependencies = await resolveDependencies<Deps, ScreenProps<I>>(definition.dependencies, props);
+        const viewProps = { ...props, data: definition.prepare({ ...props, dependencies }) };
         return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps) };
       }
       const viewProps = { ...props, data: undefined };

@@ -1,14 +1,17 @@
 // Departures from MVG, the Munich transport company. This is the unofficial interface behind
 // mvg.de and its app: no API key, but undocumented, so it may change without notice.
 //
-// Two caches with very different lifetimes:
+// Three sources: lookupStation (a name to a station), and loadDepartures and loadConnections,
+// which depend on it. Each caches for itself (see define-source.ts):
 // - station names → station IDs (e.g. "Marienplatz" → "de:09162:2"), kept until the server restarts,
 //   since IDs practically never change;
-// - departures per station, kept for under a minute.
+// - departures per station and route searches, kept for under a minute.
 //
 // Data is fetched for the time being shown (props.now), which is the current time except in the
 // dev server, so caches are kept per minute of difference from the current time: on the server,
 // that's always 0.
+
+import { defineSource, paramsOf } from "../define-source.ts";
 
 const BASE_URL = "https://www.mvg.de/api/bgw-pt/v3";
 
@@ -108,7 +111,7 @@ interface StationEntry {
 
 const stations = new Map<string, StationEntry>();
 
-async function lookUpStation(name: string): Promise<Station> {
+async function fetchStation(name: string): Promise<Station> {
   const results = (await getJson(
     `${BASE_URL}/locations?query=${encodeURIComponent(name)}&locationTypes=STATION`,
   )) as MvgLocation[];
@@ -122,23 +125,29 @@ async function lookUpStation(name: string): Promise<Station> {
   return { id: station.globalId!, name: station.name ?? name };
 }
 
-/** The station `{ id, name }` for a station name, looked up once. Throws if it can't be found. */
-async function findStation(name: string): Promise<Station> {
-  let entry = stations.get(name);
-  if (!entry) stations.set(name, (entry = {}));
-  if (!entry.station && !entry.pending && !((entry.failedAt ?? 0) > Date.now() - LOOKUP_RETRY_MS)) {
-    entry.pending = lookUpStation(name)
-      .then((station) => (entry.station = station))
-      .catch((error) => {
-        console.error(`Looking up MVG station ${name} failed: ${asError(error).message}`);
-        entry.failedAt = Date.now();
-      })
-      .finally(() => (entry.pending = undefined));
-  }
-  await entry.pending;
-  if (!entry.station) throw new Error(`Station ${name} not found yet`);
-  return entry.station;
-}
+/**
+ * The station `{ id, name }` for a station name, looked up once; null if MVG doesn't know it or the
+ * lookup failed (logged, and tried again after LOOKUP_RETRY_MS).
+ */
+export const lookupStation = defineSource({
+  name: "mvg.station",
+  params: paramsOf<{ name: string }>(),
+  async load({ name }): Promise<Station | null> {
+    let entry = stations.get(name);
+    if (!entry) stations.set(name, (entry = {}));
+    if (!entry.station && !entry.pending && !((entry.failedAt ?? 0) > Date.now() - LOOKUP_RETRY_MS)) {
+      entry.pending = fetchStation(name)
+        .then((station) => (entry.station = station))
+        .catch((error) => {
+          console.error(`Looking up MVG station ${name} failed: ${asError(error).message}`);
+          entry.failedAt = Date.now();
+        })
+        .finally(() => (entry.pending = undefined));
+    }
+    await entry.pending;
+    return entry.station ?? null;
+  },
+});
 
 const departureCache = new Map<string, CacheEntry<Departure[]>>();
 
@@ -180,35 +189,37 @@ async function fetchDepartures(stationId: string, offsetMinutes: number): Promis
  * The latest departures for a station, given by name, from `time` on (no earlier than the current
  * time): `{ station, departures, fetchedAt, error }`.
  * Fetches again if the cached list is older than a minute; if that fails, keeps the old list and
- * sets `error`. `station` is `{ id, name }`, or undefined if the name couldn't be looked up yet.
+ * sets `error`. `station` is `{ id, name }`, or undefined if the name couldn't be looked up.
  */
-export async function departuresFor(stationName: string, time: Date): Promise<DeparturesResult> {
-  let station;
-  try {
-    station = await findStation(stationName);
-  } catch (error) {
-    return { error: asError(error) };
-  }
+export const loadDepartures = defineSource({
+  name: "mvg.departures",
+  params: paramsOf<{ station: string; time: Date }>(),
+  dependencies: {
+    station: [lookupStation, { name: ({ params }) => params.station }],
+  },
+  async load({ station: stationName, time }, { station }): Promise<DeparturesResult> {
+    if (!station) return { error: new Error(`Station ${stationName} not found`) };
 
-  const offset = Math.max(minutesFromNow(time), 0);
-  const key = `${station.id}|${offset}`;
-  let entry = departureCache.get(key);
-  if (!entry) departureCache.set(key, (entry = {}));
+    const offset = Math.max(minutesFromNow(time), 0);
+    const key = `${station.id}|${offset}`;
+    let entry = departureCache.get(key);
+    if (!entry) departureCache.set(key, (entry = {}));
 
-  if (!entry.value || Date.now() - entry.fetchedAt! >= MAX_AGE_MS) {
-    // Requests arriving while a fetch is running wait for that one
-    entry.pending ??= fetchDepartures(station.id, offset)
-      .then((departures) => Object.assign(entry, { value: departures, fetchedAt: Date.now(), error: undefined }))
-      .catch((error) => {
-        console.error(`Fetching departures for ${station.name} failed: ${asError(error).message}`);
-        entry.error = asError(error);
-      })
-      .finally(() => (entry.pending = undefined));
-    await entry.pending;
-  }
+    if (!entry.value || Date.now() - entry.fetchedAt! >= MAX_AGE_MS) {
+      // Requests arriving while a fetch is running wait for that one
+      entry.pending ??= fetchDepartures(station.id, offset)
+        .then((departures) => Object.assign(entry, { value: departures, fetchedAt: Date.now(), error: undefined }))
+        .catch((error) => {
+          console.error(`Fetching departures for ${station.name} failed: ${asError(error).message}`);
+          entry.error = asError(error);
+        })
+        .finally(() => (entry.pending = undefined));
+      await entry.pending;
+    }
 
-  return { station, departures: entry.value, fetchedAt: entry.fetchedAt, error: entry.error };
-}
+    return { station, departures: entry.value, fetchedAt: entry.fetchedAt, error: entry.error };
+  },
+});
 
 const directCache = new Map<string, CacheEntry<Departure[]>>();
 
@@ -249,37 +260,36 @@ async function fetchNextDirect(from: Station, to: Station, types: string[], time
 
 /**
  * The next direct connections of any of some transport types (e.g. ["SBAHN", "UBAHN"]) from one
- * station to another, both given by name, leaving from `time` on: `{ target, connections, error }`. `connections` are shaped
- * like departures, earliest first (several, since the first may have left by the time it's shown).
- * Cached like the departures; if a fetch fails, the last result is kept and `error` set.
+ * station to another, both given by name, leaving from `time` on: `{ target, connections, error }`.
+ * `connections` are shaped like departures, earliest first (several, since the first may have left
+ * by the time it's shown). Cached like the departures; if a fetch fails, the last result is kept
+ * and `error` set.
  */
-export async function nextDirectFor(
-  stationName: string,
-  targetName: string,
-  types: string[],
-  time: Date,
-): Promise<ConnectionsResult> {
-  let from, to;
-  try {
-    [from, to] = await Promise.all([findStation(stationName), findStation(targetName)]);
-  } catch (error) {
-    return { target: targetName, error: asError(error) };
-  }
+export const loadConnections = defineSource({
+  name: "mvg.connections",
+  params: paramsOf<{ station: string; target: string; types: string[]; time: Date }>(),
+  dependencies: {
+    from: [lookupStation, { name: ({ params }) => params.station }],
+    to: [lookupStation, { name: ({ params }) => params.target }],
+  },
+  async load({ station, target, types, time }, { from, to }): Promise<ConnectionsResult> {
+    if (!from || !to) return { target, error: new Error(`Station ${from ? target : station} not found`) };
 
-  const key = `${from.id}|${to.id}|${[...types].sort().join("|")}|${minutesFromNow(time)}`;
-  let entry = directCache.get(key);
-  if (!entry) directCache.set(key, (entry = {}));
+    const key = `${from.id}|${to.id}|${[...types].sort().join("|")}|${minutesFromNow(time)}`;
+    let entry = directCache.get(key);
+    if (!entry) directCache.set(key, (entry = {}));
 
-  if (entry.value === undefined || Date.now() - entry.fetchedAt! >= MAX_AGE_MS) {
-    entry.pending ??= fetchNextDirect(from, to, types, time)
-      .then((connections) => Object.assign(entry, { value: connections, fetchedAt: Date.now(), error: undefined }))
-      .catch((error) => {
-        console.error(`Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`);
-        entry.error = asError(error);
-      })
-      .finally(() => (entry.pending = undefined));
-    await entry.pending;
-  }
+    if (entry.value === undefined || Date.now() - entry.fetchedAt! >= MAX_AGE_MS) {
+      entry.pending ??= fetchNextDirect(from, to, types, time)
+        .then((connections) => Object.assign(entry, { value: connections, fetchedAt: Date.now(), error: undefined }))
+        .catch((error) => {
+          console.error(`Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`);
+          entry.error = asError(error);
+        })
+        .finally(() => (entry.pending = undefined));
+      await entry.pending;
+    }
 
-  return { target: to.name, connections: entry.value ?? [], error: entry.error };
-}
+    return { target: to.name, connections: entry.value ?? [], error: entry.error };
+  },
+});
