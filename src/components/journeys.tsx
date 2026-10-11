@@ -2,10 +2,10 @@
 // where every file is built as a screen.
 import type { ComponentChildren } from "preact";
 import { allowedOnRoute, type Route, type Rule } from "../journey-routes.ts";
-import type { Journey, JourneyLeg, JourneysResult } from "../sources/transitous.ts";
+import { type Journey, type JourneyLeg, type JourneysResult, kindOfMode } from "../sources/transitous.ts";
 import { formatTime } from "../time.ts";
 import { ellipsis } from "./header.tsx";
-import { textSize } from "./type.ts";
+import { type PixelSize, textSize } from "./type.ts";
 
 
 // Digits of equal width (Inter's tabular figures), so times line up
@@ -64,16 +64,51 @@ function Time(props: { expected: number; planned: number; timeZone: string; stru
 }
 
 /**
- * One ride: its line in bold, its departure, where it goes (unless it's the last: the destination
- * is in the title) and its arrival.
+ * A ride's line as a small pill, like the departures screens' badges but with the whole label at one
+ * size, as it's small already: black for trains (fully rounded for the S-Bahn), outlined for buses
+ * and trams ("Bus 54"), which the departures screens write out rather than badge.
  */
-function Leg({ leg, last, timeZone }: { leg: JourneyLeg; last: boolean; timeZone: string }) {
+function LineLabel({ leg, size }: { leg: JourneyLeg; size: PixelSize }) {
+  const kind = kindOfMode(leg.mode);
+  const outlined = kind === "bus" || kind === "tram";
+  return (
+    <span
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        justifyContent: "center",
+        ...textSize(size),
+        fontWeight: 700,
+        // A line high, less a pixel above and below, so pills on consecutive lines don't touch (an
+        // outlined one has its border there instead); at least as wide as a short label's pill is
+        // high, so "S5" is a pill rather than a circle
+        lineHeight: 1,
+        padding: outlined ? "0 4px" : "1px 5px",
+        minWidth: 32,
+        marginRight: 6,
+        flexShrink: 0,
+        borderRadius: kind === "s-bahn" ? 999 : 3,
+        ...(outlined ? { border: "1px solid #000" } : { background: "#000", color: "#fff" }),
+        textDecoration: leg.cancelled ? "line-through" : "none",
+      }}
+    >
+      {leg.line}
+    </span>
+  );
+}
+
+/**
+ * One ride: its line, departure → arrival, then where it goes (unless it's the last: the
+ * destination is in the title), in the same order as RideRow.
+ */
+function Leg({ leg, last, timeZone, size }: { leg: JourneyLeg; last: boolean; timeZone: string; size: PixelSize }) {
   const parts: ComponentChildren[] = [
-    <span style={{ fontWeight: 700, marginRight: "0.3em" }}>{leg.line}</span>,
+    <LineLabel leg={leg} size={size} />,
     <Time expected={leg.departure} planned={leg.plannedDeparture} timeZone={timeZone} />,
   ];
-  parts.push(<span style={{ margin: "0 0.3em" }}>{last ? "→" : `→ ${leg.to}`}</span>);
+  parts.push(<span style={{ margin: "0 0.3em" }}>→</span>);
   parts.push(<Time expected={leg.arrival} planned={leg.plannedArrival} timeZone={timeZone} />);
+  if (!last) parts.push(<span style={{ marginLeft: "0.3em" }}>{leg.to}</span>);
   return (
     <span
       style={{
@@ -89,7 +124,7 @@ function Leg({ leg, last, timeZone }: { leg: JourneyLeg; last: boolean; timeZone
 }
 
 /**
- * One ride on one line: the line in bold, departure → arrival (planned times struck through if
+ * One ride on one line: the line (see LineLabel), departure → arrival (planned times struck through if
  * they differ), then where to change (if given, cut off with "…" if long), and a duration on the
  * right (if given). A direct connection is one such line; a compact one is one per ride.
  */
@@ -111,12 +146,12 @@ function RideRow(props: { leg: JourneyLeg; timeZone: string; size: JourneySize; 
       }}
     >
       <div style={{ display: "flex", alignItems: "baseline", ...(wraps ? { flexShrink: 0 } : { minWidth: 0 }), ...TABULAR }}>
-        <span style={{ fontWeight: 700, marginRight: "0.4em", flexShrink: 0, textDecoration: leg.cancelled ? "line-through" : "none" }}>
-          {leg.line}
-        </span>
-        <span style={{ display: "flex", alignItems: "baseline", flexShrink: 0 }}>
+        {/* The line as small as the rides of a connection with changes, so the times stand out */}
+        <LineLabel leg={leg} size={sizes.rides} />
+        {/* Bold on a whole screen of journeys, like the times of one with changes */}
+        <span style={{ display: "flex", alignItems: "baseline", flexShrink: 0, fontWeight: sizes.compact ? 400 : 700 }}>
           <Time expected={leg.departure} planned={leg.plannedDeparture} timeZone={timeZone} />
-          <span style={{ margin: "0 0.3em" }}>→</span>
+          <span style={{ margin: "0 0.3em", fontWeight: 400 }}>→</span>
           <Time expected={leg.arrival} planned={leg.plannedArrival} timeZone={timeZone} />
         </span>
         {changeAt && <div style={{ display: "flex", minWidth: 0, marginLeft: "0.4em", ...ellipsis }}>{changeAt}</div>}
@@ -184,7 +219,7 @@ function JourneyBlock({ journey, timeZone, size }: { journey: Journey; timeZone:
       {/* The rides, wrapping onto further lines if needed */}
       <div style={{ display: "flex", flexWrap: "wrap", ...textSize(sizes.rides), marginTop: sizes.gap, ...TABULAR }}>
         {journey.legs.map((leg, i) => (
-          <Leg key={i} leg={leg} last={i === journey.legs.length - 1} timeZone={timeZone} />
+          <Leg key={i} leg={leg} last={i === journey.legs.length - 1} timeZone={timeZone} size={sizes.rides} />
         ))}
       </div>
     </div>

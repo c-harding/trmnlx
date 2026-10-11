@@ -340,7 +340,7 @@ interface TransitousStopTime extends LineFields {
 }
 
 /** How Transitous' modes are drawn (see DepartureKind). */
-function kindOfMode(mode: string): DepartureKind {
+export function kindOfMode(mode: string): DepartureKind {
   if (mode === "BUS" || mode === "COACH") return "bus";
   if (mode === "TRAM") return "tram";
   // MOTIS calls the S-Bahn METRO

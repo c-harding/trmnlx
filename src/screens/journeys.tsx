@@ -63,7 +63,7 @@ export default defineScreen({
     // no long-distance trains or coaches, as with a Deutschlandticket
     rules: { type: "string", default: "deny:longdistance" },
     // At most this many per route, as many as fit
-    count: { type: "int", default: 5 },
+    count: { type: "int", default: 8 },
   },
 
   // Only black and white, as on the other screens that change every minute
