@@ -106,6 +106,8 @@ const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
 // The next two departures' times, small and stacked, in a fixed-width column so they line up
 const NEXT_WIDTH = 64;
+// How much later than a departure the next ones on its line can be, to be shown beside it
+const NEXT_WITHIN_MS = 12 * 60 * 60_000;
 
 function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone: string }) {
   return (
@@ -220,11 +222,17 @@ export function DepartureBoard(props: {
   // The list, without hidden departures and those that have left
   const departures = shown.filter((d) => d.time >= now.getTime() - 30_000);
 
-  // The next two departures on the same line and direction (same lineId), among those shown;
-  // `time` is the actual (real-time) departure
+  // The next two departures on the same line and direction (same lineId), among those shown, within
+  // NEXT_WITHIN_MS of this one (not tomorrow morning's after tonight's last); `time` is the actual
+  // (real-time) departure
   const nextOf = (d: Departure) =>
     d.lineId
-      ? departures.filter((other) => other.lineId === d.lineId && other.time > d.time && !other.cancelled).slice(0, 2)
+      ? departures
+          .filter(
+            (other) =>
+              other.lineId === d.lineId && other.time > d.time && other.time - d.time <= NEXT_WITHIN_MS && !other.cancelled,
+          )
+          .slice(0, 2)
       : [];
 
   // The pinned connections: for each target, the first of its direct connections that hasn't left.
