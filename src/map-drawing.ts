@@ -40,7 +40,7 @@ export interface PlacedTile {
 }
 
 // Changes when the drawing does: maps saved on disk with another version are drawn again
-export const STYLE_VERSION = 6;
+export const STYLE_VERSION = 7;
 
 // Web maps' tiles are 256 px at their zoom. OpenMapTiles' are made for 512, so their detail would
 // fit one zoom level further in, but it leaves out too much (e.g. most of a main station's tracks

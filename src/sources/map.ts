@@ -7,6 +7,7 @@ import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/pro
 import { basename, join } from "node:path";
 import sharp from "sharp";
 import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
+import { fourGrayPng } from "../four-grays.ts";
 import { buildMapSvg, STYLE_VERSION, tilesFor, type MapView } from "../map-drawing.ts";
 import { stateDirectory } from "../state-file.ts";
 import { loadTiles, TOTAL_TIMEOUT_MS } from "./openfreemap.ts";
@@ -102,9 +103,8 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
     const tiles = tilesFor(view);
     const features = await loadTiles(tiles, deadline);
     const svg = buildMapSvg(view, tiles.map((tile, i) => ({ tile, features: features[i] })));
-    // Reduced to 4 grays (sharp picks them; rendering the screen maps them to the display's):
-    // a fifth of the size, and less to decode at every render
-    const png = await sharp(Buffer.from(svg)).grayscale().png({ palette: true, colours: 4, compressionLevel: 9 }).toBuffer();
+    // Reduced to 4 grays: a fifth of the size, and less to decode at every render
+    const png = await fourGrayPng(sharp(Buffer.from(svg)));
     console.log(
       `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom}) from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
         `${Math.round(svg.length / 1024)} KB of SVG, ${Math.round(png.length / 1024)} KB of PNG`,
