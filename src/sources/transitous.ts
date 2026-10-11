@@ -152,7 +152,10 @@ const getJson = async (url: string): Promise<unknown> => {
 
 /**
  * The stop for a name, e.g. "Innsbruck Hbf"; null if Transitous doesn't know it or the lookup
- * failed (logged, and tried again after LOOKUP_RETRY_MS). An exact name match is preferred.
+ * failed (logged, and tried again after LOOKUP_RETRY_MS). The first stop in Transitous' ranking,
+ * which weighs how important a stop is: not an exact name match, which can be a minor one (the
+ * only stop named exactly "Innsbruck Hbf" is a Dutch dataset's, with night trains only; ÖBB's is
+ * "Innsbruck Hauptbahnhof").
  */
 export const lookupStop = defineSource({
   name: "transitous.stop",
@@ -161,8 +164,7 @@ export const lookupStop = defineSource({
     try {
       const results = (await getJson(`${BASE_URL}/geocode?text=${encodeURIComponent(name)}`)) as TransitousPlace[];
       if (!Array.isArray(results)) throw new Error(`Unexpected Transitous response when looking up ${name}`);
-      const stops = results.filter((r) => r.type === "STOP" && r.id);
-      const stop = stops.find((r) => r.name?.toLowerCase() === name.toLowerCase()) ?? stops[0];
+      const stop = results.find((r) => r.type === "STOP" && r.id);
       if (!stop) throw new Error(`Transitous knows no stop called ${name}`);
       console.log(`Transitous stop ${JSON.stringify(name)} is ${stop.name} (${stop.id})`);
       return { id: stop.id!, name: stop.name ?? name, lat: Number(stop.lat), lon: Number(stop.lon) };
