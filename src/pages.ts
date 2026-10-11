@@ -1,3 +1,5 @@
+import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
+
 // The commit the server was built from, with a * for changes not committed: set by scripts/build,
 // missing in tests
 declare const BUILD_VERSION: string | undefined;
@@ -94,27 +96,32 @@ export const screenPage = (name: string, status: PlaylistStatus, playlistLength:
 html { height: 100%; }
 body { height: 100%; margin: 0; padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 1em; }
 p { margin: 0; }
-.preview { flex: 0 1 auto; min-height: 0; }
+.preview-area { flex: 0 1 min(482px, (100vw - 16px) * 0.6); min-height: 0; container-type: size; }
 /* At the bottom of the window, or of the page once it scrolls */
 .footer { margin-top: auto; }
-/* The image fits that space, shrunk and never enlarged (at most its own 480 pixels high), its
-   space kept while it loads; a click toggles its actual size, with the page scrolling */
-.screen { display: block; width: 100%; height: 100%; max-height: 480px; object-fit: scale-down; object-position: left top; cursor: zoom-in; }
+/* The preview fits that space, keeping 5:3, shrunk and never enlarged (at most 800×480 inside its
+   border), white like the screen, its space kept while it loads; a click toggles its actual size, with the page
+   scrolling. While the next image loads, it shows TRMNL's mark (see loading-mark.ts) */
+#preview { display: grid; grid-template: 1fr / 1fr; width: min(802px, 100cqw, 100cqh * 5 / 3); aspect-ratio: 5 / 3; box-sizing: border-box; border: 1px solid; background: #fff; cursor: zoom-in; }
+#preview img { display: block; width: 100%; height: 100%; }
 body.actual-size { height: auto; min-height: 100%; }
-body.actual-size .preview { flex: none; }
-body.actual-size .screen { width: auto; height: auto; max-height: none; cursor: zoom-out; }
+body.actual-size .preview-area { flex: none; container-type: normal; }
+body.actual-size #preview { width: 802px; cursor: zoom-out; }
+${loadingMarkCss("#preview")}
 </style>
-<p class="preview"><img id="screen" class="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p>
-<noscript><p class="preview"><img src="/screen.png" class="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p></noscript>
+<div class="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}">${LOADING_MARK}</div></div>
+<noscript><p><img src="/screen.png" width="800" height="480" alt="Screen for ${escapeHtml(name)}" style="max-width: 100%; height: auto"></p></noscript>
 <form method="post" action="/logout" class="footer"><p>${version ? `Version <code>${escapeHtml(version)}</code> • ` : ""}Logged in as: <strong>${escapeHtml(name)}</strong> <button>Log out</button></p></form>
 <script>
 // Fetches the screen, shows it, and fetches it again when its X-TTL (seconds) runs out, or soon
 // after the device's expected check-in (X-Check-In, in ms) if that's sooner, to update the text
 // from X-Status. An X-TTL of Infinity means the screen never changes: no further fetch then.
 const img = document.getElementById("screen");
-img.addEventListener("click", () => document.body.classList.toggle("actual-size"));
+const preview = document.getElementById("preview");
+preview.addEventListener("click", () => document.body.classList.toggle("actual-size"));
 async function refresh() {
   let delay = 30;
+  preview.classList.add("loading");
   try {
     const res = await fetch("/screen.png", { cache: "no-store" });
     if (res.status === 401) return location.assign("/login");
@@ -138,7 +145,10 @@ async function refresh() {
       const untilCheckIn = (Number(res.headers.get("X-Check-In")) - Date.now()) / 1000 + 30;
       if (untilCheckIn > 0) delay = Math.min(delay, untilCheckIn);
     }
-  } catch {}
+  } catch {
+  } finally {
+    preview.classList.remove("loading");
+  }
   // setTimeout treats delays beyond 2^31 - 1 ms (about 24.8 days), and Infinity, as 0
   if (Number.isFinite(delay)) setTimeout(refresh, Math.min(delay * 1000, 2 ** 31 - 1));
 }

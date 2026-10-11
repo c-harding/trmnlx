@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import express, { type ErrorRequestHandler } from "express";
 import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
 import { readDevConfig } from "./dev-config.ts";
+import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 import { renderScreen, screens } from "./screen.ts";
 
 const port = Number(process.env.DEV_PORT ?? 7778);
@@ -19,20 +20,6 @@ const app = express();
 const screenInputs = Object.fromEntries(Object.entries(screens).map(([name, s]) => [name, s.inputs ?? {}]));
 // Safe inside a <script>: no "</script>" can appear in the JSON
 const screenInputsJson = JSON.stringify(screenInputs).replaceAll("<", "\\u003c");
-
-// TRMNL's mark, as the firmware's loading screen shows it in its corner (src/loading.h there):
-// seven bars around a circle, each tilted 45° against its radius. Redrawn from the bitmap's
-// measurements rather than copied, matching it to within 1.3% of its pixels. While loading, one
-// bar at a time is black and the rest gray, going round clockwise (each bar's animation is
-// started part of the way through, by a negative delay).
-const MARK_BARS = 7;
-const MARK_CYCLE_S = 1.4;
-const LOADING_MARK = `<svg id="loading-mark" viewBox="0 0 86 86" aria-label="Rendering"><g transform="translate(42.6 43)">${Array.from(
-  { length: MARK_BARS },
-  (_bar, k) =>
-    `<rect x="-12.3" y="-6.2" width="24.6" height="12.4" transform="rotate(${(-165.6 + (k * 360) / MARK_BARS).toFixed(2)}) translate(29.5 0) rotate(-45.3)"` +
-    ` style="animation-delay: ${(((k - MARK_BARS) * MARK_CYCLE_S) / MARK_BARS).toFixed(2)}s"/>`,
-).join("")}</g></svg>`;
 
 const page = `<!doctype html>
 <html lang="en">
@@ -81,30 +68,15 @@ body { display: flex; flex-direction: column; }
 </div>
 <div id="bar"><p><button form="form">Load</button> <span id="info"></span></p></div>
 <style>
-/* The preview, white like the screen; while a render runs (from 0.3 s on, so quick ones don't
-   flicker), it's white like the device's loading screen, with TRMNL's mark where that has it, one
-   bar black at a time */
-/* As big as fits the area's width and height, keeping 5:3, at most its native size; a click toggles
-   the native size (the area then scrolls) */
-/* margin-top: auto puts it at the bottom, like align-items: flex-end, but when it's too high for
-   the area (at native size) the margin becomes 0 and it overflows downwards, where it can be
-   scrolled to, rather than upwards out of reach */
+/* The preview, white like the screen, as big as fits the area's width and height, keeping 5:3, at
+   most its native size; a click toggles the native size (the area then scrolls). margin-top: auto
+   puts it at the bottom, like align-items: flex-end, but when it's too high for the area (at native
+   size) the margin becomes 0 and it overflows downwards, where it can be scrolled to, rather than
+   upwards out of reach. While a render runs, it shows TRMNL's mark (see loading-mark.ts) */
 #preview { display: grid; grid-template: 1fr / 1fr; flex: none; margin-top: auto; width: min(802px, 100cqw, 100cqh * 5 / 3); aspect-ratio: 5 / 3; box-sizing: border-box; border: 1px solid; background: #fff; cursor: zoom-in; }
 #preview.native { width: 802px; cursor: zoom-out; }
-#preview img { display: block; grid-area: 1 / 1; width: 100%; height: 100%; }
-#preview.loading img { visibility: hidden; transition: visibility 0s 0.3s; }
-/* Where the device's loading screen has it (43 px, 25 px from the right, 23 px from the bottom),
-   scaled with the preview */
-/* In the preview's corner as on the device (43 px, 25 px from the right and 23 px from the bottom,
-   scaled with it: margins in % are of the width), on top of the image in the same grid cell. When
-   the preview is zoomed and that corner is scrolled out of view, it sticks to the visible part's
-   corner instead (sticky works for an element in the flow, hence the grid rather than absolute) */
-#loading-mark { grid-area: 1 / 1; align-self: end; justify-self: end; position: sticky; right: 8px; bottom: 8px; margin: 0 3.125% 2.875% 0; width: 5.375%; aspect-ratio: 1; opacity: 0; }
-#loading-mark rect { fill: #aaa; }
-#preview.loading #loading-mark { opacity: 1; transition: opacity 0s 0.3s; }
-#preview.loading #loading-mark rect { animation: ${MARK_CYCLE_S}s step-end infinite going-round; }
-@keyframes going-round { 0% { fill: #000; } ${(100 / MARK_BARS).toFixed(2)}% { fill: #aaa; } }
-</style>
+#preview img { display: block; width: 100%; height: 100%; }
+${loadingMarkCss("#preview")}</style>
 <div id="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Rendered screen" hidden>${LOADING_MARK}</div></div>
 <script>
 const SCREEN_INPUTS = ${screenInputsJson};
