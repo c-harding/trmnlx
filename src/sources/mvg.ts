@@ -10,6 +10,7 @@
 // Always for the current time: the dev server's time setting only changes what screens show.
 
 import { defineSource, paramsOf } from "../define-source.ts";
+import type { Departure, DepartureKind } from "../departure.ts";
 
 const BASE_URL = "https://www.mvg.de/api/bgw-pt/v3";
 
@@ -29,21 +30,11 @@ export interface Station {
   name: string;
 }
 
-export interface Departure {
-  /** e.g. "U2", "54", "REX" */
-  line: string;
-  /** MVG's transport type, e.g. "UBAHN", "BUS" */
-  type: string;
-  /** Line and direction; empty for connections from the route search */
-  lineId: string;
-  destination: string;
-  /** The expected departure (ms since the epoch), including any delay */
-  time: number;
-  /** The scheduled departure (ms since the epoch) */
-  planned: number;
-  cancelled: boolean;
-  messages: string[];
-}
+export type { Departure } from "../departure.ts";
+
+/** How MVG's transport types are drawn (see DepartureKind). */
+const kindOf = (type: string): DepartureKind =>
+  type === "BUS" || type === "REGIONAL_BUS" ? "bus" : type === "TRAM" ? "tram" : type === "SBAHN" ? "s-bahn" : "other";
 
 export interface DeparturesResult {
   /** Undefined if the name couldn't be looked up */
@@ -141,6 +132,7 @@ async function fetchDepartures(stationId: string): Promise<Departure[]> {
       // For trains the label is often just the train number ("5384"), so show its type ("REX") instead
       line: String(d.trainType || d.label || "?"),
       type: String(d.transportType ?? ""),
+      kind: kindOf(String(d.transportType ?? "")),
       // Line and direction ("…:H:…" or "…:R:…"); trains turning back early share it with full runs
       lineId: String(d.lineId ?? ""),
       destination: String(d.destination ?? ""),
@@ -210,6 +202,7 @@ async function fetchNextDirect(from: Station, to: Station, types: string[]): Pro
         // Same fields as a departure, so it can be found in (and shown like) the departures list
         line: String(part.line!.trainType || part.line!.label || "?"),
         type: part.line!.transportType,
+        kind: kindOf(part.line!.transportType),
         lineId: "",
         destination: String(part.line!.destination ?? ""),
         planned,
