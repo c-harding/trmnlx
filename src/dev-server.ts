@@ -1,11 +1,17 @@
 // A local server for developing screens: renders any screen with device data entered in a form,
-// without devices.yaml, TOKEN_SECRET or a real device. Run with `npm run dev`, which rebuilds and
-// restarts it whenever the code changes.
+// without TOKEN_SECRET or a real device. If there's a devices.yaml, an entry of a device's or a named
+// playlist can be loaded into the form (see dev-config.ts). Run with `npm run dev`, which rebuilds
+// and restarts it whenever the code changes.
+import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import express, { type ErrorRequestHandler } from "express";
 import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
+import { readDevConfig } from "./dev-config.ts";
 import { renderScreen, screens } from "./screen.ts";
 
 const port = Number(process.env.DEV_PORT ?? 7778);
+// The project's devices.yaml, next to .dev/ where the dev server is built
+const DEVICES_FILE = new URL("../devices.yaml", import.meta.url);
 
 const app = express();
 
@@ -20,6 +26,7 @@ const page = `<!doctype html>
 <title>TRMNL screen development</title>
 <h1>TRMNL screen development</h1>
 <form id="form">
+<p id="load" hidden><label>Load from devices.yaml <select id="load-select"></select></label> <span id="load-error"></span></p>
 <p><label>Screen <select name="screen" id="screen-select">${Object.keys(screens).map((s) => `<option>${s}</option>`).join("")}</select></label></p>
 <details open>
 <summary>Screen settings</summary>
@@ -83,12 +90,81 @@ const fromUrl = new URLSearchParams(location.search).get("screen");
 if (fromUrl in SCREEN_INPUTS) select.value = fromUrl;
 showScreenInputs();
 
-select.addEventListener("change", () => {
+const setUrl = (name, value) => {
   const url = new URL(location.href);
-  url.searchParams.set("screen", select.value);
+  if (value) url.searchParams.set(name, value);
+  else url.searchParams.delete(name);
   history.replaceState(null, "", url);
+};
+
+select.addEventListener("change", () => {
+  setUrl("screen", select.value);
+  setUrl("entry", "");
   showScreenInputs();
 });
+
+// Entries from devices.yaml (none without the file): loading one fills the form, which then works
+// as before. Read again with every page load, so edits show up without a restart.
+const loadBox = document.getElementById("load");
+const loadSelect = document.getElementById("load-select");
+const loadable = new Map();
+
+function loadEntry(key) {
+  const found = loadable.get(key);
+  if (!found) return;
+  const { group, entry } = found;
+  select.value = entry.screen;
+  showScreenInputs();
+  for (const [name, value] of Object.entries(entry.inputs)) {
+    const field = form.elements["input." + name];
+    if (!field) continue;
+    if (field.type === "checkbox") field.checked = Boolean(value);
+    else field.value = Array.isArray(value) ? value.join("\\n") : String(value); // "\\n": inside a template literal
+  }
+  if (group.device) {
+    form.elements.name.value = group.device.name;
+    form.elements.timeZone.value = group.device.timeZone;
+  }
+  setUrl("screen", entry.screen);
+  setUrl("entry", key);
+}
+
+async function loadConfig() {
+  const res = await fetch("/config");
+  if (res.status === 404) return;
+  const config = await res.json();
+  loadBox.hidden = false;
+  if (config.error) {
+    loadSelect.hidden = true;
+    document.getElementById("load-error").textContent = "devices.yaml isn't valid: " + config.error;
+    return;
+  }
+  loadSelect.append(new Option("—", ""));
+  for (const group of config.groups) {
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = group.label;
+    group.entries.forEach((entry, i) => {
+      const key = group.id + "/" + (i + 1);
+      loadable.set(key, { group, entry });
+      optgroup.append(new Option(entry.label, key));
+    });
+    // Every entry was left out: its screens don't exist here (see the dev server's log)
+    if (group.entries.length === 0) {
+      const none = new Option("No entries: unknown screens, see the dev server's log (a new screen needs a restart)", "");
+      none.disabled = true;
+      optgroup.append(none);
+    }
+    loadSelect.append(optgroup);
+  }
+  const fromUrl = new URLSearchParams(location.search).get("entry");
+  if (loadable.has(fromUrl)) {
+    loadSelect.value = fromUrl;
+    loadEntry(fromUrl);
+  }
+}
+
+loadSelect.addEventListener("change", () => loadEntry(loadSelect.value));
+loadConfig();
 
 // Renders the screen with the form's settings, and renders it again when its X-TTL runs out (as the
 // server's screen page does), unless the time is fixed. Clicking Load renders straight away.
@@ -150,6 +226,21 @@ form.addEventListener("submit", (event) => {
 `;
 
 app.get("/", (req, res) => res.type("html").send(page));
+
+// devices.yaml's entries for the form; 404 without the file, the message if it isn't valid
+app.get("/config", (req, res) => {
+  let text;
+  try {
+    text = readFileSync(DEVICES_FILE, "utf8");
+  } catch {
+    return res.status(404).json({});
+  }
+  try {
+    res.json({ groups: readDevConfig(text, screenInputs, process.env.TZ || "UTC") });
+  } catch (error) {
+    res.json({ error: (error as Error).message });
+  }
+});
 
 const number = (value: string | undefined) => (value === undefined || value === "" ? undefined : Number(value));
 
@@ -234,4 +325,10 @@ app.use(((err, req, res, next) => {
   res.status(500).type("text").send(err.message);
 }) satisfies ErrorRequestHandler);
 
-app.listen(port, () => console.log(`Screen development server on http://localhost:${port}`));
+// Only on this computer, as it shows devices.yaml's playlists: on both loopback addresses, as
+// "localhost" may resolve to either
+for (const host of ["127.0.0.1", "::1"]) {
+  createServer(app)
+    .listen(port, host, () => console.log(`Screen development server on http://${host.includes(":") ? `[${host}]` : host}:${port}`))
+    .on("error", (error) => console.error(`Not listening on ${host}: ${error.message}`));
+}
