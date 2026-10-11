@@ -11,6 +11,8 @@ const TIMEOUT_MS = 15_000;
 
 // Journey searches are cached for five minutes; delays shown can be that old
 const JOURNEY_MAX_AGE_MS = 5 * 60_000;
+// The next search starts this long before the cached one expires (see loadJourneys)
+const JOURNEY_REFRESH_AHEAD_MS = 90_000;
 // Journeys asked for per search: more than a screen shows, since some leave before the next search.
 // The same for every screen, so screens showing the same route share one search.
 // Generous, since screens may leave out connections (e.g. ones their rules don't allow).
@@ -271,4 +273,8 @@ export const loadJourneys = defineSource({
   },
   // A failure is kept briefly, so a rate limit isn't hit again by every request
   maxAge: (result) => (result.error ? retryDelay(result.error) : JOURNEY_MAX_AGE_MS),
+  // A search takes seconds (with via stops up to about 12), so the next one starts in the
+  // background while screens still show this one; screens showing it are requested every minute,
+  // so one comes within that time. Not for a failure, whose retry delay is meant to be waited out.
+  refreshAhead: (result) => (result.error ? 0 : JOURNEY_REFRESH_AHEAD_MS),
 });

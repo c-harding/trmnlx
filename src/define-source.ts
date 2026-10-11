@@ -114,6 +114,14 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
    */
   maxAge: number | ((result: NoInfer<T>) => number);
   /**
+   * How long before a result expires a request starts loading the next one in the background,
+   * while it's answered from the cache: so no request waits for a slow source, as long as one
+   * comes in that time. In ms, or a function of the result (e.g. 0 for a failure, which is kept
+   * on purpose); without it, results are only loaded again once expired. Write a function after
+   * `load`, like `maxAge`.
+   */
+  refreshAhead?: number | ((result: NoInfer<T>) => number);
+  /**
    * What the cache tells apart, made from the params; without it, the params themselves. E.g. with
    * a list sorted, when its order doesn't matter.
    */
@@ -129,15 +137,19 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     return Number.isNaN(maxAge) ? Infinity : maxAge;
   };
 
-  async function refresh(key: string, params: P, previous: { value: T } | undefined): Promise<T> {
+  const refreshAheadOf = (value: T) =>
+    typeof definition.refreshAhead === "function" ? definition.refreshAhead(value) : (definition.refreshAhead ?? 0);
+
+  /** Loads a result and caches it. On an error, the previous result (if any) stays until `previousExpiresAt`. */
+  async function refresh(key: string, params: P, previous: { value: T } | undefined, previousExpiresAt = 0): Promise<T> {
     try {
       const dependencies = await resolveDependencies<D, { params: P }>(definition.dependencies, { params });
       const value = await definition.load(params, dependencies, previous?.value);
       cache.set(key, { result: { value }, expiresAt: Date.now() + maxAgeOf(value) });
       return value;
     } catch (error) {
-      // Nothing new cached: the next request tries again, still with the previous result
-      if (previous) cache.set(key, { result: previous, expiresAt: 0 });
+      // Nothing new cached: the previous result stays as it was, and a later request tries again
+      if (previous) cache.set(key, { result: previous, expiresAt: previousExpiresAt });
       else cache.delete(key);
       throw error;
     }
@@ -146,8 +158,17 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
   const source = async (params: P): Promise<T> => {
     const key = canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
     const entry = cache.get(key);
+    const now = Date.now();
+    if (entry?.result && now < entry.expiresAt) {
+      // About to expire: load the next result in the background, but answer from the cache
+      if (!entry.pending && entry.expiresAt - now < refreshAheadOf(entry.result.value)) {
+        entry.pending = refresh(key, params, entry.result, entry.expiresAt);
+        // Nobody waits for it: log a failure instead of leaving it unhandled
+        entry.pending.catch((error) => console.error(`Refreshing ${definition.name} in the background failed:`, error));
+      }
+      return entry.result.value;
+    }
     if (entry?.pending) return entry.pending;
-    if (entry?.result && Date.now() < entry.expiresAt) return entry.result.value;
     const pending = refresh(key, params, entry?.result);
     cache.set(key, { result: entry?.result, expiresAt: 0, pending });
     return pending;
