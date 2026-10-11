@@ -1,5 +1,5 @@
 {
-  "name": "trmnl-server",
+  "name": "trmnlx",
   "version": "0.1.0",
   "private": true,
   "description": "A self-hosted server for TRMNL e-ink displays",

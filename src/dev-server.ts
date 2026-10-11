@@ -25,7 +25,7 @@ const screenInputsJson = JSON.stringify(screenInputs).replaceAll("<", "\\u003c")
 const page = `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<title>TRMNL screen development</title>
+<title>TRMNLx screen development</title>
 <style>
 /* One column as high as the window: the controls as high as they need, scrolling once they don't
    fit; the Load button and info always visible, right above the preview, which is at the bottom.
@@ -45,7 +45,7 @@ body { display: flex; flex-direction: column; }
 #credits { flex: none; margin: 0; padding: 0 8px 8px; }
 </style>
 <div id="controls">
-<h1>TRMNL screen development</h1>
+<h1>TRMNLx screen development</h1>
 <form id="form">
 <p id="load" hidden><label>Load from devices.yaml <select id="load-select"></select></label> <span id="load-error"></span></p>
 <p><label>Screen <select name="screen" id="screen-select">${Object.keys(screens).map((s) => `<option>${s}</option>`).join("")}</select></label></p>

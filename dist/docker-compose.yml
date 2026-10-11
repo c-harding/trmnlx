@@ -13,11 +13,11 @@ services:
     # The build cache is stored inside the image (inline cache), and the next build reads it from
     # there. So `docker system prune` emptying the build cache, by any project's deploy, doesn't
     # make the next build run every step again.
-    image: trmnl-server
+    image: trmnlx
     build:
       context: .
       cache_from:
-        - trmnl-server
+        - trmnlx
       args:
         BUILDKIT_INLINE_CACHE: 1
         ENV_HASH: ${ENV_HASH:-}

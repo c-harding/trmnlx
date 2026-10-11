@@ -21,8 +21,8 @@ ${body}
 
 export const loginPage = ({ error }: { error: boolean }) =>
   page(
-    "TRMNL login",
-    `<h1>TRMNL</h1>
+    "TRMNLx login",
+    `<h1>TRMNLx</h1>
 ${error ? "<p>Wrong username or password.</p>\n" : ""}<form method="post" action="/login">
 <p><label>Username <input name="username" autocomplete="username" required autofocus></label></p>
 <p><label>Password <input type="password" name="password" autocomplete="current-password" required></label></p>
@@ -89,7 +89,7 @@ export const screenPage = (name: string, status: PlaylistStatus, playlistLength:
       ? `<form method="post" action="/next"><p>${showingHtml} <span id="moves"${canMove ? "" : " hidden"}><button formaction="/previous">Prev</button> <button>Next</button></span></p></form>`
       : `<p>${showingHtml}</p>`;
   return page(
-    `TRMNL: ${name}`,
+    `TRMNLx: ${name}`,
     `${playlist}
 <p id="caption">${escapeHtml(caption)}</p>
 <style>
