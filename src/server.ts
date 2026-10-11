@@ -4,7 +4,7 @@ import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./c
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
-import { renderDeviceScreen } from "./screen.ts";
+import { renderDeviceScreen, warmDeviceScreens } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 import { flushState, persistTo } from "./state-file.ts";
 
@@ -18,6 +18,9 @@ if (checkOnly) {
 
 // Next to server.js: a Docker volume on the server (see docker-compose.yml)
 persistTo(new URL("./state/", import.meta.url));
+
+// What each device can show next, so the first switch after a deploy needn't wait for slow data
+for (const device of devices) warmDeviceScreens(device);
 
 const app = express();
 app.disable("x-powered-by");
@@ -53,6 +56,7 @@ for (const [path, step] of [["/next", 1], ["/previous", -1]] as const) {
     const device = sessionDevice(req);
     if (!device) return res.redirect(303, "/login");
     moveOn(device, step);
+    warmDeviceScreens(device);
     res.redirect(303, "/");
   });
 }
@@ -60,6 +64,8 @@ for (const [path, step] of [["/next", 1], ["/previous", -1]] as const) {
 app.get("/screen.png", async (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.status(401).type("text").send("Not logged in\n");
+  // Before rendering, so the screens one press away load while this one renders
+  warmDeviceScreens(device);
   const { png, ttl } = await renderDeviceScreen(device);
   // X-TTL tells the page's script when to fetch the next image; X-Status and X-Check-In keep its
   // text up to date (URI-encoded, as header values can't take all of Unicode)

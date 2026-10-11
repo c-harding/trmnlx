@@ -8,7 +8,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { findDeviceByMac, serverDomain, setupEnabled, type Device } from "./config.ts";
 import { authenticateDevice, deviceToken, friendlyId } from "./device-auth.ts";
 import { renderPng } from "./render.ts";
-import { renderDeviceScreen } from "./screen.ts";
+import { renderDeviceScreen, warmDeviceScreens } from "./screen.ts";
 import { Paired } from "./screens/paired.tsx";
 import { buttonStep, pressButton, recordCheckIn } from "./device-state.ts";
 import { recordTelemetry } from "./telemetry.ts";
@@ -116,6 +116,8 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   // device shows: what it was sent, as the firmware doesn't confirm it. (A Next pressed while this
   // rendered isn't in this image: it only shows from the check-in after.)
   recordCheckIn(device, sleep, index);
+  // So whatever a press shows next needn't wait for slow data
+  warmDeviceScreens(device);
   res.json({
     status: 0,
     image_url: `${baseUrl(req)}/images/${filename}.png`,

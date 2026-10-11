@@ -9,12 +9,22 @@
 // source's `cacheKey` makes of them (e.g. with a list sorted), compared deeply. An expired result
 // stays: the next load gets it as `previous`, e.g. to fall back to when a fetch fails. So params
 // should be few and stable (a station, a route), never e.g. the current time.
+//
+// A slow source can declare `staleUntil`: an expired result is then still shown until then while
+// the next one loads in the background, and `warm` loads one ahead of need (see screen.ts) once
+// there's none that can be shown.
 
 /** A data source: called with one parameters object. */
 export interface Source<P, T> {
   (params: P): Promise<T>;
   /** e.g. "mvg.departures", for logs */
   readonly sourceName: string;
+  /**
+   * Starts loading in the background if there's no result that can be shown (none yet, or one
+   * both expired and past its `staleUntil`), so a later call needn't wait. Only for sources with `staleUntil`: the
+   * others are fast enough to load when needed.
+   */
+  warm(params: P): void;
 }
 
 /**
@@ -57,16 +67,26 @@ export async function resolveDependencies<D extends AnyDependencies, C>(
     Object.entries(dependencies ?? {}).map(async ([name, [source, spec]]) => {
       // Typed by CheckedDependencies where the dependencies are declared; here they're erased
       const call = source as unknown as (params: unknown) => Promise<unknown>;
-      const params =
-        typeof spec === "function"
-          ? (spec as (context: C) => unknown)(context)
-          : Object.fromEntries(
-              Object.entries(spec as Record<string, (context: C) => unknown>).map(([field, get]) => [field, get(context)]),
-            );
+      const params = paramsFor(spec, context);
       return [name, Array.isArray(params) ? await Promise.all(params.map(call)) : await call(params)] as const;
     }),
   );
   return Object.fromEntries(entries) as ResolvedDependencies<D>;
+}
+
+/** Warms dependencies (see Source.warm) with the given context, without waiting for anything. */
+export function warmDependencies<C>(dependencies: AnyDependencies | undefined, context: C) {
+  for (const [source, spec] of Object.values(dependencies ?? {})) {
+    const params = paramsFor(spec, context);
+    for (const each of Array.isArray(params) ? params : [params]) source.warm(each);
+  }
+}
+
+/** A dependency's params from the context: an object, or an array for one call per entry. */
+function paramsFor<C>(spec: unknown, context: C): unknown {
+  return typeof spec === "function"
+    ? (spec as (context: C) => unknown)(context)
+    : Object.fromEntries(Object.entries(spec as Record<string, (context: C) => unknown>).map(([field, get]) => [field, get(context)]));
 }
 
 /**
@@ -122,6 +142,13 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
    */
   refreshAhead?: number | ((result: NoInfer<T>) => number);
   /**
+   * Until when (ms since the epoch) an expired result can still be shown: a request then gets it
+   * straight away and the next one loads in the background, instead of the request waiting. E.g.
+   * journeys until half of them have left. Also makes the source one to warm (see Source.warm).
+   * Write it after `load`, like `maxAge`.
+   */
+  staleUntil?: (result: NoInfer<T>) => number;
+  /**
    * What the cache tells apart, made from the params; without it, the params themselves. E.g. with
    * a list sorted, when its order doesn't matter.
    */
@@ -140,6 +167,8 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
   const refreshAheadOf = (value: T) =>
     typeof definition.refreshAhead === "function" ? definition.refreshAhead(value) : (definition.refreshAhead ?? 0);
 
+  const staleUntilOf = (value: T) => definition.staleUntil?.(value) ?? 0;
+
   /** Loads a result and caches it. On an error, the previous result (if any) stays until `previousExpiresAt`. */
   async function refresh(key: string, params: P, previous: { value: T } | undefined, previousExpiresAt = 0): Promise<T> {
     try {
@@ -155,17 +184,28 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     }
   }
 
+  /** Loads the next result while requests are answered from the cache, or wait for it if there's none. */
+  function refreshInBackground(key: string, params: P, entry: CacheEntry<T> | undefined) {
+    const pending = refresh(key, params, entry?.result, entry?.expiresAt);
+    cache.set(key, { result: entry?.result, expiresAt: entry?.expiresAt ?? 0, pending });
+    // Nobody may wait for it: log a failure instead of leaving it unhandled
+    pending.catch((error) => console.error(`Refreshing ${definition.name} in the background failed:`, error));
+  }
+
+  const keyOf = (params: P) => canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
+
   const source = async (params: P): Promise<T> => {
-    const key = canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
+    const key = keyOf(params);
     const entry = cache.get(key);
     const now = Date.now();
     if (entry?.result && now < entry.expiresAt) {
       // About to expire: load the next result in the background, but answer from the cache
-      if (!entry.pending && entry.expiresAt - now < refreshAheadOf(entry.result.value)) {
-        entry.pending = refresh(key, params, entry.result, entry.expiresAt);
-        // Nobody waits for it: log a failure instead of leaving it unhandled
-        entry.pending.catch((error) => console.error(`Refreshing ${definition.name} in the background failed:`, error));
-      }
+      if (!entry.pending && entry.expiresAt - now < refreshAheadOf(entry.result.value)) refreshInBackground(key, params, entry);
+      return entry.result.value;
+    }
+    // Expired, but can still be shown: the same, without waiting for the next one
+    if (entry?.result && now < staleUntilOf(entry.result.value)) {
+      if (!entry.pending) refreshInBackground(key, params, entry);
       return entry.result.value;
     }
     if (entry?.pending) return entry.pending;
@@ -173,5 +213,15 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     cache.set(key, { result: entry?.result, expiresAt: 0, pending });
     return pending;
   };
-  return Object.assign(source, { sourceName: definition.name });
+
+  function warm(params: P) {
+    if (!definition.staleUntil) return;
+    const key = keyOf(params);
+    const entry = cache.get(key);
+    if (entry?.pending) return;
+    if (entry?.result && Date.now() < Math.max(entry.expiresAt, staleUntilOf(entry.result.value))) return;
+    refreshInBackground(key, params, entry);
+  }
+
+  return Object.assign(source, { sourceName: definition.name, warm });
 }

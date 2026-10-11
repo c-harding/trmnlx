@@ -299,6 +299,9 @@ export const loadJourneys = defineSource({
   // background while screens still show this one; screens showing it are requested every minute,
   // so one comes within that time. Not for a failure, whose retry delay is meant to be waited out.
   refreshAhead: (result) => (result.error ? 0 : JOURNEY_REFRESH_AHEAD_MS),
+  // Once expired, still shown (while the next search runs) until half its journeys have left:
+  // departed ones are hidden anyway. Without journeys, never: an empty list says nothing about now.
+  staleUntil: ({ journeys }) => (journeys?.length ? journeys[Math.floor((journeys.length - 1) / 2)].departure : 0),
 });
 
 // Departures: up to this many per request, so the next ones on each line are usually among them

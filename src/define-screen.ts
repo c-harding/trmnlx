@@ -9,6 +9,7 @@ import { inspect } from "node:util";
 import type { VNode } from "preact";
 import {
   resolveDependencies,
+  warmDependencies,
   type AnyDependencies,
   type CheckedDependencies,
   type ResolvedDependencies,
@@ -107,6 +108,11 @@ export interface Screen {
   inputs: InputDefinitions;
   colors: 2 | 4;
   render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number }>;
+  /**
+   * Warms the sources a render with these props would use (see Source.warm), without rendering
+   * or waiting: so it can be shown without waiting for slow data.
+   */
+  warm: (props: RenderProps) => void;
 }
 
 /** Whether a value has the type an input's definition asks for. */
@@ -179,6 +185,9 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
       }
       const viewProps = { ...props, data: undefined };
       return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps) };
+    },
+    warm({ device, now, telemetry, inputs }) {
+      warmDependencies(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });
     },
   };
   defined.add(screen);

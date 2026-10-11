@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import type { Device } from "./config.ts";
 import { isScreen, type Screen, type ScreenDevice } from "./define-screen.ts";
-import { currentEntry } from "./device-state.ts";
+import { currentEntry, stepIndex } from "./device-state.ts";
 import { renderPng } from "./render.ts";
 import { telemetryFor, type Telemetry } from "./telemetry.ts";
 
@@ -56,4 +56,28 @@ export async function renderDeviceScreen(device: Device) {
   const { entry, index } = currentEntry(device);
   const rendered = await renderScreen(screens[entry.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: entry.inputs });
   return { ...rendered, index };
+}
+
+/**
+ * Warms the data of the device's current entry and those one press away (the previous and the
+ * next), so they can be shown without waiting for slow sources (see Source.warm). Called at
+ * startup, at each check-in and each browser render, and after each move. Once entries have
+ * `when`, these are to be the applicable ones, and it's to run also when a window starts or ends,
+ * as that changes which entries are one press away.
+ */
+export function warmDeviceScreens(device: Device) {
+  const { index } = currentEntry(device);
+  const length = device.playlist.length;
+  const indices = new Set([index, stepIndex(index, length, 1), stepIndex(index, length, -1)]);
+  const now = new Date();
+  const telemetry = telemetryFor(device);
+  for (const i of indices) {
+    const entry = device.playlist[i];
+    // Only ahead of need: a mistake here mustn't break the startup, a check-in or a render
+    try {
+      screens[entry.screen].warm({ device, now, telemetry, inputs: entry.inputs });
+    } catch (error) {
+      console.error(`Warming ${entry.screen} for ${device.username} failed:`, error);
+    }
+  }
 }
