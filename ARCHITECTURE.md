@@ -35,8 +35,9 @@ device ──► GET <image_url> (with Access-Token) ──► cached PNG
 | `GET /images/<filename>.png` | Serves one of the device's last 3 rendered PNGs (cached in memory). Requires the same `ID` and `Access-Token` headers as `/api/display`, which also identify the device. Sends `Content-Type: image/png` exactly, and a `Content-Length` |
 | `POST /api/log` | Checks the token and answers `204`. For now the entries are dropped; later they go to the device's log stream (see [Logs](#logs)) |
 | `GET /login`, `POST /login`, `POST /logout` | Browser login with the username and password from `devices.yaml` (see [Browser login](#browser-login)) |
-| `GET /` | The logged-in user's device screen: a plain HTML page whose small script fetches `/screen.png` and fetches it again when its `X-TTL` runs out |
-| `GET /screen.png` | The PNG shown on that page, rendered on each request, with the screen's `ttl` in an `X-TTL` header |
+| `GET /` | The logged-in user's device screen: a plain HTML page whose small script fetches `/screen.png` and fetches it again when its `X-TTL` runs out. It says which playlist entry is showing ("journeys (2 of 3)"), has a Next button if there is more than one, and says when the device is expected to check in next (its last `/api/display` plus the `refresh_rate` it was sent), since it only shows a change from then. `/screen.png` sends that text again (`X-Status`), and the script also fetches it shortly after the expected check-in (`X-Check-In`), so the page keeps up |
+| `POST /next` | Moves the logged-in user's device to its next playlist entry (wrapping around), then back to `/` |
+| `GET /screen.png` | The PNG shown on that page, rendered on each request, with the screen's `ttl` in an `X-TTL` header and the page's playlist text in `X-Status` |
 | `GET /logs` | Streams the logged-in user's device logs to the browser as Server-Sent Events |
 
 Image URLs are built from the same base URL the device is configured with, so the firmware sends its credentials with the image request.
@@ -112,7 +113,7 @@ Every function gets the same `props`: `device` (with its `username` and `timeZon
 - Satori sizes boxes like CSS's default `content-box`, so a full-size container with `width: "100%"` and padding ends up wider than the screen. Give such containers `boxSizing: "border-box"`.
 - Long text is cut off with `whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"` on one line, or `display: "block", overflow: "hidden", lineClamp: 2` for two lines (both tested). Text that isn't cut off can overflow its box.
 - `inputs` declares a screen's settings, each with a type (`string`, `number`, `boolean` or `list` of strings) and a default. In the dev server a list is a text area with one entry per line (an emptied list stays empty), and the dev server converts the form's text to each input's type. `resolveInputs` takes values that already have their type and fills in the defaults; a value of the wrong type is logged and replaced by the default. The result is `props.inputs`. On the server they come from the device's playlist entry in `devices.yaml` (see [Configuration](#configuration)), checked against these definitions at startup.
-- Which screen a device shows: an entry of its `playlist` in `devices.yaml` (for now the first), or its `screen`, otherwise `defaultScreen` (see [Configuration](#configuration)).
+- Which screen a device shows: its current `playlist` entry in `devices.yaml` (the first after a restart, moved on with the screen page's Next button), or its `screen`, otherwise `defaultScreen` (see [Configuration](#configuration)).
 
 ### Sources
 
@@ -156,7 +157,7 @@ Rendering happens during `/api/display` itself, which is fast enough that no sch
 
 ### Playlists
 
-Partly built: reading playlists from `devices.yaml`, with includes and inputs (see [Configuration](#configuration)). Moving through them, `when` and `duration` are the design below. A device shows a playlist: entries it moves through, each a screen with its inputs. Playlists can be named at the top level of `devices.yaml`, shared by devices and included in each other:
+Partly built: reading playlists from `devices.yaml`, with includes and inputs (see [Configuration](#configuration)), and moving through them with the screen page's Next button (each device's position is kept in memory, starting at the first entry after a restart). KEY3, `when` and `duration` are the design below. A device shows a playlist: entries it moves through, each a screen with its inputs. Playlists can be named at the top level of `devices.yaml`, shared by devices and included in each other:
 
 ```yaml
 playlists:
@@ -280,7 +281,7 @@ devices:
       - playlist: travel
 ```
 
-Includes are expanded when the file is read, so each device has one flat list. A device shows its playlist's first entry; moving through it is still to be built (see [Playlists](#playlists)). Inputs are checked against the screen's definitions: an unknown input or a value of the wrong type (e.g. `routes` written as one string instead of a list) stops the server with a message saying where. Write lists as block lists (`- …` per line): routes and hide rules then need no quotes.
+Includes are expanded when the file is read, so each device has one flat list. A device starts at its playlist's first entry; the screen page's Next button moves it on (see [Playlists](#playlists)). Inputs are checked against the screen's definitions: an unknown input or a value of the wrong type (e.g. `routes` written as one string instead of a list) stops the server with a message saying where. Write lists as block lists (`- …` per line): routes and hide rules then need no quotes.
 
 The server checks the file at startup (required fields, unique usernames, valid time zones, existing screens and playlists, playlists that don't include each other, and inputs) and refuses to start if it's wrong. `when` and `duration` on playlist entries, from the design in [Playlists](#playlists), are rejected as not supported yet.
 

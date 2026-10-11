@@ -10,6 +10,7 @@ import { authenticateDevice, deviceToken, friendlyId } from "./device-auth.ts";
 import { renderPng } from "./render.ts";
 import { renderDeviceScreen } from "./screen.ts";
 import { Paired } from "./screens/paired.tsx";
+import { recordCheckIn } from "./device-state.ts";
 import { recordTelemetry } from "./telemetry.ts";
 
 export const deviceApi = express.Router();
@@ -101,11 +102,15 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   // Named after its content: the firmware skips the download and the redraw if it's unchanged
   const filename = createHash("sha256").update(png).digest("hex").slice(0, 16);
   rememberImage(device, filename, png);
+  const sleep = refreshRate(req, device, ttl);
+  // So the screen page can say when the device will pick up a change. (A Next pressed while this
+  // rendered isn't in this image: it only shows from the check-in after.)
+  recordCheckIn(device, sleep);
   res.json({
     status: 0,
     image_url: `${baseUrl(req)}/images/${filename}.png`,
     filename,
-    refresh_rate: refreshRate(req, device, ttl),
+    refresh_rate: sleep,
     update_firmware: false,
     firmware_url: null,
     reset_firmware: false,

@@ -1,8 +1,9 @@
 import cookieParser from "cookie-parser";
 import express, { type ErrorRequestHandler } from "express";
-import { serverDomain, setupEnabled } from "./config.ts";
+import { serverDomain, setupEnabled, type Device } from "./config.ts";
 import { deviceApi } from "./device-api.ts";
-import { loginPage, screenPage } from "./pages.ts";
+import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
+import { currentEntry, expectedCheckIn, moveOn } from "./device-state.ts";
 import { renderDeviceScreen } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 
@@ -20,15 +21,45 @@ app.use(cookieParser());
 app.get("/", (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.redirect(303, "/login");
-  res.type("html").send(screenPage({ name: device.username }));
+  res.type("html").send(screenPage(device.username, playlistStatus(device)));
+});
+
+function playlistStatus(device: Device): PlaylistStatus {
+  const { entry, index } = currentEntry(device);
+  return {
+    screen: entry.screen,
+    position: index + 1,
+    count: device.playlist.length,
+    expectedCheckIn: expectedCheckIn(device),
+    now: new Date(),
+    timeZone: device.timeZone,
+  };
+}
+
+// Moves the device's playlist on, as a KEY3 press will; the device shows it from its next check-in
+app.post("/next", (req, res) => {
+  const device = sessionDevice(req);
+  if (!device) return res.redirect(303, "/login");
+  moveOn(device, 1);
+  res.redirect(303, "/");
 });
 
 app.get("/screen.png", async (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.status(401).type("text").send("Not logged in\n");
   const { png, ttl } = await renderDeviceScreen(device);
-  // X-TTL tells the page's script when to fetch the next image
-  res.type("png").set({ "Cache-Control": "no-store", "X-TTL": String(ttl) }).send(png);
+  // X-TTL tells the page's script when to fetch the next image; X-Status and X-Check-In keep its
+  // text up to date (URI-encoded, as header values can't take all of Unicode)
+  const status = playlistStatus(device);
+  res
+    .type("png")
+    .set({
+      "Cache-Control": "no-store",
+      "X-TTL": String(ttl),
+      "X-Status": encodeURIComponent(JSON.stringify(statusText(status))),
+      "X-Check-In": String(status.expectedCheckIn?.getTime() ?? ""),
+    })
+    .send(png);
 });
 
 app.get("/login", (req, res) => {

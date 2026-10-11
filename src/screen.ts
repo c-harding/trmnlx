@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import type { Device } from "./config.ts";
 import { isScreen, type Screen, type ScreenDevice } from "./define-screen.ts";
+import { currentEntry } from "./device-state.ts";
 import { renderPng } from "./render.ts";
 import { telemetryFor, type Telemetry } from "./telemetry.ts";
 
@@ -47,10 +48,10 @@ export async function renderScreen(screen: Screen, { device, now, telemetry, inp
 }
 
 /**
- * The device's current screen as a PNG, and how many seconds it stays valid: for now, the first
- * entry of its playlist, with that entry's inputs. Shared by the device API and the browser preview.
+ * The device's current screen as a PNG, and how many seconds it stays valid: its current playlist
+ * entry, with that entry's inputs. Shared by the device API and the browser preview.
  */
 export function renderDeviceScreen(device: Device) {
-  const entry = device.playlist[0];
+  const { entry } = currentEntry(device);
   return renderScreen(screens[entry.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: entry.inputs });
 }
