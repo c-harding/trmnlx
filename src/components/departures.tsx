@@ -21,7 +21,13 @@ const PINNED_RULE = 3;
 const LONG_LINE_LENGTH = 7;
 const TWO_LINE_LENGTH = 14;
 const LINE_MAX_WIDTH = 180;
-const isLongLine = (line: string) => line.length > LONG_LINE_LENGTH;
+// In a label of more than 4 characters, a number after the letters ("RJ 1293", "NJ 40490") is set
+// smaller, with a narrower space, so the letters keep the badge's size; only the letters count
+// towards a long label
+const LETTERS_AND_NUMBER = /^(\D*\D)\s+(\d+)$/;
+const splitNumber = (line: string) =>
+  line.length > 4 ? (LETTERS_AND_NUMBER.exec(line)?.slice(1, 3) as [string, string] | undefined) : undefined;
+const isLongLine = (line: string) => (splitNumber(line)?.[0] ?? line).length > LONG_LINE_LENGTH;
 const rowHeight = (d: Departure) =>
   d.messages.length > 0 || d.line.length > TWO_LINE_LENGTH ? NOTE_ROW_HEIGHT : ROW_HEIGHT;
 
@@ -53,6 +59,9 @@ const PLAIN_PREFIXES: Partial<Record<DepartureKind, string>> = { bus: "Bus", tra
 
 function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
   const prefix = PLAIN_PREFIXES[kind];
+  const split = splitNumber(line);
+  // An array rather than a fragment, which Satori can't render
+  const label = split ? [split[0], <span key="number" style={{ fontSize: 20, marginLeft: "0.25em" }}>{split[1]}</span>] : line;
   const long = isLongLine(line);
   // Long labels wrap (a block of inline text), cut off with "…" after two lines
   const wrapping = long
@@ -74,8 +83,8 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
         // The prefix stays beside the label, which wraps on its own in the remaining width
         <div style={{ display: "flex", alignItems: "baseline", ...(long ? { width: LINE_MAX_WIDTH } : {}) }}>
           <span style={{ fontSize: 20, marginRight: 6, flexShrink: 0 }}>{prefix}</span>
-          <div style={{ display: "flex", fontWeight: 700, ...wrapping, ...(long && { flex: 1, minWidth: 0 }) }}>
-            {line}
+          <div style={{ display: "flex", alignItems: "baseline", fontWeight: 700, ...wrapping, ...(long && { flex: 1, minWidth: 0 }) }}>
+            {label}
           </div>
         </div>
       ) : (
@@ -83,6 +92,7 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
           style={{
             display: "flex",
             justifyContent: "center",
+            alignItems: "baseline",
             // At least 72 px, wider for longer labels such as "RB 54"
             minWidth: 72,
             padding: "2px 8px",
@@ -94,7 +104,7 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
             ...wrapping,
           }}
         >
-          {line}
+          {label}
         </div>
       )}
     </div>
