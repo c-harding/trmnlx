@@ -21,6 +21,18 @@ devices:
     #       station: Marienplatz
     #     duration: 10m  # How long before moving on to the next entry (90s, 10m, 1h, 1h30m); without it, until a button press
     #     when: Mo-Fr 06:30-09:00; PH off  # When it applies, in OpenStreetMap's opening_hours syntax; without it, always
+    #   - screen: map
+    #     inputs:
+    #       title: München
+    #       lat: 48.1374
+    #       lon: 11.5755
+    #       zoom: 12.1  # Fractions allowed; drawn once and kept in state/maps/
+    #   - screen: map
+    #     inputs:
+    #       title: Innsbruck
+    #       lat: 47.2687
+    #       lon: 11.3933
+    #       zoom: 13  # A smaller city: closer in
     #   - playlist: travel  # Includes a named playlist; just `- travel` does too
     #     duration: 5m  # For the included entries without their own
     #   - screen: placeholder

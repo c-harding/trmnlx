@@ -97,6 +97,12 @@ export function persistTo(dir: URL) {
   stateDir = fileURLToPath(dir);
 }
 
+/**
+ * Where state is saved, if it is: also for what else should survive a restart or deploy, such as
+ * drawn maps (see sources/map.ts).
+ */
+export const stateDirectory = () => stateDir;
+
 /** Writes pending changes now: when the server stops. */
 export function flushState() {
   for (const file of files.values()) file.flush();

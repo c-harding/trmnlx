@@ -1,0 +1,80 @@
+// A street map as a PNG, drawn once per view from OpenFreeMap's tiles (see map-drawing.ts) and kept:
+// in memory until restart, and where state is saved (state/maps/), so restarts and deploys don't
+// fetch the tiles again. A map is never drawn again by itself; deleting its file (or a new
+// STYLE_VERSION) gets a fresh one at the next restart.
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import sharp from "sharp";
+import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
+import { buildMapSvg, STYLE_VERSION, tilesFor, type MapView } from "../map-drawing.ts";
+import { stateDirectory } from "../state-file.ts";
+import { loadTiles } from "./openfreemap.ts";
+
+// A map that couldn't be drawn is tried again after this long
+const RETRY_MS = 5 * 60_000;
+
+export interface MapResult {
+  /** The map's PNG, the view's size; undefined if it couldn't be drawn */
+  png?: Buffer;
+  /** Why not, if it couldn't */
+  error?: string;
+}
+
+/** The view's file, if state is saved: named after the view and the style, which it was drawn with. */
+function cacheFile(view: MapView) {
+  const dir = stateDirectory();
+  if (!dir) return undefined;
+  const hash = createHash("sha256").update(canonicalKey({ ...view, style: STYLE_VERSION })).digest("hex");
+  return join(dir, "maps", `${hash.slice(0, 20)}.png`);
+}
+
+async function readCached(file: string | undefined) {
+  if (!file) return undefined;
+  try {
+    return await readFile(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`Can't read ${file}: ${(error as Error).message}`);
+    return undefined;
+  }
+}
+
+/** Saves a drawn map; a failure only means it's drawn again after the next restart. */
+async function writeCached(file: string | undefined, png: Buffer) {
+  if (!file) return;
+  try {
+    await mkdir(join(file, ".."), { recursive: true });
+    await writeFile(`${file}.tmp`, png);
+    await rename(`${file}.tmp`, file);
+  } catch (error) {
+    console.error(`Could not save ${file}: ${(error as Error).message}`);
+  }
+}
+
+export const loadMap = defineSource({
+  name: "map",
+  params: paramsOf<MapView>(),
+  async load(view): Promise<MapResult> {
+    const file = cacheFile(view);
+    const cached = await readCached(file);
+    if (cached) return { png: cached };
+    try {
+      const started = Date.now();
+      const tiles = tilesFor(view);
+      const features = await loadTiles(tiles);
+      const svg = buildMapSvg(view, tiles.map((tile, i) => ({ tile, features: features[i] })));
+      // Already in the display's 4 grays: a fifth of the size, and less to decode at every render
+      const png = await sharp(Buffer.from(svg)).grayscale().png({ palette: true, colours: 4, compressionLevel: 9 }).toBuffer();
+      console.log(
+        `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom}) from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
+          `${Math.round(svg.length / 1024)} KB of SVG, ${Math.round(png.length / 1024)} KB of PNG`,
+      );
+      await writeCached(file, png);
+      return { png };
+    } catch (error) {
+      console.error(`Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`);
+      return { error: (error as Error).message };
+    }
+  },
+  maxAge: (map) => (map.png ? Infinity : RETRY_MS),
+});
