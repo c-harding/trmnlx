@@ -62,6 +62,8 @@ export interface ConnectionsResult {
 
 // The parts of MVG's answers that are used here; anything may be missing
 interface MvgLocation {
+  /** e.g. "STATION", "POI", "ADDRESS" */
+  type?: string;
   name?: string;
   globalId?: string;
 }
@@ -101,14 +103,13 @@ const getJson = async (url: string): Promise<unknown> => {
 };
 
 async function fetchStation(name: string): Promise<Station> {
-  const results = (await getJson(
-    `${BASE_URL}/locations?query=${encodeURIComponent(name)}&locationTypes=STATION`,
-  )) as MvgLocation[];
+  // Not `locationTypes=STATION`: since October 2026, MVG answers that with a redirect to its home
+  // page. Without it, the results include places and addresses, so stations are picked out here.
+  const results = (await getJson(`${BASE_URL}/locations?query=${encodeURIComponent(name)}`)) as MvgLocation[];
   if (!Array.isArray(results)) throw new Error(`Unexpected MVG response when looking up ${name}`);
+  const stations = results.filter((r) => r.type === "STATION" && r.globalId);
   // Prefer an exact match: "Silberhornstraße" also finds "Silberhorn-/Ichostraße"
-  const station =
-    results.find((r) => r.name?.toLowerCase() === name.toLowerCase() && r.globalId) ??
-    results.find((r) => r.globalId);
+  const station = stations.find((r) => r.name?.toLowerCase() === name.toLowerCase()) ?? stations[0];
   if (!station) throw new Error(`MVG knows no station called ${name}`);
   console.log(`MVG station ${JSON.stringify(name)} is ${station.name} (${station.globalId})`);
   return { id: station.globalId!, name: station.name ?? name };
