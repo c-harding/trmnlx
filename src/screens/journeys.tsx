@@ -1,136 +1,82 @@
+// The next connections on one to four routes (see journey-routes.ts for how they're written): one
+// route fills the screen; more go side by side in panels (see COLUMNS).
 import type { ComponentChildren } from "preact";
+import { Header, JourneyList, PADDING_Y, ellipsis } from "../components/journeys.tsx";
 import { defineScreen } from "../define-screen.ts";
-import { loadJourneys, type Journey, type JourneyLeg } from "../sources/transitous.ts";
-import { batteryText } from "../telemetry.ts";
-import { formatTime, untilNextMinute } from "../time.ts";
+import { parseRoute, routeTitle } from "../journey-routes.ts";
+import { loadJourneys, type JourneysResult } from "../sources/transitous.ts";
+import { untilNextMinute } from "../time.ts";
 
-// The header as on the departures screen
-const PADDING_Y = 12;
-const HEADER_HEIGHT = 55; // including its bottom border
-const HEADER_GAP = 4;
-
-const ellipsis = { overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" } as const;
-// Digits of equal width (Inter's tabular figures), so times line up
-const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
-
-/** e.g. "2 h 05" or "45 min" */
-function formatDuration(ms: number) {
-  const minutes = Math.round(ms / 60_000);
-  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")}`;
+/** The routes that parse, at most MAX_ROUTES of them (the rest are logged and ignored). */
+function validRoutes(texts: string[]) {
+  const routes = texts.map(parseRoute).filter((route) => route !== undefined);
+  if (routes.length > MAX_ROUTES) console.error(`Showing only the first ${MAX_ROUTES} of ${routes.length} routes`);
+  return routes.slice(0, MAX_ROUTES);
 }
 
-/** The expected time, after the scheduled one struck through if they differ (as on the departures screen). */
-function Time({ expected, planned, timeZone }: { expected: number; planned: number; timeZone: string }) {
-  const shown = formatTime(new Date(expected), timeZone);
-  const scheduled = formatTime(new Date(planned), timeZone);
-  // A flex container rather than a fragment, which Satori can't render
-  return (
-    <span style={{ display: "flex", alignItems: "baseline" }}>
-      {scheduled !== shown && (
-        <span style={{ fontWeight: 400, textDecoration: "line-through", marginRight: "0.3em" }}>{scheduled}</span>
-      )}
-      {shown}
-    </span>
-  );
-}
+const RULE = "2px solid #000";
 
-/**
- * One ride: its line in bold, its departure, where it goes (unless it's the last: the destination
- * is in the title) and its arrival.
- */
-function Leg({ leg, last, timeZone }: { leg: JourneyLeg; last: boolean; timeZone: string }) {
-  const parts: ComponentChildren[] = [
-    <span style={{ fontWeight: 700, marginRight: "0.3em" }}>{leg.line}</span>,
-    <Time expected={leg.departure} planned={leg.plannedDeparture} timeZone={timeZone} />,
-  ];
-  parts.push(<span style={{ margin: "0 0.3em" }}>{last ? "→" : `→ ${leg.to}`}</span>);
-  parts.push(<Time expected={leg.arrival} planned={leg.plannedArrival} timeZone={timeZone} />);
-  return (
-    <span
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        marginRight: "0.8em",
-        textDecoration: leg.cancelled ? "line-through" : "none",
-      }}
-    >
-      {parts}
-    </span>
-  );
-}
+// Which routes go in which column, top to bottom, by the number of routes: two side by side;
+// three as two stacked on the left and one on the right; four as two by two
+const COLUMNS: Record<number, number[][]> = {
+  2: [[0], [1]],
+  3: [[0, 1], [2]],
+  4: [[0, 1], [2, 3]],
+};
+const MAX_ROUTES = 4;
 
-function JourneyBlock({ journey, timeZone }: { journey: Journey; timeZone: string }) {
-  const first = journey.legs[0];
-  const last = journey.legs.at(-1)!;
-  const changes = journey.changes === 0 ? "direct" : journey.changes === 1 ? "1 change" : `${journey.changes} changes`;
+function Panel(props: { title: string; result: JourneysResult; now: Date; count: number; timeZone: string }) {
+  const { title, result, now, count, timeZone } = props;
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        // Full width and never shrunk, so one that doesn't fit wraps out of sight (see view)
-        width: "100%",
-        flexShrink: 0,
-        boxSizing: "border-box",
-        padding: "10px 0",
-        borderBottom: "1px solid #000",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "baseline", fontSize: 28, fontWeight: 700, ...TABULAR }}>
-          <Time expected={first.departure} planned={first.plannedDeparture} timeZone={timeZone} />
-          <span style={{ margin: "0 0.3em", fontWeight: 400 }}>→</span>
-          <Time expected={last.arrival} planned={last.plannedArrival} timeZone={timeZone} />
-        </div>
-        <div style={{ display: "flex", fontSize: 22 }}>{`${formatDuration(journey.arrival - journey.departure)} · ${changes}`}</div>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", fontSize: 20, fontWeight: 700, paddingBottom: 4, borderBottom: "1px solid #000", ...ellipsis }}>
+        {title}
       </div>
-      {/* The rides, wrapping onto a second line if needed */}
-      <div style={{ display: "flex", flexWrap: "wrap", fontSize: 20, marginTop: 6, ...TABULAR }}>
-        {journey.legs.map((leg, i) => (
-          <Leg key={i} leg={leg} last={i === journey.legs.length - 1} timeZone={timeZone} />
-        ))}
-      </div>
+      <JourneyList result={result} now={now} count={count} timeZone={timeZone} size="small" />
     </div>
   );
 }
 
 export default defineScreen({
   inputs: {
-    // Stops as Transitous names them (it searches, so "Innsbruck Hbf" finds Innsbruck Hauptbahnhof)
-    from: { type: "string", default: "Marienplatz" },
-    to: { type: "string", default: "Innsbruck Hbf" },
-    // Stops the journeys must pass, in order, one per line
-    via: { type: "list", default: ["Raubling"] },
-    // At most this many, as many as fit: connections differ in height (rides take one or two lines)
-    count: { type: "number", default: 4 },
+    // One route per line (see journey-routes.ts), up to four, placed column by column (see COLUMNS)
+    routes: {
+      type: "list",
+      default: ["Marienplatz -> München Ost", "Marienplatz -> München Hbf", "Marienplatz -> (Raubling) -> Innsbruck Hbf"],
+    },
+    // At most this many per route, as many as fit
+    count: { type: "number", default: 5 },
   },
 
-  // Only black and white, as on the departures screen: it changes every minute
+  // Only black and white, as on the other screens that change every minute
   colors: 2,
 
   dependencies: {
+    // One journey search per route
     journeys: [
       loadJourneys,
-      {
-        from: ({ inputs }) => inputs.from,
-        to: ({ inputs }) => inputs.to,
-        via: ({ inputs }) => inputs.via,
-      },
+      ({ inputs }) =>
+        validRoutes(inputs.routes).map(({ stops }) => ({
+          from: stops[0].name,
+          to: stops.at(-1)!.name,
+          via: stops.slice(1, -1).map((stop) => stop.name),
+        })),
     ],
   },
 
-  prepare: ({ dependencies: { journeys } }) => journeys,
+  prepare: ({ inputs, dependencies: { journeys } }) => ({
+    // Each route with its journeys, in the order of the input
+    routes: validRoutes(inputs.routes).map((route, i) => ({ route, result: journeys[i] })),
+  }),
 
   /** Valid until the clock changes. */
   ttl: ({ now }) => untilNextMinute(now),
 
   view({ device, inputs, now, telemetry, data }) {
     const { timeZone } = device;
-    // The search is cached for a few minutes, so leave out journeys that have left since
-    const journeys = (data.journeys ?? []).filter((j) => j.departure >= now.getTime() - 30_000).slice(0, inputs.count);
-    const title = `${data.from ?? inputs.from} → ${data.to ?? inputs.to}`;
+    const routes = data.routes;
 
-    return (
+    const page = (header: string, body: ComponentChildren) => (
       <div
         style={{
           display: "flex",
@@ -142,56 +88,57 @@ export default defineScreen({
           background: "#fff",
           color: "#000",
           fontFamily: "Inter",
-          fontSize: 28,
+          fontSize: 20,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            height: HEADER_HEIGHT,
-            boxSizing: "border-box",
-            paddingBottom: 8,
-            borderBottom: "3px solid #000",
-            marginBottom: HEADER_GAP,
-          }}
-        >
-          {/* A long title is cut off with "…", leaving room for battery and clock */}
-          <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: 16, fontSize: 32, fontWeight: 700, ...ellipsis }}>
-            {title}
-          </div>
-          <div style={{ display: "flex", flexShrink: 0, alignItems: "baseline", fontSize: 20 }}>
-            {`${batteryText(telemetry)} · `}
-            <span style={{ fontWeight: 700, fontSize: 28, marginLeft: 6 }}>{formatTime(now, timeZone)}</span>
-          </div>
-        </div>
-
-        {journeys.length === 0 ? (
-          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>
-            {/* "No connections" only on fresh data: older data that has run out says nothing about now */}
-            {data.journeys && !data.error ? "No connections" : "Connections unavailable"}
-          </div>
-        ) : (
-          // A column that wraps: a connection that doesn't fit below the others moves to a second
-          // column, which is hidden off the right edge, so only whole connections are shown
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              flexWrap: "wrap",
-              alignContent: "flex-start",
-              flex: 1,
-              minHeight: 0,
-              overflow: "hidden",
-            }}
-          >
-            {journeys.map((journey, i) => (
-              <JourneyBlock key={i} journey={journey} timeZone={timeZone} />
-            ))}
-          </div>
-        )}
+        <Header title={header} telemetry={telemetry} now={now} timeZone={timeZone} />
+        {body}
       </div>
+    );
+
+    // One route: the route in the header, and full-size connections
+    if (routes.length <= 1) {
+      const only = routes[0];
+      return page(
+        only ? routeTitle(only.route.stops) : "Connections",
+        only ? (
+          <JourneyList result={only.result} now={now} count={inputs.count} timeZone={timeZone} size="large" />
+        ) : (
+          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>No routes</div>
+        ),
+      );
+    }
+
+    // When all routes start at the same stop, it goes in the header and the panels name the rest
+    const start = routes[0].route.stops[0].name;
+    const sameStart = routes.every(({ route }) => route.stops[0].name === start);
+    const panel = (i: number) => {
+      const { route, result } = routes[i];
+      const title = sameStart ? `→ ${routeTitle(route.stops.slice(1))}` : routeTitle(route.stops);
+      return <Panel title={title} result={result} now={now} count={inputs.count} timeZone={timeZone} />;
+    };
+    const column = (indexes: number[], last: boolean) => (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minWidth: 0,
+          ...(last ? { paddingLeft: 14 } : { paddingRight: 14, borderRight: RULE }),
+        }}
+      >
+        {indexes.flatMap((index, i) => [
+          ...(i > 0 ? [<div style={{ display: "flex", borderTop: RULE, marginTop: 6, paddingTop: 6 }} />] : []),
+          panel(index),
+        ])}
+      </div>
+    );
+
+    return page(
+      sameStart ? start : "Connections",
+      <div style={{ display: "flex", flex: 1, minHeight: 0, marginTop: 4 }}>
+        {COLUMNS[routes.length].map((indexes, i, columns) => column(indexes, i === columns.length - 1))}
+      </div>,
     );
   },
 });
