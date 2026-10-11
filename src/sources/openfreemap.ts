@@ -19,21 +19,33 @@ const CONCURRENT_TILES = 4;
 const LAYERS = new Set<TileFeature["layer"]>(["water", "waterway", "transportation", "aeroway"]);
 
 /**
- * A response, or an error short enough to show on the screen (no URL): the screen says "Map
- * unavailable: …" with it. `signal` stops it early, e.g. when another tile failed.
+ * A response's status and body, read with `read`, or an error short enough to show on the screen (no
+ * URL): the screen says "Map unavailable: …" with it. The time limit covers reading the body too.
+ * `signal` stops it early, e.g. when another tile failed.
+ *
+ * Its own controller and timer rather than AbortSignal.timeout combined with `signal` by
+ * AbortSignal.any: in Node 24, such a combined signal is never freed if `signal` aborts it before the
+ * timeout fires, a few KB a time.
  */
-async function get(url: string, accept: string, signal?: AbortSignal) {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  let res;
+async function get<T>(url: string, accept: string, read: (res: Response) => Promise<T>, signal?: AbortSignal) {
+  const controller = new AbortController();
+  const timeout = new Error("OpenFreeMap didn't answer in time");
+  const timer = setTimeout(() => controller.abort(timeout), REQUEST_TIMEOUT_MS);
+  const stop = () => controller.abort(signal!.reason);
+  signal?.addEventListener("abort", stop, { once: true });
   try {
-    res = await fetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT }, signal: signal ? AbortSignal.any([timeout, signal]) : timeout });
+    const res = await fetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT }, signal: controller.signal });
+    if (!res.ok) throw new Error(`OpenFreeMap answered ${res.status}`);
+    return { status: res.status, body: await read(res) };
   } catch (error) {
-    if (signal?.aborted) throw signal.reason;
-    if (timeout.aborted) throw new Error("OpenFreeMap didn't answer in time");
+    // Stopped by the caller, or our time limit: that reason; otherwise what fetch says
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if ((error as Error).message.startsWith("OpenFreeMap answered")) throw error;
     throw new Error(`couldn't reach OpenFreeMap (${(error as Error).message})`);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", stop);
   }
-  if (!res.ok) throw new Error(`OpenFreeMap answered ${res.status}`);
-  return res;
 }
 
 /** The URL of the current build's tiles, with {z}, {x} and {y} to fill in. Throws if it can't be read. */
@@ -41,7 +53,7 @@ export const loadTileUrl = defineSource({
   name: "openfreemap.tiles",
   params: paramsOf<{}>(),
   async load(): Promise<string> {
-    const tileJson = (await (await get(TILEJSON_URL, "application/json")).json()) as { tiles?: unknown };
+    const { body: tileJson } = await get(TILEJSON_URL, "application/json", (res) => res.json() as Promise<{ tiles?: unknown }>);
     const url = Array.isArray(tileJson.tiles) ? tileJson.tiles[0] : undefined;
     if (typeof url !== "string") throw new Error("OpenFreeMap's TileJSON names no tiles");
     return url;
@@ -52,10 +64,9 @@ export const loadTileUrl = defineSource({
 /** One tile's features in the layers drawn, with points from 0 to 1 across the tile. Throws if it can't be fetched. */
 async function loadTile(urlTemplate: string, { z, x, y }: PlacedTile, signal: AbortSignal): Promise<TileFeature[]> {
   const url = urlTemplate.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
-  const res = await get(url, "application/x-protobuf", signal);
+  const { status, body: data } = await get(url, "application/x-protobuf", async (res) => new Uint8Array(await res.arrayBuffer()), signal);
   // No content: nothing there (e.g. open sea)
-  const data = new Uint8Array(await res.arrayBuffer());
-  if (res.status === 204 || data.length === 0) return [];
+  if (status === 204 || data.length === 0) return [];
   const tile = new VectorTile(new PbfReader(data));
   const features: TileFeature[] = [];
   for (const layer of LAYERS) {
@@ -84,23 +95,24 @@ async function loadTile(urlTemplate: string, { z, x, y }: PlacedTile, signal: Ab
 export async function loadTiles(tiles: PlacedTile[], deadline = Date.now() + TOTAL_TIMEOUT_MS): Promise<TileFeature[][]> {
   // E.g. after waiting behind other maps' draws (see sources/map.ts)
   if (Date.now() >= deadline) throw new Error("too many maps to draw at once, trying again later");
+  // Stops everything still running: on the first failure, at the deadline, or when done. A plain
+  // controller with its own timer, for the reason given at get()
   const failed = new AbortController();
-  const signal = AbortSignal.any([failed.signal, AbortSignal.timeout(deadline - Date.now())]);
-  const tooSlow = new Promise<never>((_resolve, reject) =>
-    signal.addEventListener("abort", () => reject(failed.signal.aborted ? failed.signal.reason : new Error("OpenFreeMap took too long")), { once: true }),
-  );
+  const signal = failed.signal;
+  const overall = setTimeout(() => failed.abort(new Error("OpenFreeMap took too long")), deadline - Date.now());
+  const tooSlow = new Promise<never>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
   // Settled anyway when nobody waits for it any more
   tooSlow.catch(() => {});
-  const urlTemplate = await Promise.race([loadTileUrl({}), tooSlow]);
   const results: TileFeature[][] = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < tiles.length && !signal.aborted) {
-      const i = next++;
-      results[i] = await loadTile(urlTemplate, tiles[i], signal);
-    }
-  };
   try {
+    const urlTemplate = await Promise.race([loadTileUrl({}), tooSlow]);
+    let next = 0;
+    const worker = async () => {
+      while (next < tiles.length && !signal.aborted) {
+        const i = next++;
+        results[i] = await loadTile(urlTemplate, tiles[i], signal);
+      }
+    };
     await Promise.race([Promise.all(Array.from({ length: Math.min(CONCURRENT_TILES, tiles.length) }, worker)), tooSlow]);
   } catch (error) {
     // The first failure (or the overall timeout) stops the rest
@@ -108,6 +120,7 @@ export async function loadTiles(tiles: PlacedTile[], deadline = Date.now() + TOT
     throw error;
   } finally {
     // Done either way: stops anything still running, and settles tooSlow
+    clearTimeout(overall);
     failed.abort(new Error("done"));
   }
   return results;
