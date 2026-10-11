@@ -133,6 +133,28 @@ const fromUrl = new URLSearchParams(location.search).get("screen");
 if (fromUrl in SCREEN_INPUTS) select.value = fromUrl;
 showScreenInputs();
 
+// Deep links: any of the form's fields as a query parameter, by its name ("input.zoom=13",
+// "timeZone=Europe/Vienna", "time=2026-10-13T08:00"; a list with one entry per line), filled in once
+// the screen (and an "entry") is chosen; with any of them, it renders straight away. The form doesn't
+// write back to the URL, so choosing another screen or entry drops them.
+const queryFields = [...new URLSearchParams(location.search)].filter(([name]) => name !== "screen" && name !== "entry");
+function applyQuery() {
+  for (const [name, value] of queryFields) {
+    const field = form.elements[name];
+    if (!field) continue;
+    if (field.type === "checkbox") field.checked = ["true", "on", "1"].includes(value);
+    else field.value = value;
+  }
+  if (queryFields.length > 0) render();
+  else markChanged();
+}
+function dropQuery() {
+  const url = new URL(location.href);
+  for (const [name] of queryFields) url.searchParams.delete(name);
+  history.replaceState(null, "", url);
+  queryFields.length = 0;
+}
+
 const setUrl = (name, value) => {
   const url = new URL(location.href);
   if (value) url.searchParams.set(name, value);
@@ -141,6 +163,7 @@ const setUrl = (name, value) => {
 };
 
 select.addEventListener("change", () => {
+  dropQuery();
   setUrl("screen", select.value);
   setUrl("entry", "");
   showScreenInputs();
@@ -208,8 +231,15 @@ async function loadConfig() {
   }
 }
 
-loadSelect.addEventListener("change", () => loadEntry(loadSelect.value));
-loadConfig();
+loadSelect.addEventListener("change", () => {
+  dropQuery();
+  loadEntry(loadSelect.value);
+});
+// With an entry in the URL, a deep link's fields go on top of it, once it's loaded (or not found)
+const entryInUrl = new URLSearchParams(location.search).has("entry");
+loadConfig().finally(() => {
+  if (entryInUrl) applyQuery();
+});
 
 // The form's settings, as sent for a render
 function settings() {
@@ -295,6 +325,9 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   render();
 });
+
+// A deep link's fields, unless it names an entry (see loadConfig above)
+if (!entryInUrl) applyQuery();
 </script>
 </html>
 `;
