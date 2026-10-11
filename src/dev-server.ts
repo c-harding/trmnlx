@@ -43,10 +43,11 @@ body { display: flex; flex-direction: column; }
 #load-button > span { grid-area: 1 / 1; }
 #load-button .load { font-weight: bold; }
 #load-button:not(.changed) .load, #load-button.changed .reload { visibility: hidden; }
-#preview-area { flex: 0 1000 min(482px, 60vw); min-height: min(482px, 60vw, 50%); display: flex; container-type: size; overflow: auto; padding: 0 8px 8px; }
+#preview-area { flex: 0 1000 min(482px, 60vw); min-height: min(482px, 60vw, 50%); display: flex; container-type: size; overflow: hidden; padding: 0 8px 8px; }
 /* At native size, it wants the preview's whole height, taking it from the controls down to half the
-   page as before, and scrolls beyond that */
-#preview-area:has(.native) { flex-basis: 482px; min-height: min(482px, 50%); }
+   page as before, and scrolls beyond that. Otherwise the preview fits by its size, so the area
+   doesn't scroll: rounding a fractional height can make it a pixel too high (overflow: hidden) */
+#preview-area:has(.native) { flex-basis: 482px; min-height: min(482px, 50%); overflow: auto; }
 /* The rendered screen's credits, under the preview */
 #credits { flex: none; margin: 0; padding: 0 8px 8px; }
 </style>
