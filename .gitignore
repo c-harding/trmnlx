@@ -17,3 +17,6 @@ devices.yaml
 
 # Screen development server build (scripts/dev)
 /.dev/
+
+# Test build (scripts/test)
+/.test/

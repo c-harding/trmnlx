@@ -21,6 +21,8 @@ npm run dev                           # http://localhost:7778: render any screen
 
 No `devices.yaml` or `.env` needed. Saving a file rebuilds and restarts it; reload the page (or click Load) to see the change. It doesn't check types: `npm run check` does (and so does `npm run build`).
 
+Tests: `npm test` runs `test/*.test.ts` with Node's test runner (bundled by esbuild first, like the server).
+
 Deploying:
 
 ```sh

@@ -12,7 +12,8 @@
     "build-deploy": "scripts/build && scripts/deploy",
     "pair": "scripts/pair",
     "dev": "scripts/dev",
-    "check": "tsc"
+    "check": "tsc",
+    "test": "scripts/test"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

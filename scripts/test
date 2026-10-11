@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# Runs the tests in test/ (*.test.ts) with Node's test runner. esbuild bundles each test file
+# first, as for the server (TypeScript, JSX), into .test/; Node then runs them. Types are checked
+# by `npm run check`, which includes test/.
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+shopt -s nullglob
+
+rm -rf .test
+npx esbuild test/*.test.ts --bundle --platform=node --format=esm \
+  --jsx=automatic --jsx-import-source=preact --packages=external \
+  --outdir=.test --log-level=warning
+
+# Quoted, so Node expands the pattern itself
+node --test ".test/*.test.js"

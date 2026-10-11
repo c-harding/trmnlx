@@ -297,6 +297,7 @@ Footprint: a `node:slim` image with sharp's prebuilt binaries. Measured on a Mac
 - `preact`, only for its JSX runtime (`jsxImportSource: "preact"`); JSX is bundled with esbuild. Our components (`Frame`, `Table`, …) are plain functions of their props, with no hooks or state, so nothing else from Preact is used. Tested: Satori 0.47.1 accepts Preact 11.0.1's elements, including function components
 - `yaml` for `devices.yaml`
 - TypeScript, for type checking only (`npm run check`, and the first step of `scripts/build`): esbuild strips the types when building and doesn't check them. `tsconfig.json` is strict; imports name the `.ts`/`.tsx` files themselves. Express, cookie-parser and Node have their types from `@types/*`; Satori's types refer to React's, which aren't installed, so `skipLibCheck` is on and Satori accepts any element
+- Tests: `npm test` (`scripts/test`) bundles `test/*.test.ts` with esbuild into `.test/` (gitignored) and runs them with Node's built-in test runner (`node:test`, no dependency). They cover logic that has edge cases, such as the source cache and the journeys' route rules; `npm run check` type-checks them along with `src/`.
 - Express 5 with `cookie-parser` (chosen over `node:http` and Fastify for its familiar routing, built-in body parsing and automatic handling of rejected async handlers)
 
 ## Alternatives considered
