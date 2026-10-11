@@ -1,7 +1,7 @@
 // The header the screens share: a bold title over a rule, with anything else on the right (e.g.
 // battery and clock). Not in src/screens/, where every file is built as a screen.
 import type { ComponentChildren } from "preact";
-import { batteryText, type Telemetry } from "../telemetry.ts";
+import { batteryLines, type Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
 
 // The space around the screens' content: above and below, and left and right
@@ -44,13 +44,18 @@ export function Header(props: { title: string; titleSize?: number; rule?: boolea
   );
 }
 
-/** The battery and the time, for the right of the header. */
+/** The battery, small with the voltage above the charge, and the time, for the right of the header. */
 export function BatteryAndClock(props: { telemetry: Telemetry | undefined; now: Date; timeZone: string }) {
   const { telemetry, now, timeZone } = props;
   return (
-    <div style={{ display: "flex", flexShrink: 0, alignItems: "baseline", fontSize: 20 }}>
-      {`${batteryText(telemetry)} · `}
-      <span style={{ fontWeight: 700, fontSize: 28, marginLeft: 6 }}>{formatTime(now, timeZone)}</span>
+    // Centred in the header's height (not on the title's baseline), the battery beside the clock
+    <div style={{ display: "flex", alignSelf: "center", flexShrink: 0, alignItems: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", marginRight: 10, fontSize: 16, lineHeight: 1.15 }}>
+        {batteryLines(telemetry).map((line, i) => (
+          <span key={i}>{line}</span>
+        ))}
+      </div>
+      <span style={{ fontWeight: 700, fontSize: 28 }}>{formatTime(now, timeZone)}</span>
     </div>
   );
 }

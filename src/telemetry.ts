@@ -88,6 +88,14 @@ export function batteryPercent(voltage: number) {
 }
 
 /** The battery line shown on screens, e.g. "Battery 3.92 V · ≈68%". */
+/** As batteryText, as two short lines: the voltage, then the charge (e.g. "3.92 V", "≈68%"). */
+export function batteryLines(telemetry: Telemetry | undefined): [string, string] {
+  const voltage = telemetry?.batteryVoltage;
+  if (voltage === undefined) return ["Battery", "unknown"];
+  const charging = telemetry?.charging || telemetry?.usbConnected ? " · charging" : "";
+  return [`${voltage.toFixed(2)} V`, `≈${batteryPercent(voltage)}%${charging}`];
+}
+
 export function batteryText(telemetry: Telemetry | undefined) {
   const voltage = telemetry?.batteryVoltage;
   if (voltage === undefined) return "Battery unknown";
