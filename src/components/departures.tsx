@@ -6,10 +6,11 @@ import { HEIGHT } from "../render.ts";
 import type { Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
 import { BatteryAndClock, ellipsis, Header, HEADER_GAP, HEADER_HEIGHT, PADDING_X, PADDING_Y } from "./header.tsx";
+import { textSize } from "./type.ts";
 
-const ROW_HEIGHT = 44;
+const ROW_HEIGHT = 38;
 // A row with notes gets a second, smaller line under the destination
-const NOTE_ROW_HEIGHT = 64;
+const NOTE_ROW_HEIGHT = 54;
 // Fixed heights of everything around the rows, so the space left for rows can be calculated
 const ROWS_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP;
 // The thicker line above pinned departures
@@ -61,7 +62,7 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
   const prefix = PLAIN_PREFIXES[kind];
   const split = splitNumber(line);
   // An array rather than a fragment, which Satori can't render
-  const label = split ? [split[0], <span key="number" style={{ fontSize: 20, marginLeft: "0.25em" }}>{split[1]}</span>] : line;
+  const label = split ? [split[0], <span key="number" style={{ ...textSize(16), marginLeft: "0.25em" }}>{split[1]}</span>] : line;
   const long = isLongLine(line);
   // Long labels wrap (a block of inline text), cut off with "…" after two lines
   const wrapping = long
@@ -69,7 +70,7 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
         display: "block",
         maxWidth: LINE_MAX_WIDTH,
         boxSizing: "border-box",
-        fontSize: 20,
+        ...textSize(16),
         lineHeight: 1.15,
         lineClamp: 2,
         overflow: "hidden",
@@ -82,7 +83,7 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
       {prefix ? (
         // The prefix stays beside the label, which wraps on its own in the remaining width
         <div style={{ display: "flex", alignItems: "baseline", ...(long ? { width: LINE_MAX_WIDTH } : {}) }}>
-          <span style={{ fontSize: 20, marginRight: 6, flexShrink: 0 }}>{prefix}</span>
+          <span style={{ marginRight: 6, flexShrink: 0 }}>{prefix}</span>
           <div style={{ display: "flex", alignItems: "baseline", fontWeight: 700, ...wrapping, ...(long && { flex: 1, minWidth: 0 }) }}>
             {label}
           </div>
@@ -137,7 +138,7 @@ function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone:
           {d.destination}
         </div>
         {d.messages.length > 0 && (
-          <div style={{ display: "flex", fontSize: 18, ...ellipsis }}>{d.messages.join(" · ")}</div>
+          <div style={{ display: "flex", ...textSize(16), ...ellipsis }}>{d.messages.join(" · ")}</div>
         )}
       </div>
       <div style={{ display: "flex", flexShrink: 0, marginLeft: 16, fontWeight: 700, ...TABULAR }}>
@@ -151,7 +152,7 @@ function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone:
           alignItems: "flex-end",
           width: NEXT_WIDTH,
           flexShrink: 0,
-          fontSize: 18,
+          ...textSize(16),
           lineHeight: 1.1,
           ...TABULAR,
         }}
@@ -292,8 +293,7 @@ export function DepartureBoard(props: {
         padding: `${PADDING_Y}px ${PADDING_X}px`,
         background: "#fff",
         color: "#000",
-        fontFamily: "Inter",
-        fontSize: 28,
+        ...textSize(21),
       }}
     >
       <Header title={title} titleSize={36}>
@@ -301,7 +301,7 @@ export function DepartureBoard(props: {
       </Header>
 
       {rows.length === 0 && extra.length === 0 ? (
-        <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>
+        <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", ...textSize(32) }}>
           {/* "No departures" only on fresh data: older data that has run out says nothing about now */}
           {fresh ? "No departures" : "Departures unavailable"}
         </div>

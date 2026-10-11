@@ -12,17 +12,28 @@ sharp.concurrency(1);
 export const WIDTH = 800;
 export const HEIGHT = 480;
 
-// The full static Inter fonts (scripts/build copies assets/fonts next to the server). Not the
-// variable font, which Satori fails to read, and not the Google Fonts subsets, which lack symbols
-// such as ≈ and →.
-const loadFont = async (file: string, weight: FontWeight): Promise<Font> => ({
-  name: "Inter",
+// The full static Inter fonts (scripts/build copies assets/fonts next to the server), for text of
+// 32 px and more. Not the variable font, which Satori fails to read, and not the Google Fonts
+// subsets, which lack symbols such as ≈ and →.
+//
+// Smaller text uses TRMNL's pixel fonts (see `pixelFont` in components/type.ts), each drawn on a
+// pixel grid at one size: 12, 16 and 21 px. They stay crisp in black and white, where Inter's
+// anti-aliased edges are cut off unevenly.
+const loadFont = async (name: string, file: string, weight: FontWeight): Promise<Font> => ({
+  name,
   weight,
   style: "normal",
   data: await readFile(new URL(`./fonts/${file}`, import.meta.url)),
 });
 
-const fonts = await Promise.all([loadFont("Inter-Regular.ttf", 400), loadFont("Inter-Bold.ttf", 700)]);
+const fonts = await Promise.all([
+  loadFont("Inter", "Inter-Regular.ttf", 400),
+  loadFont("Inter", "Inter-Bold.ttf", 700),
+  ...[12, 16, 21].flatMap((size) => [
+    loadFont(`TRMNL${size}`, `TRMNL${size}-Regular.ttf`, 400),
+    loadFont(`TRMNL${size}`, `TRMNL${size}-Bold.ttf`, 700),
+  ]),
+]);
 
 /**
  * Renders a layout to a PNG the display can show, 800 × 480. The firmware picks its display mode

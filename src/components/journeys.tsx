@@ -5,19 +5,20 @@ import { allowedOnRoute, type Route, type Rule } from "../journey-routes.ts";
 import type { Journey, JourneyLeg, JourneysResult } from "../sources/transitous.ts";
 import { formatTime } from "../time.ts";
 import { ellipsis } from "./header.tsx";
+import { textSize } from "./type.ts";
 
 
 // Digits of equal width (Inter's tabular figures), so times line up
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
-/** Font sizes and spacing: "large" for a whole screen of journeys, "small" for a panel. */
+/** Font sizes (see type.ts) and spacing: "large" for a whole screen of journeys, "small" for a panel. */
 const SIZES = {
   // `struck`: whether the departure → arrival line shows planned times struck through when they
   // differ (the rides always do); a narrow panel has no room for them
   // `direct`: the one line of a direct connection
   // `compact`: a connection with changes as one line per ride (as direct ones), so they're all short
-  large: { times: 28, direct: 28, summary: 22, rides: 20, padding: 10, gap: 6, empty: 32, struck: true, compact: false },
-  small: { times: 22, direct: 18, summary: 16, rides: 16, padding: 6, gap: 3, empty: 20, struck: false, compact: true },
+  large: { times: 21, direct: 21, summary: 16, rides: 16, padding: 10, gap: 6, empty: 32, struck: true, compact: false },
+  small: { times: 21, direct: 16, summary: 16, rides: 16, padding: 6, gap: 3, empty: 21, struck: false, compact: true },
 } as const;
 export type JourneySize = keyof typeof SIZES;
 
@@ -106,7 +107,7 @@ function RideRow(props: { leg: JourneyLeg; timeZone: string; size: JourneySize; 
         flexWrap: wraps ? "wrap" : "nowrap",
         alignItems: "baseline",
         justifyContent: "space-between",
-        fontSize: sizes.direct,
+        ...textSize(sizes.direct),
       }}
     >
       <div style={{ display: "flex", alignItems: "baseline", ...(wraps ? { flexShrink: 0 } : { minWidth: 0 }), ...TABULAR }}>
@@ -121,7 +122,7 @@ function RideRow(props: { leg: JourneyLeg; timeZone: string; size: JourneySize; 
         {changeAt && <div style={{ display: "flex", minWidth: 0, marginLeft: "0.4em", ...ellipsis }}>{changeAt}</div>}
       </div>
       {duration !== undefined && (
-        <div style={{ display: "flex", flexShrink: 0, marginLeft: "auto", paddingLeft: 8, whiteSpace: "nowrap", fontSize: sizes.summary }}>
+        <div style={{ display: "flex", flexShrink: 0, marginLeft: "auto", paddingLeft: 8, whiteSpace: "nowrap", ...textSize(sizes.summary) }}>
           {formatDuration(duration)}
         </div>
       )}
@@ -171,17 +172,17 @@ function JourneyBlock({ journey, timeZone, size }: { journey: Journey; timeZone:
   return (
     <div style={block}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "baseline", fontSize: sizes.times, fontWeight: 700, ...TABULAR }}>
+        <div style={{ display: "flex", alignItems: "baseline", ...textSize(sizes.times), fontWeight: 700, ...TABULAR }}>
           <Time expected={first.departure} planned={first.plannedDeparture} timeZone={timeZone} struck={sizes.struck} />
           <span style={{ margin: "0 0.3em", fontWeight: 400 }}>→</span>
           <Time expected={last.arrival} planned={last.plannedArrival} timeZone={timeZone} struck={sizes.struck} />
         </div>
-        <div style={{ display: "flex", flexShrink: 0, marginLeft: 8, whiteSpace: "nowrap", fontSize: sizes.summary }}>
+        <div style={{ display: "flex", flexShrink: 0, marginLeft: 8, whiteSpace: "nowrap", ...textSize(sizes.summary) }}>
           {`${formatDuration(journey.arrival - journey.departure)} · ${changes}`}
         </div>
       </div>
       {/* The rides, wrapping onto further lines if needed */}
-      <div style={{ display: "flex", flexWrap: "wrap", fontSize: sizes.rides, marginTop: sizes.gap, ...TABULAR }}>
+      <div style={{ display: "flex", flexWrap: "wrap", ...textSize(sizes.rides), marginTop: sizes.gap, ...TABULAR }}>
         {journey.legs.map((leg, i) => (
           <Leg key={i} leg={leg} last={i === journey.legs.length - 1} timeZone={timeZone} />
         ))}
@@ -211,7 +212,7 @@ export function JourneyList(props: {
   const journeys = worthShowing(upcoming, route, result, rules).slice(0, count);
   if (journeys.length === 0) {
     return (
-      <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: SIZES[size].empty }}>
+      <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", ...textSize(SIZES[size].empty) }}>
         {/* "No connections" only on fresh data: older data that has run out says nothing about now */}
         {result.journeys && !result.error ? "No connections" : "Connections unavailable"}
       </div>

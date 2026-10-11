@@ -1,6 +1,7 @@
 import { defineScreen } from "../define-screen.ts";
 import { batteryText } from "../telemetry.ts";
 import { untilNextMinute } from "../time.ts";
+import { textSize } from "../components/type.ts";
 
 export default defineScreen({
   /** Valid until the displayed time changes. */
@@ -28,7 +29,7 @@ export default defineScreen({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ display: "flex", fontSize: 72, fontWeight: 700 }}>{device.username}</div>
-          <div style={{ display: "flex", fontSize: 24, color: "#555", marginTop: 12 }}>{batteryText(telemetry)}</div>
+          <div style={{ display: "flex", ...textSize(21), color: "#555", marginTop: 12 }}>{batteryText(telemetry)}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", fontSize: 120, fontWeight: 700 }}>{time}</div>

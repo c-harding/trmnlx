@@ -3,6 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { batteryLines, type Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
+import { type LargeSize, textSize } from "./type.ts";
 
 // The space around the screens' content: above and below, and left and right
 export const PADDING_Y = 12;
@@ -22,7 +23,7 @@ export const ellipsis = { overflow: "hidden", whiteSpace: "nowrap", textOverflow
  * `rule` is false. Without it, the header ends where the rule would start, with no gap: the title
  * stays where it is, and what's below (e.g. a map) moves up.
  */
-export function Header(props: { title: string; titleSize?: number; rule?: boolean; children?: ComponentChildren }) {
+export function Header(props: { title: string; titleSize?: LargeSize; rule?: boolean; children?: ComponentChildren }) {
   const { title, titleSize = 32, rule = true, children } = props;
   return (
     <div
@@ -36,7 +37,7 @@ export function Header(props: { title: string; titleSize?: number; rule?: boolea
         ...(rule ? { borderBottom: `${RULE}px solid #000`, marginBottom: HEADER_GAP } : {}),
       }}
     >
-      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: children ? 16 : 0, fontSize: titleSize, fontWeight: 700, ...ellipsis }}>
+      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: children ? 16 : 0, ...textSize(titleSize), fontWeight: 700, ...ellipsis }}>
         {title}
       </div>
       {children}
@@ -49,13 +50,13 @@ export function BatteryAndClock(props: { telemetry: Telemetry | undefined; now: 
   const { telemetry, now, timeZone } = props;
   return (
     // Centred in the header's height (not on the title's baseline), the battery beside the clock
-    <div style={{ display: "flex", alignSelf: "center", flexShrink: 0, alignItems: "center" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", marginRight: 10, fontSize: 16, lineHeight: 1.15 }}>
+    <div style={{ display: "flex", alignSelf: "center", flexShrink: 0, alignItems: "center", ...textSize(21) }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", marginRight: 10, ...textSize(16), lineHeight: 1 }}>
         {batteryLines(telemetry).map((line, i) => (
           <span key={i}>{line}</span>
         ))}
       </div>
-      <span style={{ fontWeight: 700, fontSize: 28 }}>{formatTime(now, timeZone)}</span>
+      <span style={{ fontWeight: 700 }}>{formatTime(now, timeZone)}</span>
     </div>
   );
 }

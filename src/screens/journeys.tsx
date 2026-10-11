@@ -7,6 +7,7 @@ import { defineScreen } from "../define-screen.ts";
 import { parseRoute, parseRules, routeTitle, type Route, type Rule } from "../journey-routes.ts";
 import { loadJourneys, TRANSITOUS_CREDITS, type JourneysResult } from "../sources/transitous.ts";
 import { untilNextMinute } from "../time.ts";
+import { textSize } from "../components/type.ts";
 
 /** The routes that parse, at most MAX_ROUTES of them (the rest are logged and ignored). */
 function validRoutes(texts: string[]) {
@@ -38,7 +39,7 @@ function Panel(props: {
   const { title, route, rules, result, now, count, timeZone } = props;
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ display: "flex", fontSize: 20, fontWeight: 700, paddingBottom: 4, borderBottom: "1px solid #000", ...ellipsis }}>
+      <div style={{ display: "flex", ...textSize(21), fontWeight: 700, paddingBottom: 4, borderBottom: "1px solid #000", ...ellipsis }}>
         {title}
       </div>
       <JourneyList route={route} rules={rules} result={result} now={now} count={count} timeZone={timeZone} size="small" />
@@ -113,8 +114,7 @@ export default defineScreen({
           padding: `${PADDING_Y}px ${PADDING_X}px`,
           background: "#fff",
           color: "#000",
-          fontFamily: "Inter",
-          fontSize: 20,
+          ...textSize(21),
         }}
       >
         <Header title={header}>
@@ -140,7 +140,7 @@ export default defineScreen({
             size="large"
           />
         ) : (
-          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>No routes</div>
+          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", ...textSize(32) }}>No routes</div>
         ),
       );
     }

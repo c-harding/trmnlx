@@ -5,6 +5,7 @@ import { Header, HEADER_HEIGHT_WITHOUT_RULE, PADDING_X, PADDING_Y } from "../com
 import { defineScreen } from "../define-screen.ts";
 import { HEIGHT, WIDTH } from "../render.ts";
 import { loadMap } from "../sources/map.ts";
+import { textSize } from "../components/type.ts";
 
 // The header as on the other screens (without battery, clock or rule), with the same padding; the map
 // goes edge to edge below it, from where the rule would be
@@ -60,7 +61,7 @@ export default defineScreen({
             {/* Asked for wherever the map is shown: by OpenStreetMap's data licence (ODbL), by
                 OpenMapTiles' design licence (CC-BY 4.0), whose tile schema the data comes in, and
                 by OpenFreeMap, which serves the tiles (its TileJSON's attribution) */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", alignSelf: "center", flexShrink: 0, fontSize: 14, lineHeight: 1.25 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", alignSelf: "center", flexShrink: 0, ...textSize(12), lineHeight: 1.25 }}>
               <span>© OpenFreeMap</span>
               <span>© OpenMapTiles</span>
               <span>© OpenStreetMap</span>
@@ -70,7 +71,7 @@ export default defineScreen({
         {data.png ? (
           <img src={`data:image/png;base64,${data.png.toString("base64")}`} width={WIDTH} height={MAP_HEIGHT} />
         ) : (
-          <div style={{ display: "flex", flexGrow: 1, alignItems: "center", justifyContent: "center", fontSize: 22, padding: 40, textAlign: "center" }}>
+          <div style={{ display: "flex", flexGrow: 1, alignItems: "center", justifyContent: "center", ...textSize(21), padding: 40, textAlign: "center" }}>
             {`Map unavailable: ${data.error}`}
           </div>
         )}
