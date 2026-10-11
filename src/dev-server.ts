@@ -20,10 +20,41 @@ const screenInputs = Object.fromEntries(Object.entries(screens).map(([name, s]) 
 // Safe inside a <script>: no "</script>" can appear in the JSON
 const screenInputsJson = JSON.stringify(screenInputs).replaceAll("<", "\\u003c");
 
+// TRMNL's mark, as the firmware's loading screen shows it in its corner (src/loading.h there):
+// seven bars around a circle, each tilted 45° against its radius. Redrawn from the bitmap's
+// measurements rather than copied, matching it to within 1.3% of its pixels. While loading, one
+// bar at a time is black and the rest gray, going round clockwise (each bar's animation is
+// started part of the way through, by a negative delay).
+const MARK_BARS = 7;
+const MARK_CYCLE_S = 1.4;
+const LOADING_MARK = `<svg id="loading-mark" viewBox="0 0 86 86" aria-label="Rendering"><g transform="translate(42.6 43)">${Array.from(
+  { length: MARK_BARS },
+  (_bar, k) =>
+    `<rect x="-12.3" y="-6.2" width="24.6" height="12.4" transform="rotate(${(-165.6 + (k * 360) / MARK_BARS).toFixed(2)}) translate(29.5 0) rotate(-45.3)"` +
+    ` style="animation-delay: ${(((k - MARK_BARS) * MARK_CYCLE_S) / MARK_BARS).toFixed(2)}s"/>`,
+).join("")}</g></svg>`;
+
 const page = `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <title>TRMNL screen development</title>
+<style>
+/* One column as high as the window: the controls as high as they need, scrolling once they don't
+   fit; the Load button and info always visible, right above the preview, which is at the bottom.
+   The preview is as high as it can be, but gives up space first (its shrink factor is far larger)
+   down to half the page; only then do the controls shrink. (The factors add up to at least 1 on
+   purpose: below that, flex only takes away that fraction of the overflow.) */
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; }
+#controls { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 0 8px; }
+#bar { flex: none; margin-top: auto; padding: 8px; }
+#bar p { margin: 0; }
+#preview-area { flex: 0 1000 min(482px, 60vw); min-height: min(482px, 60vw, 50%); display: flex; container-type: size; overflow: auto; padding: 0 8px 8px; }
+/* At native size, it wants the preview's whole height, taking it from the controls down to half the
+   page as before, and scrolls beyond that */
+#preview-area:has(.native) { flex-basis: 482px; min-height: min(482px, 50%); }
+</style>
+<div id="controls">
 <h1>TRMNL screen development</h1>
 <form id="form">
 <p id="load" hidden><label>Load from devices.yaml <select id="load-select"></select></label> <span id="load-error"></span></p>
@@ -46,16 +77,43 @@ const page = `<!doctype html>
 <p><label>RSSI <input name="rssi" type="number" value="-60"></label></p>
 <p><label>FW-Version <input name="firmwareVersion" value="1.8.10"></label></p>
 </details>
-<p><button>Load</button></p>
 </form>
-<p id="info"></p>
-<p><img id="screen" width="800" height="480" alt="Rendered screen" style="border: 1px solid" hidden></p>
+</div>
+<div id="bar"><p><button form="form">Load</button> <span id="info"></span></p></div>
+<style>
+/* The preview, white like the screen; while a render runs (from 0.3 s on, so quick ones don't
+   flicker), it's white like the device's loading screen, with TRMNL's mark where that has it, one
+   bar black at a time */
+/* As big as fits the area's width and height, keeping 5:3, at most its native size; a click toggles
+   the native size (the area then scrolls) */
+/* margin-top: auto puts it at the bottom, like align-items: flex-end, but when it's too high for
+   the area (at native size) the margin becomes 0 and it overflows downwards, where it can be
+   scrolled to, rather than upwards out of reach */
+#preview { display: grid; grid-template: 1fr / 1fr; flex: none; margin-top: auto; width: min(802px, 100cqw, 100cqh * 5 / 3); aspect-ratio: 5 / 3; box-sizing: border-box; border: 1px solid; background: #fff; cursor: zoom-in; }
+#preview.native { width: 802px; cursor: zoom-out; }
+#preview img { display: block; grid-area: 1 / 1; width: 100%; height: 100%; }
+#preview.loading img { visibility: hidden; transition: visibility 0s 0.3s; }
+/* Where the device's loading screen has it (43 px, 25 px from the right, 23 px from the bottom),
+   scaled with the preview */
+/* In the preview's corner as on the device (43 px, 25 px from the right and 23 px from the bottom,
+   scaled with it: margins in % are of the width), on top of the image in the same grid cell. When
+   the preview is zoomed and that corner is scrolled out of view, it sticks to the visible part's
+   corner instead (sticky works for an element in the flow, hence the grid rather than absolute) */
+#loading-mark { grid-area: 1 / 1; align-self: end; justify-self: end; position: sticky; right: 8px; bottom: 8px; margin: 0 3.125% 2.875% 0; width: 5.375%; aspect-ratio: 1; opacity: 0; }
+#loading-mark rect { fill: #aaa; }
+#preview.loading #loading-mark { opacity: 1; transition: opacity 0s 0.3s; }
+#preview.loading #loading-mark rect { animation: ${MARK_CYCLE_S}s step-end infinite going-round; }
+@keyframes going-round { 0% { fill: #000; } ${(100 / MARK_BARS).toFixed(2)}% { fill: #aaa; } }
+</style>
+<div id="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Rendered screen" hidden>${LOADING_MARK}</div></div>
 <script>
 const SCREEN_INPUTS = ${screenInputsJson};
 const form = document.getElementById("form");
 const select = document.getElementById("screen-select");
 const inputsBox = document.getElementById("screen-inputs");
 const img = document.getElementById("screen");
+const preview = document.getElementById("preview");
+preview.addEventListener("click", () => preview.classList.toggle("native"));
 const info = document.getElementById("info");
 
 // One field per input of the selected screen, named "input.<name>"
@@ -182,7 +240,7 @@ async function render() {
   if (time) params.set("time", new Date(time).toISOString()); // the browser's time zone
   // Unchecked checkboxes are left out of form data, so send every screen boolean explicitly
   for (const box of inputsBox.querySelectorAll("input[type=checkbox]")) params.set(box.name, String(box.checked));
-  info.textContent = "Rendering…";
+  preview.classList.add("loading");
   let res, blob;
   try {
     res = await fetch("/render?" + params);
@@ -197,6 +255,8 @@ async function render() {
     info.textContent = "Error: could not reach the dev server (" + error.message + "); trying again";
     schedule(2);
     return;
+  } finally {
+    preview.classList.remove("loading");
   }
   if (img.src) URL.revokeObjectURL(img.src);
   img.src = URL.createObjectURL(blob);
