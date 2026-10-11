@@ -13,21 +13,31 @@ const TIMEOUT_MS = 15_000;
 const JOURNEY_MAX_AGE_MS = 5 * 60_000;
 // Journeys asked for per search: more than a screen shows, since some leave before the next search.
 // The same for every screen, so screens showing the same route share one search.
-const JOURNEYS_PER_SEARCH = 8;
+// Generous, since screens may leave out connections (e.g. ones their rules don't allow).
+const JOURNEYS_PER_SEARCH = 12;
 // A failed stop lookup is tried again after this long (a found stop is kept until restart)
 const LOOKUP_RETRY_MS = 30_000;
 
-export interface Stop {
+/** A place on the map: a stop on a ride, or a stop of a route. */
+export interface Point {
+  name: string;
+  lat: number;
+  lon: number;
+}
+
+export interface Stop extends Point {
   /** Transitous' stop ID, e.g. "de-DELFI_de:09162:2" */
   id: string;
-  name: string;
 }
 
 /** One ride in a journey (walks between rides are left out). */
 export interface JourneyLeg {
   /** e.g. "U2", "Bus 54", "RB54", "RJX 19950" */
   line: string;
-  /** Transitous' mode, e.g. "BUS", "SUBWAY", "REGIONAL_RAIL", "HIGHSPEED_RAIL" */
+  /**
+   * Transitous' mode, e.g. "BUS", "SUBWAY", "METRO" (S-Bahn), "REGIONAL_RAIL", "HIGHSPEED_RAIL";
+   * corrected where the data files long-distance services as regional (see correctedMode)
+   */
   mode: string;
   from: string;
   to: string;
@@ -39,6 +49,10 @@ export interface JourneyLeg {
   /** Whether the times come from live data */
   realTime: boolean;
   cancelled: boolean;
+  /** e.g. "Bayerische Regiobahn", "WESTbahn" */
+  operator: string;
+  /** Where it stops: where it's boarded, the stops in between, and where it's left */
+  stops: Point[];
 }
 
 export interface Journey {
@@ -53,6 +67,8 @@ export interface JourneysResult {
   /** The stops as Transitous names them; undefined if they couldn't be looked up */
   from?: string;
   to?: string;
+  /** All the route's stops in order (from, via stops, to); undefined if one couldn't be looked up */
+  stops?: Stop[];
   /** Earliest first; undefined if a lookup or the search failed */
   journeys?: Journey[];
   error?: Error;
@@ -63,6 +79,14 @@ interface TransitousPlace {
   type?: string;
   id?: string;
   name?: string;
+  lat?: number;
+  lon?: number;
+}
+
+interface TransitousStopPlace {
+  name: string;
+  lat: number;
+  lon: number;
 }
 
 interface TransitousLeg {
@@ -71,8 +95,9 @@ interface TransitousLeg {
   /** The train number, e.g. "000965" */
   tripShortName?: string;
   agencyName?: string;
-  from: { name: string };
-  to: { name: string };
+  from: TransitousStopPlace;
+  to: TransitousStopPlace;
+  intermediateStops?: TransitousStopPlace[];
   startTime: string;
   scheduledStartTime?: string;
   endTime: string;
@@ -138,7 +163,7 @@ export const lookupStop = defineSource({
       const stop = stops.find((r) => r.name?.toLowerCase() === name.toLowerCase()) ?? stops[0];
       if (!stop) throw new Error(`Transitous knows no stop called ${name}`);
       console.log(`Transitous stop ${JSON.stringify(name)} is ${stop.name} (${stop.id})`);
-      return { id: stop.id!, name: stop.name ?? name };
+      return { id: stop.id!, name: stop.name ?? name, lat: Number(stop.lat), lon: Number(stop.lon) };
     } catch (error) {
       console.error(`Looking up Transitous stop ${name} failed: ${asError(error).message}`);
       return null;
@@ -146,6 +171,18 @@ export const lookupStop = defineSource({
   },
   maxAge: (stop) => (stop ? Infinity : LOOKUP_RETRY_MS),
 });
+
+/**
+ * The mode, corrected for operators of long-distance services that DB's data (DELFI) files as
+ * regional rail (route type 106) or plain buses: WESTbahn ("DRF (965)") and FlixTrain are
+ * long-distance trains, FlixBus a coach.
+ */
+function correctedMode(leg: TransitousLeg) {
+  const operator = leg.agencyName ?? "";
+  if (operator === "WESTbahn" || /flixtrain/i.test(operator)) return "LONG_DISTANCE";
+  if (/flix/i.test(operator)) return leg.mode === "BUS" || leg.mode === "COACH" ? "COACH" : "LONG_DISTANCE";
+  return leg.mode;
+}
 
 // "RB54 (79063)" → "RB54"; a bare number gets its kind ("Bus 54"), as the departures screen shows them
 function lineName(leg: TransitousLeg) {
@@ -167,7 +204,7 @@ function toJourney(itinerary: TransitousItinerary): Journey | undefined {
     .map(
       (leg): JourneyLeg => ({
         line: lineName(leg),
-        mode: leg.mode,
+        mode: correctedMode(leg),
         from: leg.from.name,
         to: leg.to.name,
         departure: Date.parse(leg.startTime),
@@ -176,6 +213,8 @@ function toJourney(itinerary: TransitousItinerary): Journey | undefined {
         plannedArrival: Date.parse(leg.scheduledEndTime ?? leg.endTime),
         realTime: Boolean(leg.realTime),
         cancelled: Boolean(leg.cancelled),
+        operator: leg.agencyName ?? "",
+        stops: [leg.from, ...(leg.intermediateStops ?? []), leg.to].map(({ name, lat, lon }) => ({ name, lat, lon })),
       }),
     );
   // A journey that is only walking isn't a connection
@@ -203,6 +242,7 @@ export const loadJourneys = defineSource({
     const fallBack = (error: Error): JourneysResult => ({
       from: from?.name ?? previous?.from,
       to: to?.name ?? previous?.to,
+      stops: previous?.stops,
       journeys: previous?.journeys,
       error,
     });
@@ -223,10 +263,10 @@ export const loadJourneys = defineSource({
         .map(toJourney)
         .filter((journey) => journey !== undefined)
         .sort((a, b) => a.departure - b.departure);
-      return { from: from!.name, to: to!.name, journeys };
+      return { from: from!.name, to: to!.name, stops: [from!, ...via.map((stop) => stop!), to!], journeys };
     } catch (error) {
       console.error(`Searching journeys from ${from!.name} to ${to!.name} failed: ${asError(error).message}`);
-      return fallBack(asError(error));
+      return { ...fallBack(asError(error)), stops: previous?.stops ?? [from!, ...via.map((stop) => stop!), to!] };
     }
   },
   // A failure is kept briefly, so a rate limit isn't hit again by every request

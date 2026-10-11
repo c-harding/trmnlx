@@ -1,6 +1,7 @@
 // Parts shared by the screens showing journeys (journeys, journey-panels). Not in src/screens/,
 // where every file is built as a screen.
 import type { ComponentChildren } from "preact";
+import { allowedOnRoute, type Route, type Rule } from "../journey-routes.ts";
 import type { Journey, JourneyLeg, JourneysResult } from "../sources/transitous.ts";
 import { batteryText, type Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
@@ -24,6 +25,24 @@ const SIZES = {
   small: { times: 22, direct: 18, summary: 16, rides: 16, padding: 6, gap: 3, empty: 20, struck: false, compact: true },
 } as const;
 export type JourneySize = keyof typeof SIZES;
+
+/** Whether another journey leaves no earlier, arrives no later and has no more changes (and isn't the same). */
+const dominates = (other: Journey, journey: Journey) =>
+  other !== journey &&
+  other.departure >= journey.departure &&
+  other.arrival <= journey.arrival &&
+  other.changes <= journey.changes &&
+  (other.departure > journey.departure || other.arrival < journey.arrival || other.changes < journey.changes);
+
+/**
+ * The journeys worth showing: only those the rules allow on the route (see journey-routes.ts), and
+ * of those none that another one beats (leaves later or arrives earlier, with no more changes).
+ * The rules come first, so a train that may not be used never hides one that may.
+ */
+function worthShowing(journeys: Journey[], route: Route, result: JourneysResult, rules: Rule[]) {
+  const allowed = journeys.filter((journey) => allowedOnRoute(journey, route, result.stops, rules));
+  return allowed.filter((journey) => !allowed.some((other) => dominates(other, journey)));
+}
 
 /** e.g. "2 h 05" or "13 mins" */
 function formatDuration(ms: number) {
@@ -170,16 +189,19 @@ function JourneyBlock({ journey, timeZone, size }: { journey: Journey; timeZone:
  * a second column, which is hidden off the right edge, so only whole connections are shown.
  */
 export function JourneyList(props: {
+  route: Route;
+  /** The screen's rules, applied on every stretch before the route's own */
+  rules: Rule[];
   result: JourneysResult;
   now: Date;
   count: number;
   timeZone: string;
   size: JourneySize;
 }) {
-  const { result, now, count, timeZone, size } = props;
+  const { route, rules, result, now, count, timeZone, size } = props;
   // The search is cached for a few minutes, so leave out journeys that have left since
   const upcoming = (result.journeys ?? []).filter((j) => j.departure >= now.getTime() - 30_000);
-  const journeys = upcoming.slice(0, count);
+  const journeys = worthShowing(upcoming, route, result, rules).slice(0, count);
   if (journeys.length === 0) {
     return (
       <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: SIZES[size].empty }}>

@@ -3,7 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { Header, JourneyList, PADDING_Y, ellipsis } from "../components/journeys.tsx";
 import { defineScreen } from "../define-screen.ts";
-import { parseRoute, routeTitle } from "../journey-routes.ts";
+import { parseRoute, parseRules, routeTitle, type Route, type Rule } from "../journey-routes.ts";
 import { loadJourneys, type JourneysResult } from "../sources/transitous.ts";
 import { untilNextMinute } from "../time.ts";
 
@@ -25,25 +25,41 @@ const COLUMNS: Record<number, number[][]> = {
 };
 const MAX_ROUTES = 4;
 
-function Panel(props: { title: string; result: JourneysResult; now: Date; count: number; timeZone: string }) {
-  const { title, result, now, count, timeZone } = props;
+function Panel(props: {
+  title: string;
+  route: Route;
+  rules: Rule[];
+  result: JourneysResult;
+  now: Date;
+  count: number;
+  timeZone: string;
+}) {
+  const { title, route, rules, result, now, count, timeZone } = props;
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <div style={{ display: "flex", fontSize: 20, fontWeight: 700, paddingBottom: 4, borderBottom: "1px solid #000", ...ellipsis }}>
         {title}
       </div>
-      <JourneyList result={result} now={now} count={count} timeZone={timeZone} size="small" />
+      <JourneyList route={route} rules={rules} result={result} now={now} count={count} timeZone={timeZone} size="small" />
     </div>
   );
 }
 
 export default defineScreen({
   inputs: {
-    // One route per line (see journey-routes.ts), up to four, placed column by column (see COLUMNS)
+    // One route per line (see journey-routes.ts), up to four, placed column by column (see COLUMNS).
+    // Long-distance trains only from Kufstein: the Klimaticket covers them in Austria.
     routes: {
       type: "list",
-      default: ["Marienplatz -> München Ost", "Marienplatz -> München Hbf", "Marienplatz -> (Raubling) -> Innsbruck Hbf"],
+      default: [
+        "Marienplatz -> München Ost",
+        "Marienplatz -> München Hbf",
+        "Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]> Innsbruck Hbf",
+      ],
     },
+    // Which transport counts on every route, before each stretch's own rules (see journey-routes.ts):
+    // no long-distance trains or coaches, as with a Deutschlandticket
+    rules: { type: "string", default: "deny:longdistance" },
     // At most this many per route, as many as fit
     count: { type: "number", default: 5 },
   },
@@ -67,6 +83,7 @@ export default defineScreen({
   prepare: ({ inputs, dependencies: { journeys } }) => ({
     // Each route with its journeys, in the order of the input
     routes: validRoutes(inputs.routes).map((route, i) => ({ route, result: journeys[i] })),
+    rules: parseRules(inputs.rules, "the screen's rules"),
   }),
 
   /** Valid until the clock changes. */
@@ -102,7 +119,15 @@ export default defineScreen({
       return page(
         only ? routeTitle(only.route.stops) : "Connections",
         only ? (
-          <JourneyList result={only.result} now={now} count={inputs.count} timeZone={timeZone} size="large" />
+          <JourneyList
+            route={only.route}
+            rules={data.rules}
+            result={only.result}
+            now={now}
+            count={inputs.count}
+            timeZone={timeZone}
+            size="large"
+          />
         ) : (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>No routes</div>
         ),
@@ -115,7 +140,9 @@ export default defineScreen({
     const panel = (i: number) => {
       const { route, result } = routes[i];
       const title = sameStart ? `→ ${routeTitle(route.stops.slice(1))}` : routeTitle(route.stops);
-      return <Panel title={title} result={result} now={now} count={inputs.count} timeZone={timeZone} />;
+      return (
+        <Panel title={title} route={route} rules={data.rules} result={result} now={now} count={inputs.count} timeZone={timeZone} />
+      );
     };
     const column = (indexes: number[], last: boolean) => (
       <div
