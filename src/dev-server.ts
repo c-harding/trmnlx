@@ -37,6 +37,12 @@ body { display: flex; flex-direction: column; }
 #controls { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 0 8px; }
 #bar { flex: none; margin-top: auto; padding: 8px; }
 #bar p { margin: 0; }
+/* "Load" (bold) when the settings changed since the last render, otherwise "Reload": both words in the
+   button's one grid cell, the other one hidden, so it's always as wide as the wider and never moves */
+#load-button { display: inline-grid; justify-items: center; }
+#load-button > span { grid-area: 1 / 1; }
+#load-button .load { font-weight: bold; }
+#load-button:not(.changed) .load, #load-button.changed .reload { visibility: hidden; }
 #preview-area { flex: 0 1000 min(482px, 60vw); min-height: min(482px, 60vw, 50%); display: flex; container-type: size; overflow: auto; padding: 0 8px 8px; }
 /* At native size, it wants the preview's whole height, taking it from the controls down to half the
    page as before, and scrolls beyond that */
@@ -69,7 +75,7 @@ body { display: flex; flex-direction: column; }
 </details>
 </form>
 </div>
-<div id="bar"><p><button form="form">Load</button> <span id="info"></span></p></div>
+<div id="bar"><p><button form="form" id="load-button" class="changed"><span class="load">Load</span><span class="reload">Reload</span></button> <span id="info"></span></p></div>
 <style>
 /* The preview, white like the screen, as big as fits the area's width and height, keeping 5:3, at
    most its native size; a click toggles the native size (the area then scrolls). margin-top: auto
@@ -136,6 +142,7 @@ select.addEventListener("change", () => {
   setUrl("screen", select.value);
   setUrl("entry", "");
   showScreenInputs();
+  markChanged();
 });
 
 // Entries from devices.yaml (none without the file): loading one fills the form, which then works
@@ -162,6 +169,7 @@ function loadEntry(key) {
   }
   setUrl("screen", entry.screen);
   setUrl("entry", key);
+  markChanged();
 }
 
 async function loadConfig() {
@@ -201,6 +209,24 @@ async function loadConfig() {
 loadSelect.addEventListener("change", () => loadEntry(loadSelect.value));
 loadConfig();
 
+// The form's settings, as sent for a render
+function settings() {
+  const params = new URLSearchParams(new FormData(form));
+  const time = form.elements.time.value;
+  if (time) params.set("time", new Date(time).toISOString()); // the browser's time zone
+  // Unchecked checkboxes are left out of form data, so send every screen boolean explicitly
+  for (const box of inputsBox.querySelectorAll("input[type=checkbox]")) params.set(box.name, String(box.checked));
+  return params;
+}
+
+// The button says "Load" while the form differs from the last render's settings (also before the
+// first, and when a change is undone it says "Reload" again); either way, it renders
+const loadButton = document.getElementById("load-button");
+let rendered;
+const markChanged = () => loadButton.classList.toggle("changed", settings().toString() !== rendered);
+form.addEventListener("input", markChanged);
+form.addEventListener("change", markChanged);
+
 // Renders the screen with the form's settings, and renders it again when its X-TTL runs out (as the
 // server's screen page does), unless the time is fixed. Clicking Load renders straight away.
 let timer;
@@ -212,11 +238,8 @@ const schedule = (seconds) => {
 
 async function render() {
   clearTimeout(timer);
-  const params = new URLSearchParams(new FormData(form));
+  const params = settings();
   const time = form.elements.time.value;
-  if (time) params.set("time", new Date(time).toISOString()); // the browser's time zone
-  // Unchecked checkboxes are left out of form data, so send every screen boolean explicitly
-  for (const box of inputsBox.querySelectorAll("input[type=checkbox]")) params.set(box.name, String(box.checked));
   preview.classList.add("loading");
   let res, blob;
   try {
@@ -227,6 +250,8 @@ async function render() {
       return;
     }
     blob = await res.blob();
+    rendered = params.toString();
+    markChanged();
   } catch (error) {
     // The request itself failed, e.g. because the dev server is restarting after a change
     info.textContent = "Error: could not reach the dev server (" + error.message + "); trying again";
@@ -245,13 +270,22 @@ async function render() {
   const ttl = header === null ? NaN : Number(header);
   // A fixed time gives the same image again
   const again = !time && Number.isFinite(ttl);
+  // How long it stays valid, and when it's rendered again: not with the time overridden (the same
+  // time gives the same image), nor when it never changes
+  const validity =
+    header === "Infinity"
+      ? "never changes"
+      : time
+        ? "time overridden: not refreshed"
+        : Number.isFinite(ttl)
+          ? "valid for " + ttl + " s, again at " + new Date(Date.now() + ttl * 1000).toLocaleTimeString()
+          : "ttl unknown";
   info.textContent = [
-    "ttl " + (header === "Infinity" ? "∞ (never changes)" : header + " s"),
+    validity,
     res.headers.get("X-Colors") + " colours",
     blob.size + " bytes",
     "data loaded in " + res.headers.get("X-Load-Ms") + " ms",
     "rendered in " + res.headers.get("X-Render-Ms") + " ms",
-    again ? "again at " + new Date(Date.now() + ttl * 1000).toLocaleTimeString() : "not again by itself",
   ].join(" · ");
   if (again) schedule(ttl);
 }

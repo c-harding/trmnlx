@@ -5,9 +5,12 @@ import type { Credit } from "./define-screen.ts";
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** The credits line for a page's first load: the links, separated by " · "; hidden without any. */
+/**
+ * The credits line for a page's first load: the links, separated by " · ". Always a line high, also
+ * without any, so the page doesn't move when the screen shown changes.
+ */
 export const creditsHtml = (credits: Credit[]) =>
-  `<p id="credits"${credits.length ? "" : " hidden"}>${credits
+  `<p id="credits" style="min-height: 1lh">${credits
     .map(({ text, url }) => `<a href="${escapeHtml(url)}">${escapeHtml(text)}</a>`)
     .join(" · ")}</p>`;
 
@@ -26,5 +29,4 @@ function showCredits(credits) {
       return i ? [" · ", link] : [link];
     }),
   );
-  line.hidden = credits.length === 0;
 }`;

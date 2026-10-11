@@ -47,7 +47,8 @@ test("otherwise it says when the device will pick it up", () => {
 
 test("credits are linked under the preview, escaped", () => {
   const credits = [{ text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" }];
-  assert.equal(creditsHtml(credits), '<p id="credits"><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a></p>');
-  assert.equal(creditsHtml([]), '<p id="credits" hidden></p>');
-  assert.equal(creditsHtml([{ text: "<b>", url: '"x' }]), '<p id="credits"><a href="&#34;x">&#60;b&#62;</a></p>');
+  assert.equal(creditsHtml(credits), '<p id="credits" style="min-height: 1lh"><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a></p>');
+  // Without any, still there, keeping its line
+  assert.equal(creditsHtml([]), '<p id="credits" style="min-height: 1lh"></p>');
+  assert.equal(creditsHtml([{ text: "<b>", url: '"x' }]), '<p id="credits" style="min-height: 1lh"><a href="&#34;x">&#60;b&#62;</a></p>');
 });
