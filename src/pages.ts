@@ -69,14 +69,31 @@ export const screenPage = (name: string, status: PlaylistStatus) => {
     `TRMNL: ${name}`,
     `${playlist}
 <p id="caption">${escapeHtml(caption)}</p>
-<p><img id="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p>
-<noscript><p><img src="/screen.png" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p></noscript>
-<form method="post" action="/logout"><button>Log out</button></form>
+<style>
+/* The page is a column as high as the window, its lines evenly spaced; the preview shrinks to the
+   height the other lines leave */
+html { height: 100%; }
+body { height: 100%; margin: 0; padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; gap: 1em; }
+p { margin: 0; }
+.preview { flex: 0 1 auto; min-height: 0; }
+/* At the bottom of the window, or of the page once it scrolls */
+.footer { margin-top: auto; }
+/* The image fits that space, shrunk and never enlarged (at most its own 480 pixels high), its
+   space kept while it loads; a click toggles its actual size, with the page scrolling */
+.screen { display: block; width: 100%; height: 100%; max-height: 480px; object-fit: scale-down; object-position: left top; cursor: zoom-in; }
+body.actual-size { height: auto; min-height: 100%; }
+body.actual-size .preview { flex: none; }
+body.actual-size .screen { width: auto; height: auto; max-height: none; cursor: zoom-out; }
+</style>
+<p class="preview"><img id="screen" class="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p>
+<noscript><p class="preview"><img src="/screen.png" class="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p></noscript>
+<form method="post" action="/logout" class="footer"><p>Logged in as: <strong>${escapeHtml(name)}</strong> <button>Log out</button></p></form>
 <script>
 // Fetches the screen, shows it, and fetches it again when its X-TTL (seconds) runs out, or soon
 // after the device's expected check-in (X-Check-In, in ms) if that's sooner, to update the text
 // from X-Status. An X-TTL of Infinity means the screen never changes: no further fetch then.
 const img = document.getElementById("screen");
+img.addEventListener("click", () => document.body.classList.toggle("actual-size"));
 async function refresh() {
   let delay = 30;
   try {
