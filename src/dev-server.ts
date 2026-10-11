@@ -87,8 +87,17 @@ select.addEventListener("change", () => {
   showScreenInputs();
 });
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
+// Renders the screen with the form's settings, and renders it again when its X-TTL runs out (as the
+// server's screen page does), unless the time is fixed. Clicking Load renders straight away.
+let timer;
+const schedule = (seconds) => {
+  clearTimeout(timer);
+  // setTimeout treats delays beyond 2^31 - 1 ms (about 24.8 days), and Infinity, as 0
+  if (Number.isFinite(seconds)) timer = setTimeout(render, Math.min(Math.max(seconds, 1) * 1000, 2 ** 31 - 1));
+};
+
+async function render() {
+  clearTimeout(timer);
   const params = new URLSearchParams(new FormData(form));
   const time = form.elements.time.value;
   if (time) params.set("time", new Date(time).toISOString()); // the browser's time zone
@@ -99,24 +108,38 @@ form.addEventListener("submit", async (event) => {
   try {
     res = await fetch("/render?" + params);
     if (!res.ok) {
+      // Not again by itself: the settings need fixing
       info.textContent = "Error: " + (await res.text());
       return;
     }
     blob = await res.blob();
   } catch (error) {
-    // The request itself failed, e.g. because the dev server isn't running
-    info.textContent = "Error: could not reach the dev server (" + error.message + ")";
+    // The request itself failed, e.g. because the dev server is restarting after a change
+    info.textContent = "Error: could not reach the dev server (" + error.message + "); trying again";
+    schedule(2);
     return;
   }
   if (img.src) URL.revokeObjectURL(img.src);
   img.src = URL.createObjectURL(blob);
   img.hidden = false;
+  // Number(null) would be 0, so a missing header needs its own check
+  const header = res.headers.get("X-TTL");
+  const ttl = header === null ? NaN : Number(header);
+  // A fixed time gives the same image again
+  const again = !time && Number.isFinite(ttl);
   info.textContent = [
-    "ttl " + (res.headers.get("X-TTL") === "Infinity" ? "∞ (never changes)" : res.headers.get("X-TTL") + " s"),
+    "ttl " + (header === "Infinity" ? "∞ (never changes)" : header + " s"),
     res.headers.get("X-Colors") + " colours",
     blob.size + " bytes",
     "rendered in " + res.headers.get("X-Render-Ms") + " ms",
+    again ? "again at " + new Date(Date.now() + ttl * 1000).toLocaleTimeString() : "not again by itself",
   ].join(" · ");
+  if (again) schedule(ttl);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  render();
 });
 </script>
 </html>
