@@ -1,13 +1,16 @@
 // What the server remembers about each device: which of its playlists it shows (chosen on the screen
-// page), where it is in it (and since when, for the entry's `duration`), and when it last checked in. Saved across restarts in the device's file (see
-// state-file.ts), read on first need.
+// page), where it is in it (and since when, for the entry's `duration`), and when it last checked
+// in. Saved across restarts in the device's file (see state-file.ts), read on first need.
 //
 // The playlist moves through the entries that apply (their `when`, see conditions.ts): on a press,
 // when the current entry's `duration` is up, or when it stops applying. A window that starts doesn't
-// interrupt the current entry. When none applies, the device shows its default screen.
+// interrupt the current entry. When none applies, the device shows its default screen. It moves in
+// rounds, each entry once: in the playlist's order, except that shuffled entries get a new random
+// order each round (see shuffle.ts).
 import { applies, earliest, inTimeZone, nextChange } from "./conditions.ts";
 import { canonicalKey } from "./define-source.ts";
 import type { DevicePlaylist, PlaylistEntry } from "./playlists.ts";
+import { fitsRound, inOrder, isShuffled, newRound } from "./shuffle.ts";
 import { savedState, stateChanged, type StateDevice } from "./state-file.ts";
 
 interface DeviceState {
@@ -25,6 +28,18 @@ interface DeviceState {
   checkIn?: { at: Date; refreshRate: number; shown: number | undefined };
   /** The last button press handled: its wake (Wake-Time), and when */
   press?: { wake: string; at: Date };
+  /**
+   * For a playlist with shuffled entries: the order of the round being played, and of those either
+   * side of it, so the next entry is known ahead (for warming) and going back retraces the way
+   */
+  rounds?: Rounds;
+}
+
+/** Rounds of entries' indices, each entry once in each. */
+interface Rounds {
+  previous: number[];
+  current: number[];
+  next: number[];
 }
 
 /** What this module needs of a device. */
@@ -51,10 +66,25 @@ export const activePlaylist = (device: PlaylistDevice) => device.playlists[state
 // The entries of the playlist the device shows
 const entriesOf = (device: PlaylistDevice) => activePlaylist(device).entries;
 
-// Saved state: the playlist shown (by name), its current entry and the last check-in, with each entry
-// saved as its index, screen and inputs. After a restart with a changed playlist, an entry is found
+/** New rounds for a playlist, or none if its order is fixed. */
+function startRounds(playlist: PlaylistEntry[]): Rounds | undefined {
+  if (!isShuffled(playlist)) return undefined;
+  const current = newRound(playlist);
+  return { previous: newRound(playlist, { before: current }), current, next: newRound(playlist, { after: current }) };
+}
+
+/** The rounds the device plays: of a fixed order, the playlist's order each time. */
+function roundsOf(device: PlaylistDevice): Rounds {
+  const state = stateOf(device);
+  if (state.rounds) return state.rounds;
+  const order = inOrder(entriesOf(device));
+  return { previous: order, current: order, next: order };
+}
+
+// Saved state: the playlist shown (by name), its current entry, the rounds of a shuffled one, and the
+// last check-in, with each entry saved as its index, screen and inputs. After a restart with a changed playlist, an entry is found
 // again by its screen and inputs; one that's gone counts as unknown. A playlist that's gone falls back
-// to `default`.
+// to `default`. Saved rounds that no longer fit the playlist start afresh.
 const SECTION = "playlist";
 
 const isObject = (value: unknown): value is Record<string, any> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -85,7 +115,15 @@ function restoreDevice(device: PlaylistDevice): DeviceState {
 export function restoreState(playlist: PlaylistEntry[], saved: unknown): Omit<DeviceState, "playlist"> {
   const record = isObject(saved) ? saved : {};
   const index = findEntry(playlist, record.entry);
-  const state: Omit<DeviceState, "playlist"> = { index: index ?? 0 };
+  const old = isObject(record.rounds) ? record.rounds : {};
+  const rounds = isShuffled(playlist)
+    ? fitsRound(playlist, old.previous) && fitsRound(playlist, old.current) && fitsRound(playlist, old.next)
+      ? { previous: old.previous, current: old.current, next: old.next }
+      : startRounds(playlist)
+    : undefined;
+  // Without a saved entry, the first of the round
+  const state: Omit<DeviceState, "playlist"> = { index: index ?? rounds?.current[0] ?? 0 };
+  if (rounds) state.rounds = rounds;
   // Only for the same entry, wherever it is now: one that's gone starts afresh
   const since = typeof record.since === "string" ? new Date(record.since) : undefined;
   if (index !== undefined && since && !Number.isNaN(since.getTime())) state.since = since;
@@ -100,12 +138,13 @@ export function restoreState(playlist: PlaylistEntry[], saved: unknown): Omit<De
 /** Schedules saving the device's state. */
 function changed(device: PlaylistDevice) {
   stateChanged(device, SECTION, () => {
-    const { index, since, checkIn } = stateOf(device);
+    const { index, since, checkIn, rounds } = stateOf(device);
     const { name, entries: playlist } = activePlaylist(device);
     return {
       playlist: name,
       entry: saveEntry(playlist, index % playlist.length),
       since,
+      rounds,
       checkIn: checkIn && {
         at: checkIn.at,
         refreshRate: checkIn.refreshRate,
@@ -115,9 +154,6 @@ function changed(device: PlaylistDevice) {
     };
   });
 }
-
-/** An index moved by `step` entries (1 forward, -1 back) in a list of `length`, wrapping around. */
-export const stepIndex = (index: number, length: number, step: number) => (((index + step) % length) + length) % length;
 
 // How far ahead to look for a change in whether entries apply; on the default screen, a device
 // wakes at least this often to look again
@@ -148,11 +184,19 @@ export function evaluate(device: PlaylistDevice, now: Date): { applying: boolean
   });
 }
 
-/** The next applying entry from `index` in a direction (1 or -1), wrapping around; undefined if none. */
-function stepApplying(index: number, step: number, applying: boolean[]) {
-  for (let k = 1; k <= applying.length; k++) {
-    const i = stepIndex(index, applying.length, step * k);
-    if (applying[i]) return i;
+/**
+ * The next applying entry from `index` in a direction (1 or -1), in the order the device plays
+ * them, and into which round: `shift` 1 for the next round, -1 for the previous, 0 for this one.
+ * Undefined if none applies. With only `index` applying, that's itself, a round on.
+ */
+function stepApplying(device: PlaylistDevice, index: number, step: number, applying: boolean[]) {
+  const { previous, current, next } = roundsOf(device);
+  const order = [...previous, ...current, ...next];
+  const { length } = current;
+  const at = length + current.indexOf(index);
+  for (let k = 1; k <= length; k++) {
+    const i = at + step * k;
+    if (applying[order[i]]) return { index: order[i], shift: i < length ? -1 : i >= 2 * length ? 1 : 0 };
   }
   return undefined;
 }
@@ -173,7 +217,8 @@ export function currentEntry(device: PlaylistDevice, now = new Date()) {
   const state = stateOf(device);
   const playlist = entriesOf(device);
   const index = state.index % playlist.length;
-  const applyingIndices = applying.flatMap((applies, i) => (applies ? [i] : []));
+  // In the order of the round, for the page's position ("2/3")
+  const applyingIndices = roundsOf(device).current.filter((i) => applying[i]);
   if (!applying[index]) {
     const check = earliest(changes) ?? new Date(now.getTime() + HORIZON_MS);
     return { entry: device.defaultScreen, index: -1, applying: applyingIndices, untilMove: secondsUntil(check, now) };
@@ -199,7 +244,7 @@ function moveOnIfDue(device: PlaylistDevice, now: Date, applying: boolean[]) {
   const playlist = entriesOf(device);
   const index = state.index % playlist.length;
   if (!applying[index]) {
-    const next = stepApplying(index, 1, applying);
+    const next = stepApplying(device, index, 1, applying);
     if (next !== undefined) moveTo(device, next, now);
     return;
   }
@@ -211,14 +256,22 @@ function moveOnIfDue(device: PlaylistDevice, now: Date, applying: boolean[]) {
     changed(device);
   } else if (now.getTime() >= state.since.getTime() + duration * 1000) {
     // The only one that applies stays (as if it had no duration)
-    const next = stepApplying(index, 1, applying);
-    if (next !== undefined && next !== index) moveTo(device, next, now);
+    const next = stepApplying(device, index, 1, applying);
+    if (next !== undefined && next.index !== index) moveTo(device, next, now);
   }
 }
 
-/** Shows an entry from now on, with its full duration. */
-function moveTo(device: PlaylistDevice, index: number, now: Date) {
+/** Shows an entry from now on, with its full duration, in the round `shift` from this one. */
+function moveTo(device: PlaylistDevice, { index, shift = 0 }: { index: number; shift?: number }, now: Date) {
   const state = stateOf(device);
+  const { rounds } = state;
+  if (rounds && shift !== 0) {
+    const playlist = entriesOf(device);
+    state.rounds =
+      shift > 0
+        ? { previous: rounds.current, current: rounds.next, next: newRound(playlist, { after: rounds.next }) }
+        : { previous: newRound(playlist, { before: rounds.previous }), current: rounds.previous, next: rounds.current };
+  }
   state.index = index;
   state.since = now;
   changed(device);
@@ -229,11 +282,11 @@ function moveTo(device: PlaylistDevice, index: number, now: Date) {
  * apply), for warming their data.
  */
 export function entriesNearby(device: PlaylistDevice, now = new Date()): PlaylistEntry[] {
-  const { entry, index, applying } = currentEntry(device, now);
+  const { entry, index } = currentEntry(device, now);
   if (index < 0) return [entry];
-  // Its place among the entries that apply, and the ones either side of it there
-  const at = applying.indexOf(index);
-  const near = new Set([index, applying[stepIndex(at, applying.length, 1)], applying[stepIndex(at, applying.length, -1)]]);
+  // The ones either side of it, in the order it plays
+  const { applying } = evaluate(device, now);
+  const near = new Set([index, stepApplying(device, index, 1, applying)?.index ?? index, stepApplying(device, index, -1, applying)?.index ?? index]);
   const playlist = entriesOf(device);
   return [...near].map((i) => playlist[i]);
 }
@@ -246,7 +299,7 @@ export function moveOn(device: PlaylistDevice, step: number, now = new Date()) {
   const { index } = currentEntry(device, now);
   if (index < 0) return;
   const { applying } = evaluate(device, now);
-  moveTo(device, stepApplying(index, step, applying) ?? index, now);
+  moveTo(device, stepApplying(device, index, step, applying) ?? { index }, now);
 }
 
 /**
@@ -264,8 +317,9 @@ export function choosePlaylist(device: PlaylistDevice, name: string, now = new D
     checkIn.shown = findEntry(device.playlists[chosen].entries, saveEntry(entriesOf(device), checkIn.shown));
   }
   state.playlist = chosen;
-  // The first entry, or if it doesn't apply, the next that does (see moveOnIfDue)
-  moveTo(device, 0, now);
+  state.rounds = startRounds(entriesOf(device));
+  // The first entry of the round, or if it doesn't apply, the next that does (see moveOnIfDue)
+  moveTo(device, { index: roundsOf(device).current[0] }, now);
 }
 
 // What woke the device when it was the button (KEY3 on the 7.5" DIY kit), by chip: Update-Source is the
@@ -305,8 +359,8 @@ export function pressButton(device: PlaylistDevice, step: number, wake: string |
   // ended): a short press shows that entry, going back is from the device's; either gets its full
   // duration
   // (From the default screen, a short press shows the entry that started applying since)
-  const back = step < 0 ? stepApplying(shown, -1, evaluate(device, at).applying) : undefined;
-  moveTo(device, back ?? chosen, at);
+  const back = step < 0 ? stepApplying(device, shown, -1, evaluate(device, at).applying) : undefined;
+  moveTo(device, back ?? { index: chosen }, at);
 }
 
 /** Records a check-in (/api/display): the refresh_rate the device was sent, and the index of its entry. */

@@ -296,3 +296,23 @@ test("a device's playlists are checked", () => {
   assert.match(error("travel"), /devices\[0\]\.playlists must be a mapping of names to playlists, or a list/);
   assert.match(error({ evening: [{ screen: "journeys", inputs: { count: "five" } }] }), /devices\[0\]\.playlists\.evening\[0\]\.inputs\.count must be/);
 });
+
+test("an include can be shuffled: its entries are tagged with where it's written, the outer one winning", () => {
+  const named = {
+    maps: [{ screen: "placeholder" }, { screen: "journeys" }],
+    all: [{ playlist: "maps", shuffle: true }, { screen: "mvg-departures" }],
+  };
+  const tags = (raw: unknown) => expandPlaylist(raw, "devices[0].playlist", named, screens).map((e) => [e.screen, e.shuffle]);
+  assert.deepEqual(tags([{ screen: "mvg-departures" }, { playlist: "maps", shuffle: true, duration: "10m" }, { playlist: "maps", shuffle: false }]), [
+    ["mvg-departures", undefined],
+    ["placeholder", "devices[0].playlist[1]"],
+    ["journeys", "devices[0].playlist[1]"],
+    ["placeholder", undefined],
+    ["journeys", undefined],
+  ]);
+  // Inside a shuffled include, a shuffled one is shuffled with the rest
+  assert.deepEqual(new Set(tags([{ playlist: "all", shuffle: true }]).map(([, tag]) => tag)), new Set(["devices[0].playlist[0]"]));
+  assert.deepEqual(tags(["all"]).map(([, tag]) => tag), ["playlists.all[0]", "playlists.all[0]", undefined]);
+  assert.match(errorOf(() => tags([{ playlist: "maps", shuffle: "yes" }])), /devices\[0\]\.playlist\[0\]\.shuffle must be true or false/);
+  assert.match(errorOf(() => tags([{ screen: "journeys", shuffle: true }])), /devices\[0\]\.playlist\[0\]\.shuffle: unknown field/);
+});

@@ -35,6 +35,7 @@ devices:
     #       zoom: 13  # A smaller city: closer in
     #   - playlist: travel  # Includes a named playlist; just `- travel` does too
     #     duration: 5m  # For the included entries without their own
+    #     shuffle: true  # Plays the included entries in a random order, new each round
     #   - screen: placeholder
     #     when: otherwise  # When nothing else in this list applies
     # playlists:  # Others to switch to on the screen page, after this playlist (offered as default)

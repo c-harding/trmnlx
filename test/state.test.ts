@@ -136,3 +136,17 @@ test("the playlist chosen comes back by name; one that's gone falls back to defa
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a shuffled playlist's rounds come back if they still fit, else start afresh", () => {
+  const playlist = [entry("clock"), ...["a", "b", "c"].map((title) => ({ ...entry("map", { title }), shuffle: "p[1]" }))];
+  const rounds = { previous: [0, 2, 1, 3], current: [0, 3, 1, 2], next: [0, 1, 3, 2] };
+  assert.deepEqual(restoreState(playlist, { entry: { index: 3, ...playlist[3] }, rounds }), { index: 3, rounds });
+  // The clock moved: these rounds don't fit any more
+  const fresh = restoreState(playlist, { rounds: { ...rounds, current: [3, 0, 1, 2] } });
+  assert.notDeepEqual(fresh.rounds, rounds);
+  assert.equal(fresh.rounds?.current[0], 0);
+  // Without a saved entry, it starts at the round's first
+  assert.equal(fresh.index, 0);
+  // A playlist without shuffled entries has none
+  assert.equal(restoreState([entry("clock")], { rounds }).rounds, undefined);
+});

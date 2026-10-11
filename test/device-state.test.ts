@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseHours } from "../src/conditions.ts";
-import { activePlaylist, buttonStep, choosePlaylist, currentEntry, expectedCheckIn, lastCheckIn, moveOn, pressButton, recordCheckIn, stepIndex } from "../src/device-state.ts";
+import { activePlaylist, buttonStep, choosePlaylist, currentEntry, entriesNearby, expectedCheckIn, lastCheckIn, moveOn, pressButton, recordCheckIn } from "../src/device-state.ts";
 
 const fallback = { screen: "placeholder", inputs: {} };
 // A device's playlists with only its own
@@ -12,14 +12,6 @@ const device = (mac: string, screens: string[]) => ({
   playlists: only(screens.map((screen) => ({ screen, inputs: {} }))),
   defaultScreen: fallback,
   timeZone: "Europe/Berlin",
-});
-
-test("stepIndex wraps around in both directions", () => {
-  assert.equal(stepIndex(0, 3, 1), 1);
-  assert.equal(stepIndex(2, 3, 1), 0);
-  assert.equal(stepIndex(0, 3, -1), 2);
-  assert.equal(stepIndex(0, 1, 1), 0);
-  assert.equal(stepIndex(0, 1, -1), 0);
 });
 
 test("a device starts at its first entry and moves on, wrapping around", () => {
@@ -298,4 +290,63 @@ test("after a switch, the entry the device got is looked for in the new playlist
   recordCheckIn(d, 300, -1, thu("07:03"));
   choosePlaylist(d, "default", thu("07:04"));
   assert.equal(lastCheckIn(d)?.shown, -1);
+});
+
+// A clock, then four maps shuffled
+const shuffled = (mac: string) => ({
+  mac,
+  username: mac,
+  playlists: only([
+    { screen: "clock", inputs: {} },
+    ...["a", "b", "c", "d"].map((title) => ({ screen: "map", inputs: { title }, shuffle: "p[1]" })),
+  ]),
+  defaultScreen: fallback,
+  timeZone: "Europe/Berlin",
+});
+const titleOf = (d: ReturnType<typeof shuffled>) => {
+  const { entry } = currentEntry(d);
+  return entry.screen === "map" ? (entry.inputs as { title: string }).title : entry.screen;
+};
+
+test("a shuffled playlist plays each entry once a round, the others in their places", () => {
+  const d = shuffled("AA:00:00:00:00:40");
+  for (let round = 0; round < 5; round++) {
+    const seen = [titleOf(d)];
+    for (let i = 0; i < 4; i++) {
+      moveOn(d, 1);
+      seen.push(titleOf(d));
+    }
+    assert.equal(seen[0], "clock");
+    assert.deepEqual(seen.slice(1).sort(), ["a", "b", "c", "d"]);
+    moveOn(d, 1);
+  }
+});
+
+test("Prev retraces the way through a shuffled playlist, also across rounds", () => {
+  const d = shuffled("AA:00:00:00:00:41");
+  const seen = [titleOf(d)];
+  for (let i = 0; i < 7; i++) {
+    moveOn(d, 1);
+    seen.push(titleOf(d));
+  }
+  for (let i = 6; i >= 0; i--) {
+    moveOn(d, -1);
+    assert.equal(titleOf(d), seen[i]);
+  }
+});
+
+test("the next and previous entries of a shuffled playlist are known ahead, for warming", () => {
+  const d = shuffled("AA:00:00:00:00:42");
+  // Through a whole round, so the next is in the round after
+  for (let i = 0; i < 6; i++) {
+    const near = entriesNearby(d);
+    assert.equal(near[0], currentEntry(d).entry);
+    moveOn(d, 1);
+    assert.ok(near.includes(currentEntry(d).entry));
+    moveOn(d, -1);
+    moveOn(d, -1);
+    assert.ok(near.includes(currentEntry(d).entry));
+    moveOn(d, 1);
+    moveOn(d, 1);
+  }
 });

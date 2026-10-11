@@ -18,6 +18,12 @@ export interface PlaylistEntry {
   duration?: number;
   /** When it applies; without it, always */
   when?: Condition;
+  /**
+   * From an include with `shuffle: true`: where that include is written, e.g.
+   * `devices[0].playlist[2]`. A run of entries with the same value is played in a random order,
+   * new each round (see device-state.ts)
+   */
+  shuffle?: string;
 }
 
 export class ConfigError extends Error {}
@@ -174,12 +180,15 @@ export function expandPlaylist(
       const screen = screenEntry(entry, at, screens);
       return { entries: screen ? [screen] : [], when };
     }
-    checkFields(entry, ["playlist", "duration", "when"], at);
-    const entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including, location);
-    if (entry.duration === undefined) return { entries, when };
+    checkFields(entry, ["playlist", "duration", "when", "shuffle"], at);
+    if (entry.shuffle !== undefined && typeof entry.shuffle !== "boolean") throw new ConfigError(`${at}.shuffle must be true or false`);
+    let entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including, location);
     // The include's duration, for its entries without their own
-    const duration = parseDuration(entry.duration, `${at}.duration`);
-    return { entries: entries.map((included) => (included.duration === undefined ? { ...included, duration } : included)), when };
+    const duration = entry.duration === undefined ? undefined : parseDuration(entry.duration, `${at}.duration`);
+    if (duration !== undefined) entries = entries.map((included) => (included.duration === undefined ? { ...included, duration } : included));
+    // Shuffled as one, also any shuffled includes inside it
+    if (entry.shuffle) entries = entries.map((included) => ({ ...included, shuffle: at }));
+    return { entries, when };
   });
   // When each item applies: its own `when`, and for an include any of its entries' conditions
   const appliesWhen = (item: (typeof items)[number]) =>
