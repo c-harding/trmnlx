@@ -66,10 +66,11 @@ app.get("/screen.png", async (req, res) => {
   if (!device) return res.status(401).type("text").send("Not logged in\n");
   // Before rendering, so the screens one press away load while this one renders
   warmDeviceScreens(device);
+  // Before rendering too, so it describes the same entry even if another request moves on meanwhile
+  const status = playlistStatus(device);
   const { png, ttl } = await renderDeviceScreen(device);
   // X-TTL tells the page's script when to fetch the next image; X-Status and X-Check-In keep its
   // text up to date (URI-encoded, as header values can't take all of Unicode)
-  const status = playlistStatus(device);
   res
     .type("png")
     .set({

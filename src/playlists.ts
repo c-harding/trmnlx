@@ -11,6 +11,8 @@ import { matchesInput, type InputDefinitions } from "./define-screen.ts";
 export interface PlaylistEntry {
   screen: string;
   inputs: Record<string, unknown>;
+  /** How long it stays before the playlist moves on (s); without it, until a press */
+  duration?: number;
 }
 
 export class ConfigError extends Error {}
@@ -19,7 +21,20 @@ export class ConfigError extends Error {}
 export type ScreenInputs = Record<string, InputDefinitions>;
 
 // Planned (see ARCHITECTURE.md), but not built yet: rejected rather than silently ignored
-const NOT_YET = ["when", "duration"];
+const NOT_YET = ["when"];
+
+// A device wakes at most every 5 seconds, and a playlist moving faster than the screen page polls
+// would skip entries there
+const MIN_DURATION = 10;
+
+/** Seconds from a duration such as `90s`, `10m`, `1h` or `1h30m`, at least MIN_DURATION. */
+export function parseDuration(value: unknown, where: string): number {
+  const match = typeof value === "string" ? /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(value.replaceAll(" ", "")) : null;
+  const seconds = match ? (Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) : 0;
+  if (!match || seconds === 0) throw new ConfigError(`${where} must be a duration such as 90s, 10m, 1h or 1h30m`);
+  if (seconds < MIN_DURATION) throw new ConfigError(`${where} must be at least ${MIN_DURATION}s`);
+  return seconds;
+}
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,8 +75,8 @@ function checkInputs(screen: string, inputs: unknown, where: string, screens: Sc
 }
 
 /**
- * A screen entry: `screen` and optionally `inputs`. `screenAt` is where the screen's name was given,
- * for messages; `notYet` the fields still to come there.
+ * A screen entry: `screen`, optionally `inputs`, and in a playlist `duration`. `screenAt` is where
+ * the screen's name was given, for messages; `notYet` the fields still to come there.
  */
 function screenEntry(
   entry: Record<string, unknown>,
@@ -69,13 +84,16 @@ function screenEntry(
   screens: ScreenInputs,
   screenAt = `${where}.screen`,
   notYet = NOT_YET,
+  fields = ["screen", "inputs", "duration"],
 ): PlaylistEntry {
   if (entry.playlist !== undefined) throw new ConfigError(`${where}: give either screen or playlist, not both`);
-  checkFields(entry, ["screen", "inputs"], where, notYet);
+  checkFields(entry, fields, where, notYet);
   if (typeof entry.screen !== "string" || !Object.hasOwn(screens, entry.screen)) {
     throw new ConfigError(`${screenAt} must be one of ${Object.keys(screens).join(", ")}`);
   }
-  return { screen: entry.screen, inputs: checkInputs(entry.screen, entry.inputs, where, screens) };
+  const result: PlaylistEntry = { screen: entry.screen, inputs: checkInputs(entry.screen, entry.inputs, where, screens) };
+  if (entry.duration !== undefined) result.duration = parseDuration(entry.duration, `${where}.duration`);
+  return result;
 }
 
 /**
@@ -97,8 +115,12 @@ export function expandPlaylist(
     if (typeof entry === "string" || typeof entry === "number") return namedPlaylist(nameOf(entry), at, named, screens, including);
     if (!isObject(entry)) throw new ConfigError(`${at} must be a playlist's name or an entry (screen: …, or playlist: …)`);
     if (entry.playlist === undefined || entry.screen !== undefined) return [screenEntry(entry, at, screens)];
-    checkFields(entry, ["playlist"], at);
-    return namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including);
+    checkFields(entry, ["playlist", "duration"], at);
+    const entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including);
+    if (entry.duration === undefined) return entries;
+    // The include's duration, for its entries without their own
+    const duration = parseDuration(entry.duration, `${at}.duration`);
+    return entries.map((included) => (included.duration === undefined ? { ...included, duration } : included));
   });
 }
 
@@ -138,8 +160,9 @@ export function readDefaultScreen(raw: unknown, screens: ScreenInputs): Playlist
   // Without one: the placeholder if there is one, otherwise the first screen found
   if (raw === undefined) return { screen: available.includes("placeholder") ? "placeholder" : available[0], inputs: {} };
   // Not planned to get `when` or `duration`: it's what shows when no entry applies
-  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, "defaultScreen", []);
-  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, "defaultScreen.screen", []);
+  const fields = ["screen", "inputs"];
+  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, "defaultScreen", [], fields);
+  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, "defaultScreen.screen", [], fields);
   throw new ConfigError(`defaultScreen must be a screen's name, or screen and inputs`);
 }
 

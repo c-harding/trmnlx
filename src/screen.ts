@@ -4,6 +4,7 @@ import { isScreen, type Screen, type ScreenDevice } from "./define-screen.ts";
 import { currentEntry, stepIndex } from "./device-state.ts";
 import { renderPng } from "./render.ts";
 import { telemetryFor, type Telemetry } from "./telemetry.ts";
+import { SAFETY_SECONDS } from "./time.ts";
 
 // Every file in src/screens/ is a screen, named after the file (helpers belong elsewhere), and
 // default-exports defineScreen({ ... }) (see define-screen.ts for what a screen has). The build
@@ -49,13 +50,16 @@ export async function renderScreen(screen: Screen, { device, now, telemetry, inp
 
 /**
  * The device's current screen as a PNG, how many seconds it stays valid, and which playlist entry
- * it is (its index): the current entry, with its inputs. Shared by the device API and the browser
+ * it is (its index): the current entry, with its inputs. Valid at most until the playlist moves on
+ * by itself (the entry's `duration`), with the same margin as a minute screen, so a device waking
+ * slightly early doesn't arrive just before the move. Shared by the device API and the browser
  * preview.
  */
 export async function renderDeviceScreen(device: Device) {
-  const { entry, index } = currentEntry(device);
-  const rendered = await renderScreen(screens[entry.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: entry.inputs });
-  return { ...rendered, index };
+  const now = new Date();
+  const { entry, index, untilMove } = currentEntry(device, now);
+  const rendered = await renderScreen(screens[entry.screen], { device, now, telemetry: telemetryFor(device), inputs: entry.inputs });
+  return { ...rendered, ttl: Math.min(rendered.ttl, untilMove + SAFETY_SECONDS), index };
 }
 
 /**

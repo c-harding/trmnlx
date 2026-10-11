@@ -89,3 +89,17 @@ test("telemetry comes back from what was saved", () => {
   assert.equal(restoreTelemetry({ rssi: -60 }), undefined);
   assert.equal(restoreTelemetry(undefined), undefined);
 });
+
+test("when the current entry started comes back only for the same entry", () => {
+  const playlist = [entry("mvg-departures"), entry("journeys")];
+  const since = "2026-10-12T10:00:00.000Z";
+  assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since }), { index: 1, since: new Date(since) });
+  // Its entry moved: found there, with its start time
+  assert.deepEqual(restoreState([entry("journeys"), entry("mvg-departures")], { entry: { index: 1, ...playlist[1] }, since }), {
+    index: 0,
+    since: new Date(since),
+  });
+  // Its entry is gone: the first entry starts afresh
+  assert.deepEqual(restoreState([entry("placeholder")], { entry: { index: 1, ...playlist[1] }, since }), { index: 0 });
+  assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since: "soon" }), { index: 1 });
+});

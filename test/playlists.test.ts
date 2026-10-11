@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { devicePlaylist, expandPlaylist, readDefaultScreen, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
+import { devicePlaylist, expandPlaylist, parseDuration, readDefaultScreen, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
 
 const screens: ScreenInputs = {
   placeholder: {},
@@ -94,9 +94,32 @@ test("inputs are checked against the screen's", () => {
   assert.match(check(["routes"]), /inputs must be a mapping/);
 });
 
-test("when and duration are rejected until they're built", () => {
+test("when is rejected until it's built", () => {
   assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "Mo-Fr" }], "p", {}, screens)), /p\[0\]\.when: not supported yet/);
-  assert.match(errorOf(() => expandPlaylist([{ playlist: "x", duration: "5m" }], "p", { x: [{ screen: "placeholder" }] }, screens)), /p\[0\]\.duration: not supported yet/);
+  assert.match(errorOf(() => expandPlaylist([{ playlist: "x", when: "Mo-Fr" }], "p", { x: [{ screen: "placeholder" }] }, screens)), /p\[0\]\.when: not supported yet/);
+});
+
+test("durations: 90s, 10m, 1h, 1h30m", () => {
+  assert.equal(parseDuration("90s", "d"), 90);
+  assert.equal(parseDuration("10m", "d"), 600);
+  assert.equal(parseDuration("1h", "d"), 3600);
+  assert.equal(parseDuration("1h30m", "d"), 5400);
+  for (const wrong of ["90", 90, "0m", "", "10 minutes", "1.5h"]) {
+    assert.match(errorOf(() => parseDuration(wrong, "p[0].duration")), /p\[0\]\.duration must be a duration such as 90s/);
+  }
+  assert.match(errorOf(() => parseDuration("5s", "p[0].duration")), /p\[0\]\.duration must be at least 10s/);
+});
+
+test("an entry's duration, or its include's for those without one", () => {
+  const named = readNamedPlaylists({ travel: [{ screen: "journeys", duration: "10m" }, { screen: "placeholder" }] }, screens);
+  assert.deepEqual(expandPlaylist([{ screen: "placeholder", duration: "90s" }, { playlist: "travel", duration: "2m" }, "travel"], "p", named, screens), [
+    { screen: "placeholder", inputs: {}, duration: 90 },
+    { screen: "journeys", inputs: {}, duration: 600 },
+    { screen: "placeholder", inputs: {}, duration: 120 },
+    { screen: "journeys", inputs: {}, duration: 600 },
+    { screen: "placeholder", inputs: {} },
+  ]);
+  assert.match(errorOf(() => readDefaultScreen({ screen: "placeholder", duration: "5m" }, screens)), /defaultScreen\.duration: unknown field/);
 });
 
 test("playlist names that YAML reads as numbers still work", () => {

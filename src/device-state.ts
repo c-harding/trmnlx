@@ -1,5 +1,5 @@
-// What the server remembers about each device: where it is in its playlist, and when it last checked
-// in. Saved across restarts in the device's file (see state-file.ts), read on first need.
+// What the server remembers about each device: where it is in its playlist (and since when, for the
+// entry's `duration`), and when it last checked in. Saved across restarts in the device's file (see state-file.ts), read on first need.
 import type { PlaylistEntry } from "./playlists.ts";
 import { canonicalKey } from "./define-source.ts";
 import { savedState, stateChanged, type StateDevice } from "./state-file.ts";
@@ -7,6 +7,8 @@ import { savedState, stateChanged, type StateDevice } from "./state-file.ts";
 interface DeviceState {
   /** The current playlist entry's index */
   index: number;
+  /** When the current entry started, for its `duration`: set by each move */
+  since?: Date;
   /**
    * The device's last /api/display, how long it was told to sleep (seconds), and the index of the
    * entry it was sent (unknown if the playlist changed since, across a restart)
@@ -57,7 +59,11 @@ export function findEntry(playlist: PlaylistEntry[], saved: unknown): number | u
 /** A device's state from what was saved (anything missing or broken is left out). */
 export function restoreState(playlist: PlaylistEntry[], saved: unknown): DeviceState {
   const record = isObject(saved) ? saved : {};
-  const state: DeviceState = { index: findEntry(playlist, record.entry) ?? 0 };
+  const index = findEntry(playlist, record.entry);
+  const state: DeviceState = { index: index ?? 0 };
+  // Only for the same entry, wherever it is now: one that's gone starts afresh
+  const since = typeof record.since === "string" ? new Date(record.since) : undefined;
+  if (index !== undefined && since && !Number.isNaN(since.getTime())) state.since = since;
   const checkIn = record.checkIn;
   const at = isObject(checkIn) && typeof checkIn.at === "string" ? new Date(checkIn.at) : undefined;
   if (at && !Number.isNaN(at.getTime()) && typeof checkIn?.refreshRate === "number") {
@@ -70,9 +76,10 @@ export function restoreState(playlist: PlaylistEntry[], saved: unknown): DeviceS
 function changed(device: PlaylistDevice) {
   const { playlist } = device;
   stateChanged(device, SECTION, () => {
-    const { index, checkIn } = stateOf(device);
+    const { index, since, checkIn } = stateOf(device);
     return {
       entry: saveEntry(playlist, index % playlist.length),
+      since,
       checkIn: checkIn && {
         at: checkIn.at,
         refreshRate: checkIn.refreshRate,
@@ -85,16 +92,48 @@ function changed(device: PlaylistDevice) {
 /** An index moved by `step` entries (1 forward, -1 back) in a list of `length`, wrapping around. */
 export const stepIndex = (index: number, length: number, step: number) => (((index + step) % length) + length) % length;
 
-/** The device's current playlist entry, and its position (from 0) in the playlist. */
-export function currentEntry(device: PlaylistDevice) {
-  const index = stateOf(device).index % device.playlist.length;
-  return { entry: device.playlist[index], index };
+/**
+ * The device's current playlist entry, its position (from 0) in the playlist, and the seconds
+ * until the playlist moves on by itself (Infinity if it doesn't).
+ */
+export function currentEntry(device: PlaylistDevice, now = new Date()) {
+  moveOnIfDue(device, now);
+  const state = stateOf(device);
+  const index = state.index % device.playlist.length;
+  const entry = device.playlist[index];
+  // Worked out together with the entry, so a move by another request later can't mix the two up
+  const untilMove =
+    entry.duration === undefined || !state.since || device.playlist.length === 1
+      ? Infinity
+      : Math.max(0, Math.ceil((state.since.getTime() + entry.duration * 1000 - now.getTime()) / 1000));
+  return { entry, index, untilMove };
 }
 
+/**
+ * Moves on to the next entry once the current one's `duration` is up: the next then gets its full
+ * duration from now, however late this is noticed (e.g. after the device was offline). Without a
+ * duration, or with nothing else to move to, the entry stays until a press.
+ */
+function moveOnIfDue(device: PlaylistDevice, now: Date) {
+  const state = stateOf(device);
+  const { duration } = device.playlist[state.index % device.playlist.length];
+  if (duration === undefined || device.playlist.length === 1) return;
+  if (!state.since) {
+    // E.g. the first time, or after a restart with a changed playlist
+    state.since = now;
+    changed(device);
+  } else if (now.getTime() >= state.since.getTime() + duration * 1000) {
+    moveOn(device, 1, now);
+  }
+}
+
+
 /** Moves the device's playlist on by `step` entries: 1 to the next, -1 to the previous. */
-export function moveOn(device: PlaylistDevice, step: number) {
+export function moveOn(device: PlaylistDevice, step: number, now = new Date()) {
   const state = stateOf(device);
   state.index = stepIndex(state.index, device.playlist.length, step);
+  // The entry moved to gets its full duration
+  state.since = now;
   changed(device);
 }
 
@@ -129,13 +168,13 @@ export function pressButton(device: PlaylistDevice, step: number, wake: string |
   if (wake && last?.wake === wake && at.getTime() - last.at.getTime() < RETRY_WINDOW_MS) return;
   if (wake) state.press = { wake, at };
   const shown = state.checkIn?.shown;
-  const chosen = currentEntry(device).index;
-  if (shown === undefined || shown === chosen) return moveOn(device, step);
-  // A change from the screen page the device hasn't picked up yet
-  if (step < 0) {
-    state.index = stepIndex(shown, device.playlist.length, step);
-    changed(device);
-  }
+  const chosen = currentEntry(device, at).index;
+  if (shown === undefined || shown === chosen) return moveOn(device, step, at);
+  // A change the device hasn't picked up yet (from the screen page, or a duration that ran out):
+  // a short press shows that entry, going back is from the device's; either gets its full duration
+  if (step < 0) state.index = stepIndex(shown, device.playlist.length, step);
+  state.since = at;
+  changed(device);
 }
 
 /** Records a check-in (/api/display): the refresh_rate the device was sent, and the index of its entry. */

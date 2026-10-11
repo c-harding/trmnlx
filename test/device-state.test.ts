@@ -16,7 +16,7 @@ test("a device starts at its first entry and moves on, wrapping around", () => {
   const kitchen = device("A1", ["departures", "journeys", "placeholder"]);
   assert.equal(currentEntry(kitchen).entry.screen, "departures");
   moveOn(kitchen, 1);
-  assert.deepEqual(currentEntry(kitchen), { entry: kitchen.playlist[1], index: 1 });
+  assert.deepEqual(currentEntry(kitchen), { entry: kitchen.playlist[1], index: 1, untilMove: Infinity });
   moveOn(kitchen, 1);
   moveOn(kitchen, 1);
   assert.equal(currentEntry(kitchen).entry.screen, "departures");
@@ -103,4 +103,52 @@ test("a press: a retry after the page's choice stays put, back from the device's
   // Back is from b, the device's entry
   pressButton(d, -1, "3");
   assert.equal(currentEntry(d).entry.screen, "a");
+});
+
+// A playlist whose entries have durations (s), or none for undefined
+const timed = (mac: string, durations: (number | undefined)[]) => ({
+  mac,
+  username: mac,
+  playlist: durations.map((duration, i) => ({ screen: `s${i}`, inputs: {}, ...(duration === undefined ? {} : { duration }) })),
+});
+const at = (s: number) => new Date(Date.UTC(2026, 9, 12, 10, 0, s));
+const untilMove = (d: ReturnType<typeof timed>, now: Date) => currentEntry(d, now).untilMove;
+
+test("the playlist moves on once an entry's duration is up, the next getting its full duration", () => {
+  const d = timed("AA:00:00:00:00:10", [60, 30, undefined]);
+  assert.equal(currentEntry(d, at(0)).index, 0);
+  assert.equal(untilMove(d, at(0)), 60);
+  assert.equal(currentEntry(d, at(59)).index, 0);
+  assert.equal(currentEntry(d, at(60)).index, 1);
+  assert.equal(untilMove(d, at(60)), 30);
+  // Noticed late (due at 90): one step, to the last entry, which has no duration and stays
+  assert.equal(currentEntry(d, at(100)).index, 2);
+  assert.equal(untilMove(d, at(100)), Infinity);
+  assert.equal(currentEntry(d, at(10_000)).index, 2);
+});
+
+test("a press gives the entry it moves to its full duration", () => {
+  const d = timed("AA:00:00:00:00:11", [60, 60]);
+  currentEntry(d, at(0));
+  moveOn(d, 1, at(50));
+  assert.equal(untilMove(d, at(50)), 60);
+  pressButton(d, 1, undefined, at(100));
+  assert.equal(currentEntry(d, at(100)).index, 0);
+  assert.equal(untilMove(d, at(100)), 60);
+});
+
+test("a press after a duration ran out shows that entry, as after the screen page's buttons", () => {
+  const d = timed("AA:00:00:00:00:12", [60, 60, 60]);
+  currentEntry(d, at(0));
+  recordCheckIn(d, 60, 0, at(0));
+  // The device still shows 0; its duration is up: a short press shows 1, with its full duration
+  pressButton(d, 1, "1", at(70));
+  assert.equal(currentEntry(d, at(70)).index, 1);
+  assert.equal(untilMove(d, at(70)), 60);
+});
+
+test("a playlist of one entry with a duration doesn't move on", () => {
+  const d = timed("AA:00:00:00:00:13", [60]);
+  currentEntry(d, at(0));
+  assert.deepEqual(currentEntry(d, at(600)), { entry: d.playlist[0], index: 0, untilMove: Infinity });
 });
