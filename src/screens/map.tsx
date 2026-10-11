@@ -45,7 +45,10 @@ export default defineScreen({
     return (
       <div style={{ display: "flex", flexDirection: "column", width: WIDTH, height: HEIGHT, background: "#fff", fontFamily: "Inter" }}>
         <div style={{ display: "flex", flexDirection: "column", padding: `${PADDING_Y}px ${PADDING_X}px 0` }}>
-          <Header title={inputs.title} rule={false} />
+          <Header title={inputs.title} rule={false}>
+            {/* The map data's licence (ODbL) asks for it wherever the map is shown */}
+            <div style={{ display: "flex", flexShrink: 0, fontSize: 16 }}>© OpenStreetMap</div>
+          </Header>
         </div>
         {data.png ? (
           <img src={`data:image/png;base64,${data.png.toString("base64")}`} width={WIDTH} height={MAP_HEIGHT} />

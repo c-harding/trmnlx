@@ -29,14 +29,24 @@ function cacheFile(view: MapView) {
   return join(dir, "maps", `${hash.slice(0, 20)}.png`);
 }
 
-async function readCached(file: string | undefined) {
+/** A saved map, if there is one that's a PNG of the view's size: anything else is drawn again. */
+async function readCached(file: string | undefined, view: MapView) {
   if (!file) return undefined;
+  let png;
   try {
-    return await readFile(file);
+    png = await readFile(file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`Can't read ${file}: ${(error as Error).message}`);
     return undefined;
   }
+  try {
+    const { format, width, height } = await sharp(png).metadata();
+    if (format === "png" && width === view.width && height === view.height) return png;
+  } catch {
+    // Not an image at all, e.g. empty after a full disk
+  }
+  console.error(`Ignoring ${file}, which isn't a map of the right size: drawing it again`);
+  return undefined;
 }
 
 /** Saves a drawn map; a failure only means it's drawn again after the next restart. */
@@ -56,14 +66,15 @@ export const loadMap = defineSource({
   params: paramsOf<MapView>(),
   async load(view): Promise<MapResult> {
     const file = cacheFile(view);
-    const cached = await readCached(file);
+    const cached = await readCached(file, view);
     if (cached) return { png: cached };
     try {
       const started = Date.now();
       const tiles = tilesFor(view);
       const features = await loadTiles(tiles);
       const svg = buildMapSvg(view, tiles.map((tile, i) => ({ tile, features: features[i] })));
-      // Already in the display's 4 grays: a fifth of the size, and less to decode at every render
+      // Reduced to 4 grays (sharp picks them; rendering the screen maps them to the display's):
+      // a fifth of the size, and less to decode at every render
       const png = await sharp(Buffer.from(svg)).grayscale().png({ palette: true, colours: 4, compressionLevel: 9 }).toBuffer();
       console.log(
         `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom}) from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
