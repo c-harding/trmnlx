@@ -11,7 +11,7 @@ const TILEJSON_URL = "https://tiles.openfreemap.org/planet";
 // Per request, and for loading all of a map's tiles (the TileJSON included): well under the 15 s
 // a device waits for /api/display, so it gets "Map unavailable" rather than a timeout
 const REQUEST_TIMEOUT_MS = 4_000;
-const TOTAL_TIMEOUT_MS = 10_000;
+export const TOTAL_TIMEOUT_MS = 10_000;
 const USER_AGENT = "trmnl-server (self-hosted e-ink display)";
 // Tiles fetched at once, to be polite to a free service
 const CONCURRENT_TILES = 4;
@@ -78,11 +78,14 @@ async function loadTile(urlTemplate: string, { z, x, y }: PlacedTile, signal: Ab
 
 /**
  * The tiles' features, in the same order, fetched a few at a time. Throws if any can't be fetched,
- * stopping the others, or if it all takes longer than TOTAL_TIMEOUT_MS.
+ * stopping the others, or if it isn't done by `deadline` (ms since the epoch; by default
+ * TOTAL_TIMEOUT_MS from now).
  */
-export async function loadTiles(tiles: PlacedTile[]): Promise<TileFeature[][]> {
+export async function loadTiles(tiles: PlacedTile[], deadline = Date.now() + TOTAL_TIMEOUT_MS): Promise<TileFeature[][]> {
+  // E.g. after waiting behind other maps' draws (see sources/map.ts)
+  if (Date.now() >= deadline) throw new Error("too many maps to draw at once, trying again later");
   const failed = new AbortController();
-  const signal = AbortSignal.any([failed.signal, AbortSignal.timeout(TOTAL_TIMEOUT_MS)]);
+  const signal = AbortSignal.any([failed.signal, AbortSignal.timeout(deadline - Date.now())]);
   const tooSlow = new Promise<never>((_resolve, reject) =>
     signal.addEventListener("abort", () => reject(failed.signal.aborted ? failed.signal.reason : new Error("OpenFreeMap took too long")), { once: true }),
   );

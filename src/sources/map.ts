@@ -9,10 +9,25 @@ import sharp from "sharp";
 import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
 import { buildMapSvg, STYLE_VERSION, tilesFor, type MapView } from "../map-drawing.ts";
 import { stateDirectory } from "../state-file.ts";
-import { loadTiles } from "./openfreemap.ts";
+import { loadTiles, TOTAL_TIMEOUT_MS } from "./openfreemap.ts";
 
 // A map that couldn't be drawn is tried again after this long
 const RETRY_MS = 5 * 60_000;
+
+// One map drawn at a time: a draw holds all its tiles in memory (about 30 MB at the default zoom),
+// so two at once would double that. Reading a saved map doesn't wait.
+let drawing: Promise<unknown> = Promise.resolve();
+
+/** Runs `draw` once the draws before it have finished, whether they worked or not. */
+export function oneAtATime<T>(draw: () => Promise<T>): Promise<T> {
+  const result = drawing.then(draw, draw);
+  // Keeps only the order, not the result
+  drawing = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
 
 export interface MapResult {
   /** The map's PNG, the view's size; undefined if it couldn't be drawn */
@@ -68,24 +83,36 @@ export const loadMap = defineSource({
     const file = cacheFile(view);
     const cached = await readCached(file, view);
     if (cached) return { png: cached };
-    try {
-      const started = Date.now();
-      const tiles = tilesFor(view);
-      const features = await loadTiles(tiles);
-      const svg = buildMapSvg(view, tiles.map((tile, i) => ({ tile, features: features[i] })));
-      // Reduced to 4 grays (sharp picks them; rendering the screen maps them to the display's):
-      // a fifth of the size, and less to decode at every render
-      const png = await sharp(Buffer.from(svg)).grayscale().png({ palette: true, colours: 4, compressionLevel: 9 }).toBuffer();
-      console.log(
-        `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom}) from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
-          `${Math.round(svg.length / 1024)} KB of SVG, ${Math.round(png.length / 1024)} KB of PNG`,
-      );
-      await writeCached(file, png);
-      return { png };
-    } catch (error) {
-      console.error(`Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`);
-      return { error: (error as Error).message };
-    }
+    // The time limit counts from now, waiting included: a device waiting for this load gets "Map
+    // unavailable" (tried again later) rather than its own timeout, however many maps are queued
+    const deadline = Date.now() + TOTAL_TIMEOUT_MS;
+    return oneAtATime(() => draw(view, file, deadline));
   },
   maxAge: (map) => (map.png ? Infinity : RETRY_MS),
+  // Never shown stale (a drawn map never expires), but this makes maps ones to warm: drawn ahead
+  // of need, at startup, check-ins, browser renders, moves and window changes (see screen.ts),
+  // rather than in a device's request
+  staleUntil: () => 0,
 });
+
+/** Draws a map from its tiles and saves it, or says why it couldn't. */
+async function draw(view: MapView, file: string | undefined, deadline: number): Promise<MapResult> {
+  try {
+    const started = Date.now();
+    const tiles = tilesFor(view);
+    const features = await loadTiles(tiles, deadline);
+    const svg = buildMapSvg(view, tiles.map((tile, i) => ({ tile, features: features[i] })));
+    // Reduced to 4 grays (sharp picks them; rendering the screen maps them to the display's):
+    // a fifth of the size, and less to decode at every render
+    const png = await sharp(Buffer.from(svg)).grayscale().png({ palette: true, colours: 4, compressionLevel: 9 }).toBuffer();
+    console.log(
+      `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom}) from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
+        `${Math.round(svg.length / 1024)} KB of SVG, ${Math.round(png.length / 1024)} KB of PNG`,
+    );
+    await writeCached(file, png);
+    return { png };
+  } catch (error) {
+    console.error(`Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`);
+    return { error: (error as Error).message };
+  }
+}

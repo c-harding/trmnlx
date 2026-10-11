@@ -42,3 +42,9 @@ test("a server that doesn't answer gives up within a few seconds", async () => {
   await assert.rejects(loadTiles(tiles), { message: "OpenFreeMap didn't answer in time" });
   assert.ok(Date.now() - started < 6000);
 });
+
+test("a draw that waited past its deadline fetches nothing", async () => {
+  const requests = fakeOpenFreeMap(hanging);
+  await assert.rejects(loadTiles(tiles, Date.now() - 1), { message: "too many maps to draw at once, trying again later" });
+  assert.equal(requests(), 0);
+});
