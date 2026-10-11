@@ -17,12 +17,15 @@ const ROWS_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP;
 // The thicker line above pinned departures
 const PINNED_RULE = 3;
 
-// Line labels longer than this (e.g. "LUFTHANSA EXPRESS BUS") are set smaller and wrapped onto at
-// most two lines, within LINE_MAX_WIDTH; their row is as tall as one with notes
+// Line labels longer than this (e.g. "RJX 19977", "LUFTHANSA EXPRESS BUS") are set smaller and
+// wrapped onto at most two lines, within LINE_MAX_WIDTH. Only one too long for a single line at that
+// size (about 14 characters) gets a row as tall as one with notes, so the others keep the usual height.
 const LONG_LINE_LENGTH = 7;
+const TWO_LINE_LENGTH = 14;
 const LINE_MAX_WIDTH = 180;
 const isLongLine = (line: string) => line.length > LONG_LINE_LENGTH;
-const rowHeight = (d: Departure) => (d.messages.length > 0 || isLongLine(d.line) ? NOTE_ROW_HEIGHT : ROW_HEIGHT);
+const rowHeight = (d: Departure) =>
+  d.messages.length > 0 || d.line.length > TWO_LINE_LENGTH ? NOTE_ROW_HEIGHT : ROW_HEIGHT;
 
 // A departure in the list and a connection from the route search are the same if they share line
 // and scheduled departure
