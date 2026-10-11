@@ -6,9 +6,9 @@ import type { PlaylistEntry } from "./playlists.ts";
 interface DeviceState {
   /** The current playlist entry's index */
   index: number;
-  /** The device's last /api/display, and how long it was told to sleep (seconds) */
-  checkIn?: { at: Date; refreshRate: number };
-  /** The last button press that moved the playlist: its wake (Wake-Time), and when */
+  /** The device's last /api/display, how long it was told to sleep (seconds), and the index of the entry it was sent */
+  checkIn?: { at: Date; refreshRate: number; shown: number };
+  /** The last button press handled: its wake (Wake-Time), and when */
   press?: { wake: string; at: Date };
 }
 
@@ -60,21 +60,27 @@ export function buttonStep(updateSource: string | undefined, specialFunction: st
 const RETRY_WINDOW_MS = 2 * 60 * 1000;
 
 /**
- * Moves the playlist for a button press, once per wake: retries repeat the press's headers.
- * `wake` is the Wake-Time header (how long the device's previous wake took, in ms), the same in a
- * wake's retries but almost never in two wakes; without it, every request counts.
+ * Moves the playlist for a button press, from the entry the device shows: if the screen page changed
+ * the entry since the device's last check-in, a short press shows the entry chosen there, and going
+ * back is from the entry on the device. Once per wake: retries repeat the press's headers. `wake`
+ * is the Wake-Time header (how long the device's previous wake took, in ms), the same in a wake's
+ * retries but almost never in two wakes; without it, every request counts.
  */
 export function pressButton(device: PlaylistDevice, step: number, wake: string | undefined, at = new Date()) {
   const state = stateOf(device);
   const last = state.press;
   if (wake && last?.wake === wake && at.getTime() - last.at.getTime() < RETRY_WINDOW_MS) return;
   if (wake) state.press = { wake, at };
-  moveOn(device, step);
+  const shown = state.checkIn?.shown;
+  const chosen = currentEntry(device).index;
+  if (shown === undefined || shown === chosen) return moveOn(device, step);
+  // A change from the screen page the device hasn't picked up yet
+  if (step < 0) state.index = stepIndex(shown, device.playlist.length, step);
 }
 
-/** Records a check-in (/api/display) and the refresh_rate the device was sent. */
-export function recordCheckIn(device: PlaylistDevice, refreshRate: number, at = new Date()) {
-  stateOf(device).checkIn = { at, refreshRate };
+/** Records a check-in (/api/display): the refresh_rate the device was sent, and the index of its entry. */
+export function recordCheckIn(device: PlaylistDevice, refreshRate: number, shown: number, at = new Date()) {
+  stateOf(device).checkIn = { at, refreshRate, shown };
 }
 
 /**

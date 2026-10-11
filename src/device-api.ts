@@ -107,14 +107,15 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   // KEY3: a short press moves to the next playlist entry, the special function back to the previous
   const step = buttonStep(req.get("Update-Source"), req.get("special_function"));
   if (step) pressButton(device, step, req.get("Wake-Time"));
-  const { png, ttl } = await renderDeviceScreen(device);
+  const { png, ttl, index } = await renderDeviceScreen(device);
   // Named after its content: the firmware skips the download and the redraw if it's unchanged
   const filename = createHash("sha256").update(png).digest("hex").slice(0, 16);
   rememberImage(device, filename, png);
   const sleep = refreshRate(req, device, ttl);
-  // So the screen page can say when the device will pick up a change. (A Next pressed while this
+  // So the screen page can say when the device will pick up a change, and KEY3 knows what the
+  // device shows: what it was sent, as the firmware doesn't confirm it. (A Next pressed while this
   // rendered isn't in this image: it only shows from the check-in after.)
-  recordCheckIn(device, sleep);
+  recordCheckIn(device, sleep, index);
   res.json({
     status: 0,
     image_url: `${baseUrl(req)}/images/${filename}.png`,

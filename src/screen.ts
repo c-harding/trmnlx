@@ -48,10 +48,12 @@ export async function renderScreen(screen: Screen, { device, now, telemetry, inp
 }
 
 /**
- * The device's current screen as a PNG, and how many seconds it stays valid: its current playlist
- * entry, with that entry's inputs. Shared by the device API and the browser preview.
+ * The device's current screen as a PNG, how many seconds it stays valid, and which playlist entry
+ * it is (its index): the current entry, with its inputs. Shared by the device API and the browser
+ * preview.
  */
-export function renderDeviceScreen(device: Device) {
-  const { entry } = currentEntry(device);
-  return renderScreen(screens[entry.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: entry.inputs });
+export async function renderDeviceScreen(device: Device) {
+  const { entry, index } = currentEntry(device);
+  const rendered = await renderScreen(screens[entry.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: entry.inputs });
+  return { ...rendered, index };
 }
