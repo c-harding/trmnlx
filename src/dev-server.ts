@@ -353,7 +353,7 @@ app.get("/render", async (req, res) => {
       "X-TTL": String(result.ttl),
       "X-Colors": String(result.colors),
       "X-Load-Ms": result.loadMs.toFixed(0),
-      "X-Credits": encodeURIComponent(JSON.stringify(screen.credits)),
+      "X-Credits": encodeURIComponent(JSON.stringify(result.credits)),
       "X-Render-Ms": result.renderMs.toFixed(0),
     })
     .send(result.png);

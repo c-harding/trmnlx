@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dataTtl, matchesInput, resolveInputs } from "../src/define-screen.ts";
+import { h } from "preact";
+import { dataTtl, defineScreen, matchesInput, resolveInputs } from "../src/define-screen.ts";
 
 test("an int input takes only whole numbers, a number input any finite one", () => {
   const int = { type: "int", default: 5 } as const;
@@ -34,4 +35,16 @@ test("data never makes a screen valid for less than a minute (plus margin), unle
   // Shown stale: asked for again soon, once the new data has loaded
   assert.equal(dataTtl(60, inSeconds(-30), true, now), 15);
   assert.equal(dataTtl(5, inSeconds(-30), true, now), 5);
+});
+
+test("a screen's credits can depend on what it shows", async () => {
+  const screen = defineScreen({
+    inputs: { drawn: { type: "boolean", default: true } },
+    ttl: () => 60,
+    credits: ({ inputs }) => (inputs.drawn ? [{ text: "© Example", url: "https://example.org/" }] : []),
+    view: () => h("div", null),
+  });
+  const render = (drawn: boolean) => screen.render({ device: { username: "x", timeZone: "UTC" }, now, telemetry: undefined, inputs: { drawn } });
+  assert.deepEqual((await render(true)).credits, [{ text: "© Example", url: "https://example.org/" }]);
+  assert.deepEqual((await render(false)).credits, []);
 });

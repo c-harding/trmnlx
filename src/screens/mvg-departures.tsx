@@ -29,6 +29,9 @@ export default defineScreen({
   // a 4-gray refresh, which matters for a screen that changes every minute.
   colors: 2,
 
+  // A courtesy rather than a requirement: MVG publishes no terms for this (unofficial) interface
+  credits: [{ text: "Data: MVG", url: "https://www.mvg.de/" }],
+
   dependencies: {
     departures: [loadDepartures, { station: ({ inputs }) => inputs.station }],
     // One route search per pinned connection

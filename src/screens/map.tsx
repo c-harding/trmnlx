@@ -21,11 +21,6 @@ export default defineScreen({
     zoom: { type: "number", default: 12.1 },
   },
 
-  // Linked in the browser; on the screen, the header says the same (see below)
-  credits: [
-    { text: "© OpenMapTiles", url: "https://openmaptiles.org/" },
-    { text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" },
-  ],
 
   dependencies: {
     map: [
@@ -45,14 +40,26 @@ export default defineScreen({
   /** A map doesn't change (one that couldn't be drawn is tried again when its source says). */
   ttl: () => Infinity,
 
+  // Linked in the browser, while a map is shown; on the screen, the header says the same (see below)
+  credits: ({ data }) =>
+    data.png
+      ? [
+          { text: "© OpenFreeMap", url: "https://openfreemap.org/" },
+          { text: "© OpenMapTiles", url: "https://openmaptiles.org/" },
+          { text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" },
+        ]
+      : [],
+
   view({ inputs, data }) {
     return (
       <div style={{ display: "flex", flexDirection: "column", width: WIDTH, height: HEIGHT, background: "#fff", fontFamily: "Inter" }}>
         <div style={{ display: "flex", flexDirection: "column", padding: `${PADDING_Y}px ${PADDING_X}px 0` }}>
           <Header title={inputs.title} rule={false}>
-            {/* Asked for wherever the map is shown: by OpenStreetMap's data licence (ODbL), and by
-                OpenMapTiles' design licence (CC-BY 4.0), whose tile schema the data comes in */}
+            {/* Asked for wherever the map is shown: by OpenStreetMap's data licence (ODbL), by
+                OpenMapTiles' design licence (CC-BY 4.0), whose tile schema the data comes in, and
+                by OpenFreeMap, which serves the tiles (its TileJSON's attribution) */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", alignSelf: "center", flexShrink: 0, fontSize: 14, lineHeight: 1.25 }}>
+              <span>© OpenFreeMap</span>
               <span>© OpenMapTiles</span>
               <span>© OpenStreetMap</span>
             </div>

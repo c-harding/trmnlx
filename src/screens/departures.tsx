@@ -2,7 +2,7 @@
 // ("Fährt nur bis …") and pinned connections.
 import { DepartureBoard, isShown, parseHideRule } from "../components/departures.tsx";
 import { defineScreen } from "../define-screen.ts";
-import { loadDepartures } from "../sources/transitous.ts";
+import { loadDepartures, TRANSITOUS_CREDITS } from "../sources/transitous.ts";
 import { untilNextMinute } from "../time.ts";
 
 export default defineScreen({
@@ -18,6 +18,8 @@ export default defineScreen({
 
   // Only black and white, as on the other screens that change every minute
   colors: 2,
+
+  credits: TRANSITOUS_CREDITS,
 
   dependencies: {
     departures: [loadDepartures, { station: ({ inputs }) => inputs.station }],

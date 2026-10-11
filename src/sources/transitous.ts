@@ -9,6 +9,16 @@ import { defineSource, paramsOf } from "../define-source.ts";
 import type { Departure, DepartureKind } from "../departure.ts";
 
 const BASE_URL = "https://api.transitous.org/api/v1";
+
+/**
+ * For screens showing Transitous' data, linked under their preview in the browser: its usage policy
+ * asks for a visible link to its list of sources (whose conditions that covers), and for
+ * OpenStreetMap's attribution, as it uses OSM data (stops, walking).
+ */
+export const TRANSITOUS_CREDITS = [
+  { text: "Data: Transitous", url: "https://transitous.org/sources/" },
+  { text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" },
+];
 const TIMEOUT_MS = 15_000;
 
 // Journey searches are cached for five minutes; delays shown can be that old

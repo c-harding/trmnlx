@@ -4,7 +4,7 @@ import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./c
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
-import { renderDeviceScreen, screens, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
+import { renderDeviceScreen, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 import { flushState, persistTo } from "./state-file.ts";
 
@@ -50,7 +50,6 @@ function playlistStatus(device: Device): PlaylistStatus {
     position: applying.indexOf(index) + 1,
     count: applying.length,
     otherTimes: [...new Set(device.playlist.filter((_entry, i) => !applying.includes(i)).map((other) => other.screen))],
-    credits: screens[entry.screen].credits,
     checkIn,
     now: new Date(),
     timeZone: device.timeZone,
@@ -75,7 +74,7 @@ app.get("/screen.png", async (req, res) => {
   warmDeviceScreens(device);
   // Before rendering too, so it describes the same entry even if another request moves on meanwhile
   const status = playlistStatus(device);
-  const { png, ttl } = await renderDeviceScreen(device);
+  const { png, ttl, credits } = await renderDeviceScreen(device);
   // X-TTL tells the page's script when to fetch the next image; X-Status and X-Check-In keep its
   // text up to date (URI-encoded, as header values can't take all of Unicode)
   res
@@ -85,6 +84,8 @@ app.get("/screen.png", async (req, res) => {
       "X-TTL": String(ttl),
       "X-Status": encodeURIComponent(JSON.stringify(statusText(status))),
       "X-Check-In": String(status.checkIn?.next.getTime() ?? ""),
+      // What this image shows may need crediting (see credits.ts)
+      "X-Credits": encodeURIComponent(JSON.stringify(credits)),
     })
     .send(png);
 });

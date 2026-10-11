@@ -5,7 +5,7 @@ import { BatteryAndClock, ellipsis, Header, PADDING_X, PADDING_Y } from "../comp
 import { JourneyList } from "../components/journeys.tsx";
 import { defineScreen } from "../define-screen.ts";
 import { parseRoute, parseRules, routeTitle, type Route, type Rule } from "../journey-routes.ts";
-import { loadJourneys, type JourneysResult } from "../sources/transitous.ts";
+import { loadJourneys, TRANSITOUS_CREDITS, type JourneysResult } from "../sources/transitous.ts";
 import { untilNextMinute } from "../time.ts";
 
 /** The routes that parse, at most MAX_ROUTES of them (the rest are logged and ignored). */
@@ -67,6 +67,8 @@ export default defineScreen({
 
   // Only black and white, as on the other screens that change every minute
   colors: 2,
+
+  credits: TRANSITOUS_CREDITS,
 
   dependencies: {
     // One journey search per route

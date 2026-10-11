@@ -1,11 +1,11 @@
 import { CREDITS_SCRIPT, creditsHtml } from "./credits.ts";
-import type { Credit } from "./define-screen.ts";
 import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 
 // The commit the server was built from, with a * for changes not committed: set by scripts/build,
 // missing in tests
 declare const BUILD_VERSION: string | undefined;
 const version = typeof BUILD_VERSION === "string" ? BUILD_VERSION : undefined;
+
 
 const escapeHtml = (value: unknown) =>
   String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -47,8 +47,6 @@ export interface PlaylistStatus {
   count: number;
   /** The screens of the entries that don't apply now */
   otherTimes: string[];
-  /** The shown screen's credits, linked under the preview */
-  credits: Credit[];
   /**
    * Its last check-in: the index of the entry it was sent (-1 for the default screen, undefined if
    * unknown), and when the next is expected; undefined if it has never checked in
@@ -66,7 +64,7 @@ export interface PlaylistStatus {
  * says whether the preview is live: whether the device got this entry at its last check-in (by
  * entry, not image: the preview is rendered fresh, so its data can be newer), or when it will.
  */
-export function statusText({ screen, index, position, count, otherTimes, credits, checkIn, now, timeZone }: PlaylistStatus) {
+export function statusText({ screen, index, position, count, otherTimes, checkIn, now, timeZone }: PlaylistStatus) {
   const showing =
     index < 0
       ? `Showing ${screen}, the default: nothing in the playlist applies now`
@@ -79,7 +77,7 @@ export function statusText({ screen, index, position, count, otherTimes, credits
   // An overdue device: it's offline, or its battery is flat
   else if (checkIn && checkIn.next >= now) caption = `Preview (will be applied at ${formatTime(checkIn.next, now, timeZone)}):`;
   // Prev and Next only with something to move to
-  return { showing, title, caption, canMove: index >= 0 && count > 1, credits };
+  return { showing, title, caption, canMove: index >= 0 && count > 1 };
 }
 
 export const screenPage = (name: string, status: PlaylistStatus, playlistLength: number) => {
@@ -114,7 +112,7 @@ body.actual-size #preview { width: 802px; cursor: zoom-out; }
 ${loadingMarkCss("#preview")}
 </style>
 <div class="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}">${LOADING_MARK}</div></div>
-${creditsHtml(status.credits)}
+${creditsHtml([])}
 <noscript><p><img src="/screen.png" width="800" height="480" alt="Screen for ${escapeHtml(name)}" style="max-width: 100%; height: auto"></p></noscript>
 <form method="post" action="/logout" class="footer"><p>${version ? `Version <code>${escapeHtml(version)}</code> • ` : ""}Logged in as: <strong>${escapeHtml(name)}</strong> <button>Log out</button></p></form>
 <script>
@@ -132,6 +130,8 @@ async function refresh() {
     const res = await fetch("/screen.png", { cache: "no-store" });
     if (res.status === 401) return location.assign("/login");
     if (res.ok) {
+      // Its credits come with each image, as they can depend on what it shows
+      showCredits(JSON.parse(decodeURIComponent(res.headers.get("X-Credits") ?? "%5B%5D")));
       const old = img.src;
       img.src = URL.createObjectURL(await res.blob());
       if (old) URL.revokeObjectURL(old);
@@ -141,8 +141,7 @@ async function refresh() {
       delay = Number.isNaN(ttl) ? 60 : Math.max(ttl, 1);
       const status = res.headers.get("X-Status");
       if (status) {
-        const { showing, title, caption, canMove, credits } = JSON.parse(decodeURIComponent(status));
-        showCredits(credits);
+        const { showing, title, caption, canMove } = JSON.parse(decodeURIComponent(status));
         document.getElementById("showing").textContent = showing;
         document.getElementById("showing").title = title;
         const moves = document.getElementById("moves");

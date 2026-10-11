@@ -78,9 +78,10 @@ interface CommonDefinition<I extends InputDefinitions, D> {
   colors?: 2 | 4;
   /**
    * Credits for what it shows, as links under the preview in the browser (the image itself can't
-   * link): e.g. a map's data, whose licences ask for a link where possible
+   * link): e.g. a map's data, whose licences ask for a link where possible. A list, or a function
+   * of the same props as `view` for credits that depend on what's shown
    */
-  credits?: Credit[];
+  credits?: Credit[] | ((props: ViewProps<I, D>) => Credit[]);
   /** Seconds the screen stays valid, Infinity if it never changes */
   ttl: (props: ViewProps<I, D>) => number;
   /** The layout, in JSX */
@@ -121,9 +122,8 @@ export interface RenderProps {
 export interface Screen {
   inputs: InputDefinitions;
   colors: 2 | 4;
-  credits: Credit[];
-  /** The layout, how long it stays valid (s), and how long loading its data took (ms) */
-  render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number; loadMs: number }>;
+  /** The layout, how long it stays valid (s), its credits, and how long loading its data took (ms) */
+  render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number; credits: Credit[]; loadMs: number }>;
   /**
    * Warms the sources a render with these props would use (see Source.warm), without rendering
    * or waiting: so it can be shown without waiting for slow data.
@@ -219,7 +219,6 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
   const screen: Screen = {
     inputs: definition.inputs ?? {},
     colors: definition.colors ?? 4,
-    credits: definition.credits ?? [],
     async render({ device, now, telemetry, inputs }) {
       const props: ScreenProps<I> = {
         device,
@@ -232,10 +231,12 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
         const { dependencies, expiresAt, stale } = await resolveDependenciesWithExpiry<Deps, ScreenProps<I>>(definition.dependencies, props);
         const loadMs = performance.now() - start;
         const viewProps = { ...props, data: definition.prepare({ ...props, dependencies }) };
-        return { layout: definition.view(viewProps), ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now), loadMs };
+        const credits = typeof definition.credits === "function" ? definition.credits(viewProps) : (definition.credits ?? []);
+        return { layout: definition.view(viewProps), ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now), credits, loadMs };
       }
       const viewProps = { ...props, data: undefined };
-      return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps), loadMs: 0 };
+      const credits = typeof definition.credits === "function" ? definition.credits(viewProps) : (definition.credits ?? []);
+      return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps), credits, loadMs: 0 };
     },
     warm({ device, now, telemetry, inputs }) {
       warmDependencies(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });

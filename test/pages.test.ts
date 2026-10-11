@@ -10,7 +10,6 @@ const status = {
   position: 2,
   count: 3,
   otherTimes: ["departures"],
-  credits: [],
   now: new Date("2026-10-12T10:00:00Z"),
   timeZone: "Europe/Berlin",
 };
@@ -46,9 +45,8 @@ test("otherwise it says when the device will pick it up", () => {
   assert.equal(caption(undefined), "Preview (will be applied when device comes online):");
 });
 
-test("the shown screen's credits go along with the status, and are linked under the preview", () => {
+test("credits are linked under the preview, escaped", () => {
   const credits = [{ text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" }];
-  assert.deepEqual(statusText({ ...status, credits, checkIn: undefined }).credits, credits);
   assert.equal(creditsHtml(credits), '<p id="credits"><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a></p>');
   assert.equal(creditsHtml([]), '<p id="credits" hidden></p>');
   assert.equal(creditsHtml([{ text: "<b>", url: '"x' }]), '<p id="credits"><a href="&#34;x">&#60;b&#62;</a></p>');
