@@ -12,6 +12,20 @@ if [ ! -f dist/server.js ]; then
   exit 1
 fi
 
+# Errors in red and bold, if shown in a terminal
+fail() {
+  if [ -t 2 ]; then printf '\n\033[1;31m%s\033[0m\n' "$1" >&2; else printf '\n%s\n' "$1" >&2; fi
+  [ -z "$2" ] || printf '%s\n' "$2" >&2
+  echo >&2
+  exit 1
+}
+
+# Check the config here first, as the image build does on the server: a short message, and nothing
+# is uploaded
+if ! config_check="$(node --env-file=dist/.env dist/server.js --check-config 2>&1)"; then
+  fail "Not deploying: the config is broken" "$config_check"
+fi
+
 # On the server, start the docker process, clear old docker images and then set up port forwarding
 # (assuming the server is set up as in this gist:
 # https://gist.github.com/c-harding/59686990f42f4dddae01dffa56618ea4, if not then this stage is
@@ -20,10 +34,10 @@ fi
   RAW_DOMAIN="${SERVER_DOMAIN/#*\/\//}"
   # SETUP_ENABLED=0: a deploy always ends a pairing window opened by scripts/pair
   DEPLOY_COMMAND="$(printf '
-    SETUP_ENABLED=0 docker compose -f%q/docker-compose.yml up --build -d &&
+    ENV_HASH="$(sha256sum %q/.env | cut -d" " -f1)" SETUP_ENABLED=0 docker compose -f%q/docker-compose.yml up --build -d &&
     docker system prune -f &&
     (command -v add-site > /dev/null && add-site %q %d; true)
-  ' "${DEPLOY_DIR:-.}" "$RAW_DOMAIN" "${SERVER_PORT:-7777}")"
+  ' "${DEPLOY_DIR:-.}" "${DEPLOY_DIR:-.}" "$RAW_DOMAIN" "${SERVER_PORT:-7777}")"
 
   rsync -re"ssh $DEPLOY_FLAG" --exclude='*.env' --exclude-from=dist/.rsyncignore \
     dist/ "$DEPLOY_TARGET":"${DEPLOY_DIR:-.}"
@@ -31,5 +45,6 @@ fi
   # Send the env file separately, as it is excluded above
   rsync -e"ssh $DEPLOY_FLAG" dist/.env "$DEPLOY_TARGET":"${DEPLOY_DIR:-.}/.env"
 
-  ssh "${DEPLOY_SSH_ARGS[@]}" "$DEPLOY_TARGET" "$DEPLOY_COMMAND"
+  ssh "${DEPLOY_SSH_ARGS[@]}" "$DEPLOY_TARGET" "$DEPLOY_COMMAND" ||
+    fail "Deploy failed on the server (see above). If the image build failed, the running server wasn't replaced."
 )

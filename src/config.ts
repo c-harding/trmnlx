@@ -136,6 +136,13 @@ function loadTokenSecret(): string {
   return secret;
 }
 
+/**
+ * `node server.js --check-config`: only checks the config (devices.yaml, the screens and the
+ * environment), then exits. The image build runs it, so a broken config fails the deploy and the
+ * running container stays.
+ */
+export const checkOnly = process.argv.includes("--check-config");
+
 export const devices = loadDevices();
 export const tokenSecret = loadTokenSecret();
 

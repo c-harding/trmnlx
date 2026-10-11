@@ -1,6 +1,6 @@
 import cookieParser from "cookie-parser";
 import express, { type ErrorRequestHandler } from "express";
-import { serverDomain, setupEnabled, type Device } from "./config.ts";
+import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./config.ts";
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
@@ -8,6 +8,12 @@ import { renderDeviceScreen } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 
 const port = Number(process.env.SERVER_PORT ?? 7777);
+
+// Loading the config (on import) has checked it, and would have stopped here if it were wrong
+if (checkOnly) {
+  console.log(`Config OK: ${devices.length} device(s)`);
+  process.exit(0);
+}
 
 const app = express();
 app.disable("x-powered-by");

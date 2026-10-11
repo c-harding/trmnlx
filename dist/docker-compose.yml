@@ -20,7 +20,15 @@ services:
         - trmnl-server
       args:
         BUILDKIT_INLINE_CACHE: 1
+        ENV_HASH: ${ENV_HASH:-}
+      # For the build's config check (see Dockerfile)
+      secrets:
+        - env
     # Bound to localhost only: Caddy on the host provides HTTPS, and nothing should reach the
     # server over plain HTTP from outside.
     ports:
       - '127.0.0.1:${SERVER_PORT:-7777}:7777'
+
+secrets:
+  env:
+    file: ./.env
