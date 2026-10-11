@@ -37,7 +37,10 @@ export function Header(props: { title: string; titleSize?: LargeSize; rule?: boo
         ...(rule ? { borderBottom: `${RULE}px solid #000`, marginBottom: HEADER_GAP } : {}),
       }}
     >
-      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: children ? 16 : 0, ...textSize(titleSize), fontWeight: 700, ...ellipsis }}>
+      {/* A fixed line height: "normal" would take the tallest font in the line, e.g. Noto Sans Symbols'
+          for an arrow, and push the title onto the rule. 1.4, as Noto Sans reaches 1.36 em, which
+          the overflow (for the "…") would otherwise cut off */}
+      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: children ? 16 : 0, ...textSize(titleSize), lineHeight: 1.4, fontWeight: 700, ...ellipsis }}>
         {title}
       </div>
       {children}

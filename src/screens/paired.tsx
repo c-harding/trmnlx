@@ -13,7 +13,7 @@ export const Paired = () => (
       height: "100%",
       background: "#fff",
       color: "#000",
-      fontFamily: "Inter",
+      fontFamily: "Noto Sans",
     }}
   >
     <div style={{ display: "flex", fontSize: 72, fontWeight: 700 }}>Paired</div>

@@ -8,7 +8,7 @@ import { ellipsis } from "./header.tsx";
 import { type PixelSize, textSize } from "./type.ts";
 
 
-// Digits of equal width (Inter's tabular figures), so times line up
+// Digits of equal width (tabular figures), so times line up
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
 /** Font sizes (see type.ts) and spacing: "large" for a whole screen of journeys, "small" for a panel. */

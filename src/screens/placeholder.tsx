@@ -24,7 +24,7 @@ export default defineScreen({
           padding: 40,
           background: "#fff",
           color: "#000",
-          fontFamily: "Inter",
+          fontFamily: "Noto Sans",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>

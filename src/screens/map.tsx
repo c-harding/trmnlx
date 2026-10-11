@@ -55,7 +55,7 @@ export default defineScreen({
 
   view({ inputs, data }) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", width: WIDTH, height: HEIGHT, background: "#fff", fontFamily: "Inter" }}>
+      <div style={{ display: "flex", flexDirection: "column", width: WIDTH, height: HEIGHT, background: "#fff", fontFamily: "Noto Sans" }}>
         <div style={{ display: "flex", flexDirection: "column", padding: `${PADDING_Y}px ${PADDING_X}px 0` }}>
           <Header title={inputs.title} rule={false}>
             {/* Asked for wherever the map is shown: by OpenStreetMap's data licence (ODbL), by

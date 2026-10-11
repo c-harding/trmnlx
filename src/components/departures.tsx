@@ -112,7 +112,7 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
   );
 }
 
-// Digits of equal width (Inter's tabular figures), so times line up from row to row
+// Digits of equal width (tabular figures), so times line up from row to row
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
 // The next two departures' times, small and stacked, in a fixed-width column so they line up

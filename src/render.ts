@@ -13,13 +13,15 @@ sharp.concurrency(1);
 export const WIDTH = 800;
 export const HEIGHT = 480;
 
-// The full static Inter fonts (scripts/build copies assets/fonts next to the server), for text of
-// 32 px and more. Not the variable font, which Satori fails to read, and not the Google Fonts
-// subsets, which lack symbols such as ≈ and →.
+// Noto Sans for text of 32 px and more (scripts/build copies assets/fonts next to the server).
+// Satori takes a character the font lacks from the next font listed that has it: so Noto Sans
+// Georgian and Noto Sans Armenian give titles in those scripts ("Tbilisi · თბილისი"), and Noto Sans
+// Symbols the arrow (→). Not Arabic, Hebrew or Indian scripts: Satori loses the spaces in
+// right-to-left text, and doesn't apply the fonts' mark positioning (Arabic dots, Indian vowel signs).
 //
-// Smaller text uses TRMNL's pixel fonts (see `pixelFont` in components/type.ts), each drawn on a
-// pixel grid at one size: 12, 16 and 21 px. They stay crisp in black and white, where Inter's
-// anti-aliased edges are cut off unevenly.
+// Smaller text uses TRMNL's pixel fonts (see `textSize` in components/type.ts), each drawn on a
+// pixel grid at one size: 12, 16 and 21 px. They stay crisp in black and white, where anti-aliased
+// edges are cut off unevenly. They come last, so they're never a large text's fallback.
 const loadFont = async (name: string, file: string, weight: FontWeight): Promise<Font> => ({
   name,
   weight,
@@ -28,8 +30,10 @@ const loadFont = async (name: string, file: string, weight: FontWeight): Promise
 });
 
 const fonts = await Promise.all([
-  loadFont("Inter", "Inter-Regular.ttf", 400),
-  loadFont("Inter", "Inter-Bold.ttf", 700),
+  ...["Noto Sans", "Noto Sans Georgian", "Noto Sans Armenian", "Noto Sans Symbols"].flatMap((name) => [
+    loadFont(name, `${name.replaceAll(" ", "")}-Regular.ttf`, 400),
+    loadFont(name, `${name.replaceAll(" ", "")}-Bold.ttf`, 700),
+  ]),
   ...[12, 16, 21].flatMap((size) => [
     loadFont(`TRMNL${size}`, `TRMNL${size}-Regular.ttf`, 400),
     loadFont(`TRMNL${size}`, `TRMNL${size}-Bold.ttf`, 700),
