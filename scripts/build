@@ -9,12 +9,22 @@ shopt -s nullglob
 # esbuild ignores the types, so check them first
 (echo "checking types"; npx tsc)
 
+# The commit being built, shown in the screen page's footer: its short hash, with a * if files other
+# than Markdown have changes not committed (untracked files included, ignored ones such as
+# devices.yaml not). Left out when built outside a git checkout.
+if version="$(git rev-parse --short HEAD 2>/dev/null)"; then
+  [ -z "$(git status --porcelain -- . ':(exclude)*.md')" ] || version="${version}*"
+else
+  version=""
+fi
+
 # The server and every screen are separate entry points: screens end up in dist/screens/, where
 # the server finds them at startup, and code they share sits in chunk files next to server.js.
-(echo "building server"
+(echo "building server${version:+ ($version)}"
   rm -rf dist/server.js dist/chunk-*.js dist/screens
   npx esbuild src/server.ts src/screens/*.{ts,tsx} --bundle --splitting --platform=node --format=esm \
     --jsx=automatic --jsx-import-source=preact --packages=external \
+    --define:BUILD_VERSION="\"$version\"" \
     --outdir=dist --outbase=src --log-level=warning)
 
 (echo "copying install info"; cp package.json package-lock.json dist/)

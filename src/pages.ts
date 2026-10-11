@@ -1,3 +1,8 @@
+// The commit the server was built from, with a * for changes not committed: set by scripts/build,
+// missing in tests
+declare const BUILD_VERSION: string | undefined;
+const version = typeof BUILD_VERSION === "string" ? BUILD_VERSION : undefined;
+
 const escapeHtml = (value: unknown) =>
   String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -87,7 +92,7 @@ body.actual-size .screen { width: auto; height: auto; max-height: none; cursor: 
 </style>
 <p class="preview"><img id="screen" class="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p>
 <noscript><p class="preview"><img src="/screen.png" class="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p></noscript>
-<form method="post" action="/logout" class="footer"><p>Logged in as: <strong>${escapeHtml(name)}</strong> <button>Log out</button></p></form>
+<form method="post" action="/logout" class="footer"><p>${version ? `Version <code>${escapeHtml(version)}</code> • ` : ""}Logged in as: <strong>${escapeHtml(name)}</strong> <button>Log out</button></p></form>
 <script>
 // Fetches the screen, shows it, and fetches it again when its X-TTL (seconds) runs out, or soon
 // after the device's expected check-in (X-Check-In, in ms) if that's sooner, to update the text
