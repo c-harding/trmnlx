@@ -8,7 +8,7 @@
 // them with made-up screens. An unknown screen in a playlist is only a warning (the entry is
 // skipped), so a renamed or removed screen doesn't stop the server; anything else is an error.
 import { ALWAYS, all, any, not, parseHours, type Condition, type Location } from "./conditions.ts";
-import { matchesInput, type InputDefinitions } from "./define-screen.ts";
+import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
 
 /** One screen with its inputs (values as written in devices.yaml, checked against the screen's). */
 export interface PlaylistEntry {
@@ -43,6 +43,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 function describe(value: unknown): string {
   if (value === null) return "empty";
+  // For a whole number input: "not a number" would say nothing
+  if (typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value)) return `a fraction (${value})`;
   if (!Array.isArray(value)) return `a ${typeof value}`;
   // A list: say what's wrong in it, e.g. a hide rule written as a bare number
   const i = value.findIndex((item) => typeof item !== "string");
@@ -102,8 +104,7 @@ function checkInputs(screen: string, inputs: unknown, where: string, screens: Sc
       throw new ConfigError(`${where}.inputs.${name}: ${screen} has no such input (${known.length ? `it has ${known.join(", ")}` : "it has none"})`);
     }
     if (!matchesInput(definition, value)) {
-      const expected = definition.type === "list" ? "a list of strings" : `a ${definition.type}`;
-      throw new ConfigError(`${where}.inputs.${name} must be ${expected}, not ${describe(value)}`);
+      throw new ConfigError(`${where}.inputs.${name} must be ${inputTypeName(definition)}, not ${describe(value)}`);
     }
   }
   return inputs;

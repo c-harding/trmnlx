@@ -2,7 +2,7 @@
 // without devices.yaml, TOKEN_SECRET or a real device. Run with `npm run dev`, which rebuilds and
 // restarts it whenever the code changes.
 import express, { type ErrorRequestHandler } from "express";
-import type { InputDefinitions } from "./define-screen.ts";
+import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
 import { renderScreen, screens } from "./screen.ts";
 
 const port = Number(process.env.DEV_PORT ?? 7778);
@@ -65,7 +65,10 @@ function showScreenInputs() {
       field.type = "checkbox";
       field.checked = Boolean(definition.default);
     } else {
-      field.type = definition.type === "number" ? "number" : "text";
+      field.type = definition.type === "number" || definition.type === "int" ? "number" : "text";
+      // Any number, not only whole ones (e.g. a map's zoom or coordinates); an int keeps the
+      // browser's step of 1
+      if (definition.type === "number") field.step = "any";
       if (definition.default !== undefined) field.value = definition.default;
     }
     const label = document.createElement("label");
@@ -167,9 +170,9 @@ function formInputs(definitions: InputDefinitions, q: Record<string, string>) {
       inputs[name] = text === "true";
     } else if (text === "") {
       continue;
-    } else if (definition.type === "number") {
+    } else if (definition.type === "number" || definition.type === "int") {
       inputs[name] = Number(text);
-      if (!Number.isFinite(inputs[name])) throw new InputError(`${name} must be a number`);
+      if (!matchesInput(definition, inputs[name])) throw new InputError(`${name} must be ${inputTypeName(definition)}`);
     } else {
       inputs[name] = text;
     }

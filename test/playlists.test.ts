@@ -11,7 +11,7 @@ const screens: ScreenInputs = {
   },
   journeys: {
     routes: { type: "list", default: [] },
-    count: { type: "number", default: 5 },
+    count: { type: "int", default: 5 },
   },
 };
 const fallback = { screen: "placeholder", inputs: {} };
@@ -89,7 +89,8 @@ test("inputs are checked against the screen's", () => {
   assert.match(check({ rooutes: [] }), /p\[0\]\.inputs\.rooutes: journeys has no such input \(it has routes, count\)/);
   assert.match(check({ routes: "Marienplatz -> Ost" }), /p\[0\]\.inputs\.routes must be a list of strings, not a string/);
   assert.match(check({ routes: ["a", 3] }), /must be a list of strings, not a list/);
-  assert.match(check({ count: "3" }), /p\[0\]\.inputs\.count must be a number, not a string/);
+  assert.match(check({ count: "3" }), /p\[0\]\.inputs\.count must be a whole number, not a string/);
+  assert.match(check({ count: 2.5 }), /p\[0\]\.inputs\.count must be a whole number, not a fraction \(2\.5\)/);
   assert.match(check({ routes: ["a", 54] }), /not a list with a number at position 2/);
   assert.match(check({ constructor: "x" }), /journeys has no such input/);
   assert.match(check(["routes"]), /inputs must be a mapping/);

@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dataTtl } from "../src/define-screen.ts";
+import { dataTtl, matchesInput, resolveInputs } from "../src/define-screen.ts";
+
+test("an int input takes only whole numbers, a number input any finite one", () => {
+  const int = { type: "int", default: 5 } as const;
+  const number = { type: "number", default: 14 } as const;
+  assert.ok(matchesInput(int, 3) && matchesInput(int, -2));
+  assert.ok(!matchesInput(int, 2.5) && !matchesInput(int, "3") && !matchesInput(int, Infinity));
+  assert.ok(matchesInput(number, 12.1) && !matchesInput(number, NaN));
+  // A fraction for an int falls back to the default
+  assert.deepEqual(resolveInputs({ count: int }, { count: 2.5 }), { count: 5 });
+});
 
 const now = new Date("2026-10-12T10:00:00Z");
 const inSeconds = (s: number) => now.getTime() + s * 1000;

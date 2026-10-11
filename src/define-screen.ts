@@ -21,6 +21,8 @@ import type { Telemetry } from "./telemetry.ts";
 export type InputDefinition =
   | { type: "string"; default: string }
   | { type: "number"; default: number }
+  // A whole number, e.g. how many rows to show
+  | { type: "int"; default: number }
   | { type: "boolean"; default: boolean }
   // Edited one entry per line in the dev server
   | { type: "list"; default: readonly string[] };
@@ -30,7 +32,7 @@ export type InputDefinitions = Record<string, InputDefinition>;
 // By type rather than from the default, which is inferred as a literal ("Marienplatz", not string)
 type InputValue<D extends InputDefinition> = D extends { type: "string" }
   ? string
-  : D extends { type: "number" }
+  : D extends { type: "number" | "int" }
     ? number
     : D extends { type: "boolean" }
       ? boolean
@@ -116,6 +118,18 @@ export interface Screen {
   warm: (props: RenderProps) => void;
 }
 
+/** What an input's definition asks for, for messages: e.g. "a string", "a whole number". */
+export function inputTypeName(definition: InputDefinition) {
+  switch (definition.type) {
+    case "int":
+      return "a whole number";
+    case "list":
+      return "a list of strings";
+    default:
+      return `a ${definition.type}`;
+  }
+}
+
 /** Whether a value has the type an input's definition asks for. */
 export function matchesInput(definition: InputDefinition, value: unknown) {
   switch (definition.type) {
@@ -123,6 +137,8 @@ export function matchesInput(definition: InputDefinition, value: unknown) {
       return typeof value === "string";
     case "number":
       return typeof value === "number" && Number.isFinite(value);
+    case "int":
+      return Number.isInteger(value);
     case "boolean":
       return typeof value === "boolean";
     case "list":
@@ -144,7 +160,7 @@ export function resolveInputs<I extends InputDefinitions>(
     const value = given[name];
     const valid = value !== undefined && matchesInput(definition, value);
     if (value !== undefined && !valid) {
-      console.error(`Input ${name} should be a ${definition.type}, not ${inspect(value)}: using its default`);
+      console.error(`Input ${name} should be ${inputTypeName(definition)}, not ${inspect(value)}: using its default`);
     }
     const resolved = valid ? value : definition.default;
     // A copy, so a screen changing its list can't change the default
