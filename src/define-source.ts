@@ -115,10 +115,21 @@ export async function resolveDependenciesWithExpiry<D extends AnyDependencies, C
 
 /** Warms dependencies (see Source.warm) with the given context, without waiting for anything. */
 export function warmDependencies<C>(dependencies: AnyDependencies | undefined, context: C) {
-  for (const [source, spec] of Object.values(dependencies ?? {})) {
+  for (const { source, params } of dependencyCalls(dependencies, context)) source.warm(params);
+}
+
+/** One call of a source, as dependencies would make it. */
+export interface SourceCall {
+  source: Source<any, unknown>;
+  params: unknown;
+}
+
+/** The calls dependencies would make with the given context: each source with its params, without calling. */
+export function dependencyCalls<C>(dependencies: AnyDependencies | undefined, context: C): SourceCall[] {
+  return Object.values(dependencies ?? {}).flatMap(([source, spec]) => {
     const params = paramsFor(spec, context);
-    for (const each of Array.isArray(params) ? params : [params]) source.warm(each);
-  }
+    return (Array.isArray(params) ? params : [params]).map((each) => ({ source, params: each }));
+  });
 }
 
 /** A dependency's params from the context: an object, or an array for one call per entry. */

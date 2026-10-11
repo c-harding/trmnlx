@@ -4,7 +4,9 @@ import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./c
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
-import { renderDeviceScreen, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
+import type { MapView } from "./map-drawing.ts";
+import { renderDeviceScreen, screens, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
+import { loadMap, removeUnusedMaps } from "./sources/map.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 import { flushState, persistTo } from "./state-file.ts";
 
@@ -18,6 +20,18 @@ if (checkOnly) {
 
 // Next to server.js: a Docker volume on the server (see docker-compose.yml)
 persistTo(new URL("./state/", import.meta.url));
+
+// Saved maps of views no longer in devices.yaml, or drawn in an older style, take up space for nothing.
+// The views in use: what every entry's (and default screen's) render would ask the map source for
+const mapViews = devices.flatMap((device) =>
+  [...device.playlist, device.defaultScreen].flatMap((entry) =>
+    screens[entry.screen]
+      .calls({ device, now: new Date(), telemetry: undefined, inputs: entry.inputs })
+      .filter((call) => call.source === loadMap)
+      .map((call) => call.params as MapView),
+  ),
+);
+removeUnusedMaps(mapViews).catch((error) => console.error("Removing unused maps failed:", error));
 
 // What each device can show next, so the first switch after a deploy needn't wait for slow data,
 // and again whenever its `when` windows change that

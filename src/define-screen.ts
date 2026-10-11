@@ -10,6 +10,8 @@ import type { VNode } from "preact";
 import {
   resolveDependenciesWithExpiry,
   warmDependencies,
+  dependencyCalls,
+  type SourceCall,
   type AnyDependencies,
   type CheckedDependencies,
   type ResolvedDependencies,
@@ -129,6 +131,8 @@ export interface Screen {
    * or waiting: so it can be shown without waiting for slow data.
    */
   warm: (props: RenderProps) => void;
+  /** The source calls a render with these props would make, without making them (e.g. to see which maps are in use). */
+  calls: (props: RenderProps) => SourceCall[];
 }
 
 /** What an input's definition asks for, for messages: e.g. "a string", "a whole number". */
@@ -240,6 +244,9 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
     },
     warm({ device, now, telemetry, inputs }) {
       warmDependencies(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });
+    },
+    calls({ device, now, telemetry, inputs }) {
+      return dependencyCalls(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });
     },
   };
   defined.add(screen);

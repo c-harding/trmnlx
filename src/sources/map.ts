@@ -3,8 +3,8 @@
 // fetch the tiles again. A map is never drawn again by itself; deleting its file (or a new
 // STYLE_VERSION) gets a fresh one at the next restart.
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import sharp from "sharp";
 import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
 import { buildMapSvg, STYLE_VERSION, tilesFor, type MapView } from "../map-drawing.ts";
@@ -115,4 +115,27 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
     console.error(`Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`);
     return { error: (error as Error).message };
   }
+}
+
+/**
+ * Deletes saved maps that aren't one of `views` in the current STYLE_VERSION: views no longer in
+ * devices.yaml, or drawn in an older style. Called at startup with the views in use, as nothing else
+ * ever deletes them (about 40 KB each).
+ */
+export async function removeUnusedMaps(views: MapView[]) {
+  const dir = stateDirectory();
+  if (!dir) return;
+  const keep = new Set(views.map((view) => basename(cacheFile(view)!)));
+  let files;
+  try {
+    files = await readdir(join(dir, "maps"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`Can't list saved maps: ${(error as Error).message}`);
+    return;
+  }
+  // Leftover temporary files too (a write interrupted by a crash), but not one of a map in use: it may
+  // be being drawn right now, by warming at startup
+  const unused = files.filter((file) => (file.endsWith(".png") || file.endsWith(".png.tmp")) && !keep.has(file.replace(/\.tmp$/, "")));
+  await Promise.all(unused.map((file) => unlink(join(dir, "maps", file)).catch((error) => console.error(`Can't delete ${file}: ${error.message}`))));
+  if (unused.length) console.log(`Deleted ${unused.length} saved map(s) no longer in use`);
 }
