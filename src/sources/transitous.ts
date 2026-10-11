@@ -7,6 +7,7 @@
 
 import { defineSource, paramsOf } from "../define-source.ts";
 import type { Departure, DepartureKind } from "../departure.ts";
+import { USER_AGENT } from "../version.ts";
 
 const BASE_URL = "https://api.transitous.org/api/v1";
 
@@ -155,7 +156,7 @@ const retryDelay = (error: Error) =>
 
 const getJson = async (url: string): Promise<unknown> => {
   const res = await fetch(url, {
-    headers: { Accept: "application/json", "User-Agent": "trmnl-server (self-hosted e-ink display)" },
+    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) throw new TransitousError(res.status, parseRetryAfter(res.headers.get("Retry-After")));

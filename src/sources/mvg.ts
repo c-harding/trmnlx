@@ -11,6 +11,7 @@
 
 import { defineSource, paramsOf } from "../define-source.ts";
 import type { Departure, DepartureKind } from "../departure.ts";
+import { USER_AGENT } from "../version.ts";
 
 const BASE_URL = "https://www.mvg.de/api/bgw-pt/v3";
 
@@ -82,7 +83,7 @@ interface MvgRoute {
 const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 
 const getJson = async (url: string): Promise<unknown> => {
-  const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`MVG answered ${res.status}`);
   return res.json();
 };

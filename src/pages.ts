@@ -1,10 +1,6 @@
 import { CREDITS_SCRIPT, creditsHtml } from "./credits.ts";
 import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
-
-// The commit the server was built from, with a * for changes not committed: set by scripts/build,
-// missing in tests
-declare const BUILD_VERSION: string | undefined;
-const version = typeof BUILD_VERSION === "string" ? BUILD_VERSION : undefined;
+import { version } from "./version.ts";
 
 
 const escapeHtml = (value: unknown) =>

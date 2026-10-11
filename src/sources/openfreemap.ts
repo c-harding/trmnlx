@@ -6,13 +6,13 @@ import { VectorTile } from "@mapbox/vector-tile";
 import { PbfReader } from "pbf";
 import { defineSource, paramsOf } from "../define-source.ts";
 import type { PlacedTile, TileFeature } from "../map-drawing.ts";
+import { USER_AGENT } from "../version.ts";
 
 const TILEJSON_URL = "https://tiles.openfreemap.org/planet";
 // Per request, and for loading all of a map's tiles (the TileJSON included): well under the 15 s
 // a device waits for /api/display, so it gets "Map unavailable" rather than a timeout
 const REQUEST_TIMEOUT_MS = 4_000;
 export const TOTAL_TIMEOUT_MS = 10_000;
-const USER_AGENT = "trmnl-server (self-hosted e-ink display)";
 // Tiles fetched at once, to be polite to a free service
 const CONCURRENT_TILES = 4;
 
