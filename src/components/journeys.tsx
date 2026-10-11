@@ -100,9 +100,21 @@ function Leg({ leg, last, timeZone }: { leg: JourneyLeg; last: boolean; timeZone
 function RideRow(props: { leg: JourneyLeg; timeZone: string; size: JourneySize; changeAt?: string; duration?: number }) {
   const { leg, timeZone, size, changeAt, duration } = props;
   const sizes = SIZES[size];
+  // A row with a duration wraps when the ride's times leave no room for it: the duration moves to
+  // the next line, still on the right (marginLeft: auto). A row with a station to change at has no
+  // duration, and cuts the station off instead.
+  const wraps = duration !== undefined;
   return (
-    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", fontSize: sizes.direct }}>
-      <div style={{ display: "flex", alignItems: "baseline", minWidth: 0, ...TABULAR }}>
+    <div
+      style={{
+        display: "flex",
+        flexWrap: wraps ? "wrap" : "nowrap",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        fontSize: sizes.direct,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", ...(wraps ? { flexShrink: 0 } : { minWidth: 0 }), ...TABULAR }}>
         <span style={{ fontWeight: 700, marginRight: "0.4em", flexShrink: 0, textDecoration: leg.cancelled ? "line-through" : "none" }}>
           {leg.line}
         </span>
@@ -114,7 +126,7 @@ function RideRow(props: { leg: JourneyLeg; timeZone: string; size: JourneySize; 
         {changeAt && <div style={{ display: "flex", minWidth: 0, marginLeft: "0.4em", ...ellipsis }}>{changeAt}</div>}
       </div>
       {duration !== undefined && (
-        <div style={{ display: "flex", flexShrink: 0, marginLeft: 8, whiteSpace: "nowrap", fontSize: sizes.summary }}>
+        <div style={{ display: "flex", flexShrink: 0, marginLeft: "auto", paddingLeft: 8, whiteSpace: "nowrap", fontSize: sizes.summary }}>
           {formatDuration(duration)}
         </div>
       )}
