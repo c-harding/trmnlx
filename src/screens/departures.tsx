@@ -21,6 +21,9 @@ export default defineScreen({
 
   credits: TRANSITOUS_CREDITS,
 
+  // In the browser's lists, e.g. "departures: Innsbruck Hbf"
+  label: ({ inputs }) => inputs.station,
+
   dependencies: {
     departures: [loadDepartures, { station: ({ inputs }) => inputs.station }],
   },

@@ -21,6 +21,8 @@ export default defineScreen({
     zoom: { type: "number", default: 12.1 },
   },
 
+  // In the browser's lists, e.g. "map: Graz"
+  label: ({ inputs }) => inputs.title,
 
   dependencies: {
     map: [

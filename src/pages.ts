@@ -34,14 +34,14 @@ function formatTime(date: Date, now: Date, timeZone: string) {
 
 /** Where the device is in its playlist, and what it got at its last check-in. */
 export interface PlaylistStatus {
-  /** The screen shown now */
+  /** The entry shown now: its screen, and its label if it has one ("map: Graz") */
   screen: string;
   /** Its entry's index in the playlist, or -1 for the default screen (no entry applies) */
   index: number;
   /** Its position (from 1) among the entries that apply now, and how many apply */
   position: number;
   count: number;
-  /** The screens of the entries that don't apply now */
+  /** The entries that don't apply now, named the same way */
   otherTimes: string[];
   /**
    * Its last check-in: the index of the entry it was sent (-1 for the default screen, undefined if

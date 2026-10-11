@@ -32,6 +32,9 @@ export default defineScreen({
   // A courtesy rather than a requirement: MVG publishes no terms for this (unofficial) interface
   credits: [{ text: "Data: MVG", url: "https://www.mvg.de/" }],
 
+  // In the browser's lists, e.g. "mvg-departures: Marienplatz"
+  label: ({ inputs }) => inputs.station,
+
   dependencies: {
     departures: [loadDepartures, { station: ({ inputs }) => inputs.station }],
     // One route search per pinned connection

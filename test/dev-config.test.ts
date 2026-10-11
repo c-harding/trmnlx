@@ -72,3 +72,11 @@ test("durations are written as in devices.yaml", () => {
   assert.equal(durationText(3600), "1h");
   assert.equal(durationText(5400), "1h30m");
 });
+
+test("entries are labelled by their screen, e.g. a map by its title", () => {
+  const labels = readDevConfig(yaml, screens, "UTC", (screen, inputs) => (screen === "journeys" ? `${(inputs.routes as string[]).length} route(s)` : undefined));
+  assert.deepEqual(
+    labels.map((group) => group.entries.map((entry) => entry.label)),
+    [["1. journeys: 1 route(s) (Sa,Su, 10m)", "2. placeholder (not Sa,Su)"], ["1. placeholder"], ["1. journeys: 1 route(s) (10m)"]],
+  );
+});

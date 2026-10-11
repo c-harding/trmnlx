@@ -48,3 +48,17 @@ test("a screen's credits can depend on what it shows", async () => {
   assert.deepEqual((await render(true)).credits, [{ text: "© Example", url: "https://example.org/" }]);
   assert.deepEqual((await render(false)).credits, []);
 });
+
+test("a screen's label comes from its inputs, with defaults filled in", () => {
+  const screen = defineScreen({
+    inputs: { title: { type: "string", default: "München" } },
+    label: ({ inputs }) => inputs.title,
+    ttl: () => 60,
+    view: () => h("div", null),
+  });
+  assert.equal(screen.label({ title: "Graz" }), "Graz");
+  assert.equal(screen.label({}), "München");
+  // Without a label, or an empty one: none
+  assert.equal(defineScreen({ ttl: () => 60, view: () => h("div", null) }).label({}), undefined);
+  assert.equal(screen.label({ title: "" }), undefined);
+});

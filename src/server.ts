@@ -5,6 +5,7 @@ import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
 import type { MapView } from "./map-drawing.ts";
+import type { PlaylistEntry } from "./playlists.ts";
 import { renderDeviceScreen, screens, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
 import { loadMap, removeUnusedMaps } from "./sources/map.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
@@ -55,15 +56,21 @@ app.get("/", (req, res) => {
   res.type("html").send(screenPage(device.username, playlistStatus(device), device.playlist.length));
 });
 
+/** An entry as the page names it: its screen, and its label if it has one, e.g. "map: Graz". */
+function entryName({ screen, inputs }: PlaylistEntry) {
+  const label = screens[screen].label(inputs);
+  return label ? `${screen}: ${label}` : screen;
+}
+
 function playlistStatus(device: Device): PlaylistStatus {
   const { entry, index, applying } = currentEntry(device);
   const checkIn = lastCheckIn(device);
   return {
-    screen: entry.screen,
+    screen: entryName(entry),
     index,
     position: applying.indexOf(index) + 1,
     count: applying.length,
-    otherTimes: [...new Set(device.playlist.filter((_entry, i) => !applying.includes(i)).map((other) => other.screen))],
+    otherTimes: [...new Set(device.playlist.filter((_entry, i) => !applying.includes(i)).map(entryName))],
     checkIn,
     now: new Date(),
     timeZone: device.timeZone,

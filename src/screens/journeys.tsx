@@ -70,6 +70,12 @@ export default defineScreen({
 
   credits: TRANSITOUS_CREDITS,
 
+  // In the browser's lists: the first route, and how many more, e.g. "Marienplatz → München Ost (+2)"
+  label: ({ inputs }) => {
+    const [first, ...more] = validRoutes(inputs.routes);
+    return first && routeTitle(first.stops) + (more.length ? ` (+${more.length})` : "");
+  },
+
   dependencies: {
     // One journey search per route
     journeys: [

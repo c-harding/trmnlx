@@ -84,6 +84,11 @@ interface CommonDefinition<I extends InputDefinitions, D> {
    * of the same props as `view` for credits that depend on what's shown
    */
   credits?: Credit[] | ((props: ViewProps<I, D>) => Credit[]);
+  /**
+   * A short description of an entry, from its inputs only (no data): e.g. a map's title, a board's
+   * station. Shown after the screen's name in the browser ("map: Graz"), to tell its entries apart
+   */
+  label?: (props: { inputs: InputValues<I> }) => string | undefined;
   /** Seconds the screen stays valid, Infinity if it never changes */
   ttl: (props: ViewProps<I, D>) => number;
   /** The layout, in JSX */
@@ -133,6 +138,8 @@ export interface Screen {
   warm: (props: RenderProps) => void;
   /** The source calls a render with these props would make, without making them (e.g. to see which maps are in use). */
   calls: (props: RenderProps) => SourceCall[];
+  /** Its label for these inputs (see `label`), or undefined without one. */
+  label: (inputs: Record<string, unknown>) => string | undefined;
 }
 
 /** What an input's definition asks for, for messages: e.g. "a string", "a whole number". */
@@ -247,6 +254,9 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
     },
     calls({ device, now, telemetry, inputs }) {
       return dependencyCalls(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });
+    },
+    label(inputs) {
+      return definition.label?.({ inputs: resolveInputs(definition.inputs, inputs) }) || undefined;
     },
   };
   defined.add(screen);

@@ -53,7 +53,7 @@ body { display: flex; flex-direction: column; }
 <div id="controls">
 <h1>TRMNLx screen development</h1>
 <form id="form">
-<p id="load" hidden><label>Load from devices.yaml <select id="load-select"></select></label> <span id="load-error"></span></p>
+<p id="load" hidden><label>Load from playlist <select id="load-select"></select></label> <span id="load-error"></span></p>
 <p><label>Screen <select name="screen" id="screen-select">${Object.keys(screens).map((s) => `<option>${s}</option>`).join("")}</select></label></p>
 <details open>
 <summary>Screen settings</summary>
@@ -309,7 +309,7 @@ app.get("/config", (req, res) => {
     return res.status(404).json({});
   }
   try {
-    res.json({ groups: readDevConfig(text, screenInputs, process.env.TZ || "UTC") });
+    res.json({ groups: readDevConfig(text, screenInputs, process.env.TZ || "UTC", (screen, inputs) => screens[screen]?.label(inputs)) });
   } catch (error) {
     res.json({ error: (error as Error).message });
   }
