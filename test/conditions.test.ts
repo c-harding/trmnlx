@@ -57,3 +57,15 @@ test("all, any and not combine conditions, and simplify the trivial cases", () =
   assert.deepEqual(not(ALWAYS), { kind: "never" });
   assert.equal(nextChange(ALWAYS, thursdayNoon), undefined);
 });
+
+test("sunrise and sunset come from the location's coordinates, with offsets", () => {
+  const munich = { country: "de", state: "Bayern", lat: 48.137, lon: 11.575 };
+  const early = new Date("2026-10-12T05:00:00+02:00");
+  const time = (date: Date | undefined) => date?.toLocaleTimeString("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
+  // Sunrise in Munich on 12 October is at about 07:28, sunset at about 18:31
+  assert.equal(time(berlin(() => nextChange(parseHours("sunrise-sunset", munich), early))), "07:28");
+  assert.equal(time(berlin(() => nextChange(parseHours("(sunrise-01:00)-sunrise", munich), early))), "06:28");
+  const evening = parseHours("sunset-(sunset+00:30)", munich);
+  assert.equal(berlin(() => applies(evening, new Date("2026-10-12T18:45:00+02:00"))), true);
+  assert.equal(berlin(() => applies(evening, new Date("2026-10-12T19:15:00+02:00"))), false);
+});

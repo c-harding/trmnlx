@@ -1,6 +1,6 @@
 # Copy to devices.yaml and fill in your devices. devices.yaml is gitignored.
 # defaultScreen: placeholder  # The screen for devices that don't name one, and while no playlist entry applies (default: placeholder, or the first screen found)
-# location: { country: de, state: Bayern }  # For public and school holidays (PH, SH) in `when`; a device can have its own
+# location: { country: de, state: Bayern, lat: 48.14, lon: 11.58 }  # For public and school holidays (PH, SH) in `when`, and with lat and lon for sunrise and sunset; a device can have its own
 # playlists:  # Named playlists, for devices (playlist: travel) and other playlists to use
 #   travel:
 #     - screen: journeys

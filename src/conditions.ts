@@ -8,12 +8,15 @@
 // conditions are evaluated inside inTimeZone, with the device's time zone.
 import opening_hours from "opening_hours";
 
-/** Where a device is, for public and school holidays (`PH`, `SH`). */
+/** Where a device is: for public and school holidays (`PH`, `SH`), and sunrise and sunset. */
 export interface Location {
   /** e.g. "de", "at" */
   country: string;
   /** As OpenStreetMap names it, e.g. "Bayern", "Tirol" */
   state?: string;
+  /** In degrees, for `sunrise`, `sunset`, `dawn` and `dusk` */
+  lat?: number;
+  lon?: number;
 }
 
 export type Condition =
@@ -28,9 +31,15 @@ const NEVER: Condition = { kind: "never" };
 
 /** A condition from a `when`; throws an Error with the library's message if it isn't valid. */
 export function parseHours(text: string, location: Location | undefined): Condition {
-  // The library only needs the address, for holidays; coordinates are for sunrise and sunset
-  const place = location && { lat: 0, lon: 0, address: { country_code: location.country, state: location.state ?? "" } };
-  return { kind: "hours", text, hours: new opening_hours(text, place) };
+  // The address is for holidays, the coordinates for sunrise and sunset. The library only takes
+  // coordinates as strings (as Nominatim gives them): numbers are silently ignored, and it then
+  // uses 06:00 and 18:00, whatever its types say
+  const place = location && {
+    lat: String(location.lat ?? 0),
+    lon: String(location.lon ?? 0),
+    address: { country_code: location.country, state: location.state ?? "" },
+  };
+  return { kind: "hours", text, hours: new opening_hours(text, place as unknown as ConstructorParameters<typeof opening_hours>[1]) };
 }
 
 /** All of the conditions apply (always, if there are none). */

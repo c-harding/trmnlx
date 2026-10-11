@@ -136,7 +136,11 @@ test("mistakes in when stop the server with where they are", () => {
   assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "PH off" }], "p", {}, screens)), /p\[0\]\.when: holidays \(PH, SH\) need a location/);
   assert.doesNotThrow(() => expandPlaylist([{ screen: "placeholder", when: "PH off" }], "p", {}, screens, [], { country: "de", state: "Bayern" }));
   assert.match(errorOf(() => readDefaultScreen({ screen: "placeholder", when: "Mo-Fr" }, screens)), /defaultScreen\.when: unknown field/);
-  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "sunrise-sunset" }], "p", {}, screens)), /sunrise, sunset, dawn and dusk aren't supported/);
+  assert.match(
+    errorOf(() => expandPlaylist([{ screen: "placeholder", when: "sunrise-sunset" }], "p", {}, screens, [], { country: "de" })),
+    /p\[0\]\.when: sunrise, sunset, dawn and dusk need lat and lon in the location/,
+  );
+  assert.doesNotThrow(() => expandPlaylist([{ screen: "placeholder", when: "(sunrise-01:00)-sunset" }], "p", {}, screens, [], { country: "de", lat: 48.14, lon: 11.58 }));
   assert.match(
     errorOf(() => expandPlaylist([{ screen: "placeholder", when: "SH" }], "p", {}, screens, [], { country: "de" })),
     /p\[0\]\.when: no holidays known for this location \(school holidays, SH, need its state/,
@@ -153,6 +157,9 @@ test("locations: a country code and optionally a state", () => {
   assert.equal(readLocation(undefined, "location"), undefined);
   assert.match(errorOf(() => readLocation({ country: "Germany" }, "devices[0].location")), /devices\[0\]\.location\.country must be a two-letter country code/);
   assert.match(errorOf(() => readLocation("de", "location")), /location must be a country/);
+  assert.deepEqual(readLocation({ country: "de", lat: 48.14, lon: 11.58 }, "location"), { country: "de", lat: 48.14, lon: 11.58 });
+  assert.match(errorOf(() => readLocation({ country: "de", lat: 48.14 }, "location")), /location: give both lat and lon, or neither/);
+  assert.match(errorOf(() => readLocation({ country: "de", lat: 148, lon: 11 }, "location")), /location\.lat must be a number of degrees, from -90 to 90/);
 });
 
 test("durations: 90s, 10m, 1h, 1h30m", () => {
@@ -205,7 +212,11 @@ test("defaultScreen: a name, screen and inputs, or a sensible default", () => {
   assert.match(errorOf(() => readDefaultScreen("nope", screens)), /^defaultScreen must be one of/);
   assert.match(errorOf(() => readDefaultScreen({ screen: "nope" }, screens)), /^defaultScreen\.screen must be one of/);
   assert.match(errorOf(() => readDefaultScreen({ screen: "placeholder", when: "Mo-Fr" }, screens)), /defaultScreen\.when: unknown field/);
-  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "sunrise-sunset" }], "p", {}, screens)), /sunrise, sunset, dawn and dusk aren't supported/);
+  assert.match(
+    errorOf(() => expandPlaylist([{ screen: "placeholder", when: "sunrise-sunset" }], "p", {}, screens, [], { country: "de" })),
+    /p\[0\]\.when: sunrise, sunset, dawn and dusk need lat and lon in the location/,
+  );
+  assert.doesNotThrow(() => expandPlaylist([{ screen: "placeholder", when: "(sunrise-01:00)-sunset" }], "p", {}, screens, [], { country: "de", lat: 48.14, lon: 11.58 }));
   assert.match(
     errorOf(() => expandPlaylist([{ screen: "placeholder", when: "SH" }], "p", {}, screens, [], { country: "de" })),
     /p\[0\]\.when: no holidays known for this location \(school holidays, SH, need its state/,

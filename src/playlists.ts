@@ -75,8 +75,10 @@ function parseWhen(value: unknown, where: string, location: Location | undefined
   if (typeof value !== "string" || value.trim() === "") {
     throw new ConfigError(`${where} must be opening hours such as Mo-Fr 06:30-09:00 (OpenStreetMap's opening_hours syntax), or otherwise`);
   }
-  // The library needs real coordinates for these, and would silently use fixed times instead
-  if (/sunrise|sunset|dawn|dusk/i.test(value)) throw new ConfigError(`${where}: sunrise, sunset, dawn and dusk aren't supported`);
+  // Without coordinates, the library would silently use fixed times for these
+  if (/sunrise|sunset|dawn|dusk/i.test(value) && location?.lat === undefined) {
+    throw new ConfigError(`${where}: sunrise, sunset, dawn and dusk need lat and lon in the location, e.g. location: { country: de, lat: 48.14, lon: 11.58 }`);
+  }
   try {
     return parseHours(value, location);
   } catch (error) {
@@ -212,7 +214,7 @@ function namedPlaylist(
 
 // For checking named playlists before knowing which devices use them, and so which location they
 // get: only needed for holidays to parse, the real location comes with each device
-const CHECKING_LOCATION: Location = { country: "de", state: "Bayern" };
+const CHECKING_LOCATION: Location = { country: "de", state: "Bayern", lat: 48.14, lon: 11.58 };
 
 /**
  * The top-level `playlists`: checked as a whole, so mistakes in unused ones are found too. A
@@ -225,18 +227,32 @@ export function readNamedPlaylists(raw: unknown, screens: ScreenInputs, location
   return raw;
 }
 
-/** A `location`, at the top level or a device's: `country` (e.g. de) and optionally `state`. */
+/**
+ * A `location`, at the top level or a device's: `country` (e.g. de), and optionally `state` and the
+ * coordinates `lat` and `lon`.
+ */
 export function readLocation(raw: unknown, where: string): Location | undefined {
   if (raw === undefined) return undefined;
   if (!isObject(raw)) throw new ConfigError(`${where} must be a country and optionally a state, e.g. { country: de, state: Bayern }`);
-  checkFields(raw, ["country", "state"], where);
+  checkFields(raw, ["country", "state", "lat", "lon"], where);
   if (typeof raw.country !== "string" || !/^[a-z]{2}$/i.test(raw.country)) {
     throw new ConfigError(`${where}.country must be a two-letter country code, e.g. de or at`);
   }
   if (raw.state !== undefined && (typeof raw.state !== "string" || raw.state === "")) {
     throw new ConfigError(`${where}.state must be a state's name as OpenStreetMap writes it, e.g. Bayern or Tirol`);
   }
-  return { country: raw.country.toLowerCase(), ...(raw.state === undefined ? {} : { state: raw.state as string }) };
+  if ((raw.lat === undefined) !== (raw.lon === undefined)) throw new ConfigError(`${where}: give both lat and lon, or neither`);
+  for (const [field, limit] of [["lat", 90], ["lon", 180]] as const) {
+    const value = raw[field];
+    if (value !== undefined && (typeof value !== "number" || !(Math.abs(value) <= limit))) {
+      throw new ConfigError(`${where}.${field} must be a number of degrees, from -${limit} to ${limit}`);
+    }
+  }
+  return {
+    country: raw.country.toLowerCase(),
+    ...(raw.state === undefined ? {} : { state: raw.state as string }),
+    ...(raw.lat === undefined ? {} : { lat: raw.lat as number, lon: raw.lon as number }),
+  };
 }
 
 /** The top-level `defaultScreen`: a screen's name, or `screen` and `inputs` like an entry. */
