@@ -9,7 +9,7 @@ import { telemetryFor, type Telemetry } from "./telemetry.ts";
 // turns each into its own module in screens/ next to the server (esbuild with code splitting, so
 // shared code exists once), and they're found and imported here at startup.
 //
-// Inputs' values come from the dev server's form; on the server, for now, always the defaults.
+// Inputs' values come from the device's playlist entry (devices.yaml), or the dev server's form.
 const SCREENS_DIR = new URL("./screens/", import.meta.url);
 
 async function importScreen(file: string): Promise<[string, Screen]> {
@@ -47,9 +47,10 @@ export async function renderScreen(screen: Screen, { device, now, telemetry, inp
 }
 
 /**
- * The device's current screen (device.screen, chosen in config.ts) as a PNG, and how many seconds
- * it stays valid. Shared by the device API and the browser preview. Inputs can't be configured per
- * device yet, so screens always get their defaults.
+ * The device's current screen as a PNG, and how many seconds it stays valid: for now, the first
+ * entry of its playlist, with that entry's inputs. Shared by the device API and the browser preview.
  */
-export const renderDeviceScreen = (device: Device) =>
-  renderScreen(screens[device.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: {} });
+export function renderDeviceScreen(device: Device) {
+  const entry = device.playlist[0];
+  return renderScreen(screens[entry.screen], { device, now: new Date(), telemetry: telemetryFor(device), inputs: entry.inputs });
+}

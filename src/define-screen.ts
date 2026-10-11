@@ -109,8 +109,8 @@ export interface Screen {
   render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number }>;
 }
 
-// Whether a value has the type its definition asks for
-function matches(definition: InputDefinition, value: unknown) {
+/** Whether a value has the type an input's definition asks for. */
+export function matchesInput(definition: InputDefinition, value: unknown) {
   switch (definition.type) {
     case "string":
       return typeof value === "string";
@@ -135,7 +135,7 @@ export function resolveInputs<I extends InputDefinitions>(
   const inputs: Record<string, unknown> = {};
   for (const [name, definition] of Object.entries<InputDefinition>(definitions ?? {})) {
     const value = given[name];
-    const valid = value !== undefined && matches(definition, value);
+    const valid = value !== undefined && matchesInput(definition, value);
     if (value !== undefined && !valid) {
       console.error(`Input ${name} should be a ${definition.type}, not ${inspect(value)}: using its default`);
     }

@@ -111,8 +111,8 @@ Every function gets the same `props`: `device` (with its `username` and `timeZon
 - `view` returns a layout in JSX: flexbox only, inline styles, the four panel grays (`#000`, `#555`, `#aaa`, `#fff`). Shared pieces (tables, headers, charts as inline SVG) live in a `components/` module.
 - Satori sizes boxes like CSS's default `content-box`, so a full-size container with `width: "100%"` and padding ends up wider than the screen. Give such containers `boxSizing: "border-box"`.
 - Long text is cut off with `whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis"` on one line, or `display: "block", overflow: "hidden", lineClamp: 2` for two lines (both tested). Text that isn't cut off can overflow its box.
-- `inputs` declares a screen's settings, each with a type (`string`, `number`, `boolean` or `list` of strings) and a default. In the dev server a list is a text area with one entry per line (an emptied list stays empty), and the dev server converts the form's text to each input's type. `resolveInputs` takes values that already have their type and fills in the defaults; a value of the wrong type is logged and replaced by the default. The result is `props.inputs`. On the server they can't be configured per device yet, so screens always get their defaults; secrets such as API keys will come from environment variables.
-- Which screen a device shows: its `screen` in `devices.yaml`, otherwise `defaultScreen` (see [Configuration](#configuration)).
+- `inputs` declares a screen's settings, each with a type (`string`, `number`, `boolean` or `list` of strings) and a default. In the dev server a list is a text area with one entry per line (an emptied list stays empty), and the dev server converts the form's text to each input's type. `resolveInputs` takes values that already have their type and fills in the defaults; a value of the wrong type is logged and replaced by the default. The result is `props.inputs`. On the server they come from the device's playlist entry in `devices.yaml` (see [Configuration](#configuration)), checked against these definitions at startup.
+- Which screen a device shows: an entry of its `playlist` in `devices.yaml` (for now the first), or its `screen`, otherwise `defaultScreen` (see [Configuration](#configuration)).
 
 ### Sources
 
@@ -156,7 +156,7 @@ Rendering happens during `/api/display` itself, which is fast enough that no sch
 
 ### Playlists
 
-Not built yet; this is the design. A device shows a playlist: entries it moves through, each a screen with its inputs. Playlists can be named at the top level of `devices.yaml`, shared by devices and included in each other:
+Partly built: reading playlists from `devices.yaml`, with includes and inputs (see [Configuration](#configuration)). Moving through them, `when` and `duration` are the design below. A device shows a playlist: entries it moves through, each a screen with its inputs. Playlists can be named at the top level of `devices.yaml`, shared by devices and included in each other:
 
 ```yaml
 playlists:
@@ -243,15 +243,46 @@ devices:
 | `username` | Yes      | User name for the browser login; it selects which device's screen is shown |
 | `password` | Yes      | Password for the browser login |
 | `timezone` | No       | IANA time zone for the device's screens, e.g. `Europe/Berlin`. Defaults to `TZ`, then UTC |
-| `screen` | No | Which screen the device shows, e.g. `mvg-departures`; one of the screens in `src/screens/`. Without it, `defaultScreen` (see below). Screens' inputs can't be configured per device yet, so they always use their defaults (mvg-departures: Marienplatz) |
+| `screen` | No | Which screen the device shows, e.g. `mvg-departures`, with its default inputs: a playlist of one entry. Without it or `playlist`, `defaultScreen` (see below) |
+| `playlist` | No | What the device shows, with inputs: a list of entries, or the name of a named playlist (see below). Not together with `screen` |
 | `refreshRate` | No     | The longest the device sleeps between polls, in seconds, at least 60. Default 900, the firmware's own default. It wakes sooner when the screen's `ttl` runs out first |
 | `fullRefresh` | No | Default `true`: sends `maximum_compatibility: true`, so the firmware does a full refresh (with a flash) on every update. `false` lets it use partial refreshes for black-and-white screens, which don't flash but currently leave traces of earlier screens on the DIY kit |
 | `temperatureProfile` | No | Sent to the device as `temperature_profile`: how the firmware drives the panel. For the 7.5" panel, `default` uses the `EP75_800x480` driver, `a` the panel's built-in fast mode (`EP75_800x480_GEN2`), `b` darker grays. Takes effect from the device's next wake; leaving it out means `default`. With `default`, the firmware doesn't rewrite the previous image before a partial refresh, which may leave traces of earlier screens |
 | `token`    | No       | The device's existing token, for a device paired with another server. If set, it is used instead of a derived token (see [Authentication](#authentication)) |
 
-At the top level, `defaultScreen` names the screen for devices without their own `screen`, e.g. `defaultScreen: placeholder`. Without it, the server uses `placeholder` if that screen exists, otherwise the first screen found (alphabetically).
+At the top level:
 
-The server checks the file at startup (required fields, unique usernames, valid time zones, an existing `defaultScreen`) and refuses to start if it's wrong. Planned but not built yet: the device's playlist, which also holds the settings for each screen (see [Playlists](#playlists)).
+- `defaultScreen` is the screen for devices with neither `screen` nor `playlist`: a screen's name (`defaultScreen: placeholder`), or `screen` and `inputs` like a playlist entry. Without it, the server uses `placeholder` if that screen exists, otherwise the first screen found (alphabetically).
+- `playlists` names playlists, which devices can use (`playlist: kitchen`) and playlists can include.
+
+A playlist is a list of entries, each either a screen with its inputs, or an include of a named playlist:
+
+```yaml
+playlists:
+  travel:
+    - screen: journeys
+      inputs:
+        routes:
+          - Marienplatz -> München Ost
+          - Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]-> Innsbruck Hbf
+
+devices:
+  - mac: "AA:BB:CC:DD:EE:FF"
+    username: kitchen
+    password: change-me
+    playlist:
+      - screen: mvg-departures
+        inputs:
+          station: Marienplatz
+          hide:
+            - BUS|REGIONAL_BUS
+            - show BUS 54
+      - playlist: travel
+```
+
+Includes are expanded when the file is read, so each device has one flat list. A device shows its playlist's first entry; moving through it is still to be built (see [Playlists](#playlists)). Inputs are checked against the screen's definitions: an unknown input or a value of the wrong type (e.g. `routes` written as one string instead of a list) stops the server with a message saying where. Write lists as block lists (`- …` per line): routes and hide rules then need no quotes.
+
+The server checks the file at startup (required fields, unique usernames, valid time zones, existing screens and playlists, playlists that don't include each other, and inputs) and refuses to start if it's wrong. `when` and `duration` on playlist entries, from the design in [Playlists](#playlists), are rejected as not supported yet.
 
 Everything else comes from environment variables: `dist/.env` when deployed (copied to the server by `scripts/deploy`, see [Deployment](#deployment)), `.env` for `npm start` locally. Both are gitignored; `sample.env` and `dist/sample.env` document them.
 

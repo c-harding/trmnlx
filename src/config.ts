@@ -1,5 +1,13 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
+import {
+  ConfigError,
+  devicePlaylist,
+  readDefaultScreen,
+  readNamedPlaylists,
+  type PlaylistEntry,
+  type ScreenInputs,
+} from "./playlists.ts";
 import { screens } from "./screen.ts";
 
 const DEVICES_FILE = new URL("./devices.yaml", import.meta.url);
@@ -20,7 +28,8 @@ export interface Device {
   token: string | undefined;
   timeZone: string;
   refreshRate: number;
-  screen: string;
+  /** What it shows: at least one entry (see playlists.ts) */
+  playlist: PlaylistEntry[];
   temperatureProfile: TemperatureProfile | undefined;
   fullRefresh: boolean;
 }
@@ -39,16 +48,14 @@ function checkTimeZone(timeZone: string, source: string) {
   return timeZone;
 }
 
-/**
- * The screen for devices that don't name one: devices.yaml's defaultScreen if set, otherwise the
- * placeholder if there is one, otherwise the first screen found.
- */
-function chooseDefaultScreen(configured: unknown) {
-  const available = Object.keys(screens);
-  if (available.length === 0) fail("No screens found next to the server (screens/*.js)");
-  if (configured === undefined) return available.includes("placeholder") ? "placeholder" : available[0];
-  if (typeof configured !== "string" || !available.includes(configured)) fail(`defaultScreen must be one of ${available.join(", ")}`);
-  return configured;
+/** Runs a check from playlists.ts, stopping with its message if it finds a mistake. */
+function orFail<T>(check: () => T): T {
+  try {
+    return check();
+  } catch (error) {
+    if (error instanceof ConfigError) fail(error.message);
+    throw error;
+  }
 }
 
 function loadDevices(): Device[] {
@@ -60,7 +67,7 @@ function loadDevices(): Device[] {
   }
 
   // Checked field by field below
-  let data: { devices?: unknown; defaultScreen?: unknown } | undefined;
+  let data: { devices?: unknown; defaultScreen?: unknown; playlists?: unknown } | undefined;
   try {
     data = parse(text);
   } catch (error) {
@@ -71,7 +78,9 @@ function loadDevices(): Device[] {
   }
 
   const defaultTimeZone = checkTimeZone(process.env.TZ || "UTC", "TZ");
-  const defaultScreen = chooseDefaultScreen(data!.defaultScreen);
+  const screenInputs: ScreenInputs = Object.fromEntries(Object.entries(screens).map(([name, screen]) => [name, screen.inputs]));
+  const defaultScreen = orFail(() => readDefaultScreen(data!.defaultScreen, screenInputs));
+  const playlists = orFail(() => readNamedPlaylists(data!.playlists, screenInputs));
   const usernames = new Set<string>();
   const macs = new Set<string>();
 
@@ -90,9 +99,6 @@ function loadDevices(): Device[] {
       !(Number.isInteger(device.refreshRate) && device.refreshRate >= 60)
     ) {
       fail(`${where}.refreshRate must be a whole number of seconds, at least 60`);
-    }
-    if (device.screen !== undefined && !Object.hasOwn(screens, device.screen)) {
-      fail(`${where}.screen must be one of ${Object.keys(screens).join(", ")}`);
     }
     if (device.temperatureProfile !== undefined && !TEMPERATURE_PROFILES.includes(device.temperatureProfile)) {
       fail(`${where}.temperatureProfile must be one of ${TEMPERATURE_PROFILES.join(", ")}`);
@@ -113,7 +119,7 @@ function loadDevices(): Device[] {
       token: device.token,
       timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
-      screen: device.screen ?? defaultScreen,
+      playlist: orFail(() => devicePlaylist(device, where, playlists, screenInputs, defaultScreen)),
       temperatureProfile: device.temperatureProfile,
       // Partial refreshes leave traces of earlier screens on the DIY kit (see ARCHITECTURE.md), so
       // full refreshes are the default until that's understood

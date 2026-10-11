@@ -1,12 +1,23 @@
 # Copy to devices.yaml and fill in your devices. devices.yaml is gitignored.
 # defaultScreen: placeholder  # The screen for devices that don't name one (default: placeholder, or the first screen found)
+# playlists:  # Named playlists, for devices (playlist: travel) and other playlists to use
+#   travel:
+#     - screen: journeys
+#       inputs:
+#         routes:
+#           - Marienplatz -> München Ost
 devices:
   - mac: "AA:BB:CC:DD:EE:FF"  # Quote MACs: some parsers read unquoted all-digit values as numbers
     username: kitchen
     password: change-me
     # timezone: Europe/Berlin  # Defaults to TZ, then UTC
     # refreshRate: 900  # Seconds between polls, at least 60
-    # screen: mvg-departures  # Which screen this device shows; overrides defaultScreen
+    # screen: mvg-departures  # Which screen this device shows, with its default inputs; overrides defaultScreen
+    # playlist:  # Instead of screen: what the device shows, with inputs (or the name of a playlist above)
+    #   - screen: mvg-departures
+    #     inputs:
+    #       station: Marienplatz
+    #   - playlist: travel  # Includes a named playlist
     # fullRefresh: false  # Default true: full refresh on every update; false allows partial refreshes (see ARCHITECTURE.md)
     # temperatureProfile: a  # How the firmware drives the panel: default, a or b (see ARCHITECTURE.md)
     # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one
