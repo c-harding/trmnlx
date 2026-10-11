@@ -85,8 +85,10 @@ body { display: flex; flex-direction: column; }
 #preview { display: grid; grid-template: 1fr / 1fr; flex: none; margin-top: auto; width: min(802px, 100cqw, 100cqh * 5 / 3); aspect-ratio: 5 / 3; box-sizing: border-box; border: 1px solid; background: #fff; cursor: zoom-in; }
 #preview.native { width: 802px; cursor: zoom-out; }
 #preview img { display: block; width: 100%; height: 100%; }
+/* Before the first image (no src yet): nothing, rather than the browser's broken-image icon */
+#preview img:not([src]) { visibility: hidden; }
 ${loadingMarkCss("#preview")}</style>
-<div id="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Rendered screen" hidden>${LOADING_MARK}</div></div>
+<div id="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Rendered screen">${LOADING_MARK}</div></div>
 ${creditsHtml([])}
 <script>
 const SCREEN_INPUTS = ${screenInputsJson};
@@ -264,7 +266,6 @@ async function render() {
   showCredits(JSON.parse(decodeURIComponent(res.headers.get("X-Credits") ?? "%5B%5D")));
   if (img.src) URL.revokeObjectURL(img.src);
   img.src = URL.createObjectURL(blob);
-  img.hidden = false;
   // Number(null) would be 0, so a missing header needs its own check
   const header = res.headers.get("X-TTL");
   const ttl = header === null ? NaN : Number(header);

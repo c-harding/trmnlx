@@ -102,6 +102,8 @@ p { margin: 0; }
    scrolling. While the next image loads, it shows TRMNL's mark (see loading-mark.ts) */
 #preview { display: grid; grid-template: 1fr / 1fr; width: min(802px, 100cqw, 100cqh * 5 / 3); aspect-ratio: 5 / 3; box-sizing: border-box; border: 1px solid; background: #fff; cursor: zoom-in; }
 #preview img { display: block; width: 100%; height: 100%; }
+/* Before the first image (no src yet): nothing, rather than the browser's broken-image icon */
+#preview img:not([src]) { visibility: hidden; }
 body.actual-size { height: auto; min-height: 100%; }
 body.actual-size .preview-area { flex: none; container-type: normal; }
 body.actual-size #preview { width: 802px; cursor: zoom-out; }
