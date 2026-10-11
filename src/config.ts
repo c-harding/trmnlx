@@ -4,6 +4,7 @@ import {
   ConfigError,
   devicePlaylist,
   readDefaultScreen,
+  readLocation,
   readNamedPlaylists,
   type PlaylistEntry,
   type ScreenInputs,
@@ -30,6 +31,8 @@ export interface Device {
   refreshRate: number;
   /** What it shows: at least one entry (see playlists.ts) */
   playlist: PlaylistEntry[];
+  /** What it shows when no entry of its playlist applies */
+  defaultScreen: PlaylistEntry;
   temperatureProfile: TemperatureProfile | undefined;
   fullRefresh: boolean;
 }
@@ -67,7 +70,7 @@ function loadDevices(): Device[] {
   }
 
   // Checked field by field below
-  let data: { devices?: unknown; defaultScreen?: unknown; playlists?: unknown } | undefined;
+  let data: { devices?: unknown; defaultScreen?: unknown; playlists?: unknown; location?: unknown } | undefined;
   try {
     data = parse(text);
   } catch (error) {
@@ -80,7 +83,8 @@ function loadDevices(): Device[] {
   const defaultTimeZone = checkTimeZone(process.env.TZ || "UTC", "TZ");
   const screenInputs: ScreenInputs = Object.fromEntries(Object.entries(screens).map(([name, screen]) => [name, screen.inputs]));
   const defaultScreen = orFail(() => readDefaultScreen(data!.defaultScreen, screenInputs));
-  const playlists = orFail(() => readNamedPlaylists(data!.playlists, screenInputs));
+  const location = orFail(() => readLocation(data!.location, "location"));
+  const playlists = orFail(() => readNamedPlaylists(data!.playlists, screenInputs, location));
   const usernames = new Set<string>();
   const macs = new Set<string>();
 
@@ -119,7 +123,12 @@ function loadDevices(): Device[] {
       token: device.token,
       timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
-      playlist: orFail(() => devicePlaylist(device, where, playlists, screenInputs, defaultScreen)),
+      playlist: orFail(() => {
+        // Its own location for holidays, or the top-level one
+        const own = readLocation(device.location, `${where}.location`);
+        return devicePlaylist(device, where, playlists, screenInputs, defaultScreen, own ?? location);
+      }),
+      defaultScreen,
       temperatureProfile: device.temperatureProfile,
       // Partial refreshes leave traces of earlier screens on the DIY kit (see ARCHITECTURE.md), so
       // full refreshes are the default until that's understood

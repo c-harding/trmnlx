@@ -1,7 +1,8 @@
 import { readdir } from "node:fs/promises";
 import type { Device } from "./config.ts";
 import { isScreen, type Screen, type ScreenDevice } from "./define-screen.ts";
-import { currentEntry, stepIndex } from "./device-state.ts";
+import { earliest } from "./conditions.ts";
+import { currentEntry, entriesNearby, evaluate } from "./device-state.ts";
 import { renderPng } from "./render.ts";
 import { telemetryFor, type Telemetry } from "./telemetry.ts";
 import { SAFETY_SECONDS } from "./time.ts";
@@ -64,24 +65,48 @@ export async function renderDeviceScreen(device: Device) {
 
 /**
  * Warms the data of the device's current entry and those one press away (the previous and the
- * next), so they can be shown without waiting for slow sources (see Source.warm). Called at
- * startup, at each check-in and each browser render, and after each move. Once entries have
- * `when`, these are to be the applicable ones, and it's to run also when a window starts or ends,
- * as that changes which entries are one press away.
+ * next that apply), so they can be shown without waiting for slow sources (see Source.warm).
+ * Called at startup, at each check-in and each browser render, after each move, and when a `when`
+ * window starts or ends (see warmAtWindowChanges).
  */
 export function warmDeviceScreens(device: Device) {
-  const { index } = currentEntry(device);
-  const length = device.playlist.length;
-  const indices = new Set([index, stepIndex(index, length, 1), stepIndex(index, length, -1)]);
   const now = new Date();
-  const telemetry = telemetryFor(device);
-  for (const i of indices) {
-    const entry = device.playlist[i];
-    // Only ahead of need: a mistake here mustn't break the startup, a check-in or a render
-    try {
-      screens[entry.screen].warm({ device, now, telemetry, inputs: entry.inputs });
-    } catch (error) {
-      console.error(`Warming ${entry.screen} for ${device.username} failed:`, error);
-    }
+  // Only ahead of need: a mistake here mustn't break the startup, a check-in or a render
+  try {
+    const telemetry = telemetryFor(device);
+    for (const entry of entriesNearby(device, now)) screens[entry.screen].warm({ device, now, telemetry, inputs: entry.inputs });
+  } catch (error) {
+    console.error(`Warming the screens of ${device.username} failed:`, error);
   }
+}
+
+// The timer for each device's next window change, by MAC
+const windowTimers = new Map<string, NodeJS.Timeout>();
+// Without a change within the next day, looked at again then
+const RECHECK_MS = 24 * 3600 * 1000;
+
+/**
+ * Warms the device's screens again whenever a `when` window of its playlist starts or ends, as that
+ * changes which entries are one press away (and may move the playlist on), and keeps doing so.
+ */
+export function warmAtWindowChanges(device: Device) {
+  clearTimeout(windowTimers.get(device.mac));
+  if (!device.playlist.some((entry) => entry.when)) return;
+  const now = new Date();
+  const next = earliest(evaluate(device, now).changes);
+  // A second after the change, so it counts as past
+  const delay = next ? next.getTime() - now.getTime() + 1000 : RECHECK_MS;
+  const timer = setTimeout(() => {
+    warmDeviceScreens(device);
+    try {
+      warmAtWindowChanges(device);
+    } catch (error) {
+      // Looked at again later rather than never, or crashing the server
+      console.error(`Finding the next window change of ${device.username} failed:`, error);
+      windowTimers.set(device.mac, setTimeout(() => warmAtWindowChanges(device), RECHECK_MS).unref());
+    }
+  }, delay);
+  // Not a reason to keep the process running
+  timer.unref();
+  windowTimers.set(device.mac, timer);
 }

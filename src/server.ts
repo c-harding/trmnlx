@@ -4,7 +4,7 @@ import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./c
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
-import { renderDeviceScreen, warmDeviceScreens } from "./screen.ts";
+import { renderDeviceScreen, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 import { flushState, persistTo } from "./state-file.ts";
 
@@ -19,8 +19,12 @@ if (checkOnly) {
 // Next to server.js: a Docker volume on the server (see docker-compose.yml)
 persistTo(new URL("./state/", import.meta.url));
 
-// What each device can show next, so the first switch after a deploy needn't wait for slow data
-for (const device of devices) warmDeviceScreens(device);
+// What each device can show next, so the first switch after a deploy needn't wait for slow data,
+// and again whenever its `when` windows change that
+for (const device of devices) {
+  warmDeviceScreens(device);
+  warmAtWindowChanges(device);
+}
 
 const app = express();
 app.disable("x-powered-by");
@@ -34,17 +38,19 @@ app.use(cookieParser());
 app.get("/", (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.redirect(303, "/login");
-  res.type("html").send(screenPage(device.username, playlistStatus(device)));
+  res.type("html").send(screenPage(device.username, playlistStatus(device), device.playlist.length));
 });
 
 function playlistStatus(device: Device): PlaylistStatus {
-  const { entry, index } = currentEntry(device);
+  const { entry, index, applying } = currentEntry(device);
   const checkIn = lastCheckIn(device);
   return {
-    position: index + 1,
     screen: entry.screen,
-    count: device.playlist.length,
-    checkIn: checkIn && { shown: checkIn.shown === undefined ? undefined : checkIn.shown + 1, next: checkIn.next },
+    index,
+    position: applying.indexOf(index) + 1,
+    count: applying.length,
+    otherTimes: [...new Set(device.playlist.filter((_entry, i) => !applying.includes(i)).map((other) => other.screen))],
+    checkIn,
     now: new Date(),
     timeZone: device.timeZone,
   };

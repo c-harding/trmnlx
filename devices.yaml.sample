@@ -1,5 +1,6 @@
 # Copy to devices.yaml and fill in your devices. devices.yaml is gitignored.
-# defaultScreen: placeholder  # The screen for devices that don't name one (default: placeholder, or the first screen found)
+# defaultScreen: placeholder  # The screen for devices that don't name one, and while no playlist entry applies (default: placeholder, or the first screen found)
+# location: { country: de, state: Bayern }  # For public and school holidays (PH, SH) in `when`; a device can have its own
 # playlists:  # Named playlists, for devices (playlist: travel) and other playlists to use
 #   travel:
 #     - screen: journeys
@@ -11,6 +12,7 @@ devices:
     username: kitchen
     password: change-me
     # timezone: Europe/Berlin  # Defaults to TZ, then UTC
+    # location: { country: at, state: Tirol }  # Overrides the top-level location, for holidays in `when`
     # refreshRate: 900  # Seconds between polls, at least 60
     # screen: mvg-departures  # Which screen this device shows, with its default inputs; overrides defaultScreen
     # playlist:  # Instead of screen: what the device shows, with inputs (or the name of a playlist above)
@@ -18,8 +20,11 @@ devices:
     #     inputs:
     #       station: Marienplatz
     #     duration: 10m  # How long before moving on to the next entry (90s, 10m, 1h, 1h30m); without it, until a button press
+    #     when: Mo-Fr 06:30-09:00; PH off  # When it applies, in OpenStreetMap's opening_hours syntax; without it, always
     #   - playlist: travel  # Includes a named playlist; just `- travel` does too
     #     duration: 5m  # For the included entries without their own
+    #   - screen: placeholder
+    #     when: otherwise  # When nothing else in this list applies
     # fullRefresh: false  # Default true: full refresh on every update; false allows partial refreshes (see ARCHITECTURE.md)
     # temperatureProfile: a  # How the firmware drives the panel: default, a or b (see ARCHITECTURE.md)
     # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one

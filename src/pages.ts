@@ -34,13 +34,18 @@ function formatTime(date: Date, now: Date, timeZone: string) {
 
 /** Where the device is in its playlist, and what it got at its last check-in. */
 export interface PlaylistStatus {
-  /** The current playlist entry's position (from 1) and screen, and the playlist's length */
-  position: number;
+  /** The screen shown now */
   screen: string;
+  /** Its entry's index in the playlist, or -1 for the default screen (no entry applies) */
+  index: number;
+  /** Its position (from 1) among the entries that apply now, and how many apply */
+  position: number;
   count: number;
+  /** The screens of the entries that don't apply now */
+  otherTimes: string[];
   /**
-   * Its last check-in: the position of the entry it was sent (unknown if the playlist changed
-   * since), and when the next is expected; undefined if it has never checked in
+   * Its last check-in: the index of the entry it was sent (-1 for the default screen, undefined if
+   * unknown), and when the next is expected; undefined if it has never checked in
    */
   checkIn: { shown: number | undefined; next: Date } | undefined;
   now: Date;
@@ -50,25 +55,34 @@ export interface PlaylistStatus {
 /**
  * The screen page's text about the playlist, as plain text: sent with the page, and again with
  * each /screen.png (X-Status), so the page keeps up when the device checks in or another tab
- * moves the playlist. The caption says whether the preview is live: whether the device got this
- * entry at its last check-in (by entry, not image: the preview is rendered fresh, so its data can
- * be newer), or when it will.
+ * moves the playlist. The position counts the entries that apply now, which Prev and Next move
+ * through, so it can change during the day; `title` names the others, as a tooltip. The caption
+ * says whether the preview is live: whether the device got this entry at its last check-in (by
+ * entry, not image: the preview is rendered fresh, so its data can be newer), or when it will.
  */
-export function statusText({ position, screen, count, checkIn, now, timeZone }: PlaylistStatus) {
-  const showing = count > 1 ? `Showing ${screen} (${position}/${count})` : `Showing ${screen}`;
+export function statusText({ screen, index, position, count, otherTimes, checkIn, now, timeZone }: PlaylistStatus) {
+  const showing =
+    index < 0
+      ? `Showing ${screen}, the default: nothing in the playlist applies now`
+      : count > 1
+        ? `Showing ${screen} (${position}/${count})`
+        : `Showing ${screen}`;
+  const title = otherTimes.length ? `Also in the playlist, at other times: ${otherTimes.join(", ")}` : "";
   let caption = "Preview (will be applied when device comes online):";
-  if (checkIn?.shown === position) caption = "Live preview:";
+  if (checkIn?.shown === index) caption = "Live preview:";
   // An overdue device: it's offline, or its battery is flat
   else if (checkIn && checkIn.next >= now) caption = `Preview (will be applied at ${formatTime(checkIn.next, now, timeZone)}):`;
-  return { showing, caption };
+  // Prev and Next only with something to move to
+  return { showing, title, caption, canMove: index >= 0 && count > 1 };
 }
 
-export const screenPage = (name: string, status: PlaylistStatus) => {
-  const { showing, caption } = statusText(status);
-  const showingHtml = `<span id="showing">${escapeHtml(showing)}</span>`;
+export const screenPage = (name: string, status: PlaylistStatus, playlistLength: number) => {
+  const { showing, title, caption, canMove } = statusText(status);
+  const showingHtml = `<span id="showing" title="${escapeHtml(title)}">${escapeHtml(showing)}</span>`;
+  // With one entry, there's never anything to move to; otherwise the buttons show when there is
   const playlist =
-    status.count > 1
-      ? `<form method="post" action="/next"><p>${showingHtml} <button formaction="/previous">Prev</button> <button>Next</button></p></form>`
+    playlistLength > 1
+      ? `<form method="post" action="/next"><p>${showingHtml} <span id="moves"${canMove ? "" : " hidden"}><button formaction="/previous">Prev</button> <button>Next</button></span></p></form>`
       : `<p>${showingHtml}</p>`;
   return page(
     `TRMNL: ${name}`,
@@ -114,8 +128,11 @@ async function refresh() {
       delay = Number.isNaN(ttl) ? 60 : Math.max(ttl, 1);
       const status = res.headers.get("X-Status");
       if (status) {
-        const { showing, caption } = JSON.parse(decodeURIComponent(status));
+        const { showing, title, caption, canMove } = JSON.parse(decodeURIComponent(status));
         document.getElementById("showing").textContent = showing;
+        document.getElementById("showing").title = title;
+        const moves = document.getElementById("moves");
+        if (moves) moves.hidden = !canMove;
         document.getElementById("caption").textContent = caption;
       }
       const untilCheckIn = (Number(res.headers.get("X-Check-In")) - Date.now()) / 1000 + 30;

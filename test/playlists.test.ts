@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { devicePlaylist, expandPlaylist, parseDuration, readDefaultScreen, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
+import type { Condition } from "../src/conditions.ts";
+import { devicePlaylist, expandPlaylist, parseDuration, readDefaultScreen, readLocation, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
 
 const screens: ScreenInputs = {
   placeholder: {},
@@ -94,9 +95,63 @@ test("inputs are checked against the screen's", () => {
   assert.match(check(["routes"]), /inputs must be a mapping/);
 });
 
-test("when is rejected until it's built", () => {
-  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "Mo-Fr" }], "p", {}, screens)), /p\[0\]\.when: not supported yet/);
-  assert.match(errorOf(() => expandPlaylist([{ playlist: "x", when: "Mo-Fr" }], "p", { x: [{ screen: "placeholder" }] }, screens)), /p\[0\]\.when: not supported yet/);
+// What an entry's condition is, in words, to compare in tests
+function describeWhen(entry: { when?: Condition }): string {
+  const describe = (c: Condition): string =>
+    c.kind === "hours" ? c.text : c.kind === "not" ? `not(${describe(c.part)})` : c.kind === "all" || c.kind === "any" ? `${c.kind}(${c.parts.map(describe).join(", ")})` : c.kind;
+  return entry.when ? describe(entry.when) : "always";
+}
+
+test("when: an entry's own, its include's, and otherwise among its siblings", () => {
+  const named = readNamedPlaylists({ travel: [{ screen: "journeys", when: "Sa,Su" }, { screen: "placeholder" }] }, screens);
+  const playlist = expandPlaylist(
+    [
+      { screen: "mvg-departures", when: "Mo-Fr 06:30-09:00" },
+      { playlist: "travel", when: "08:00-20:00" },
+      { screen: "placeholder", when: "otherwise" },
+    ],
+    "p",
+    named,
+    screens,
+  );
+  assert.deepEqual(playlist.map(describeWhen), [
+    "Mo-Fr 06:30-09:00",
+    "all(08:00-20:00, Sa,Su)",
+    "08:00-20:00",
+    // The include counts as applying when any of its entries does: its second one always does
+    "not(any(Mo-Fr 06:30-09:00, 08:00-20:00))",
+  ]);
+});
+
+test("otherwise is resolved within its own playlist, not the ones including it", () => {
+  const named = readNamedPlaylists({ inner: [{ screen: "journeys", when: "Sa,Su" }, { screen: "placeholder", when: "otherwise" }] }, screens);
+  const playlist = expandPlaylist([{ screen: "mvg-departures", when: "Mo-Fr 06:30-09:00" }, "inner"], "p", named, screens);
+  assert.deepEqual(playlist.map(describeWhen), ["Mo-Fr 06:30-09:00", "Sa,Su", "not(Sa,Su)"]);
+});
+
+test("mistakes in when stop the server with where they are", () => {
+  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "Mo-Fx 06:30" }], "p", {}, screens)), /p\[0\]\.when isn't valid opening hours: Mo-F/);
+  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: 9 }], "p", {}, screens)), /p\[0\]\.when must be opening hours such as Mo-Fr 06:30-09:00/);
+  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "PH off" }], "p", {}, screens)), /p\[0\]\.when: holidays \(PH, SH\) need a location/);
+  assert.doesNotThrow(() => expandPlaylist([{ screen: "placeholder", when: "PH off" }], "p", {}, screens, [], { country: "de", state: "Bayern" }));
+  assert.match(errorOf(() => readDefaultScreen({ screen: "placeholder", when: "Mo-Fr" }, screens)), /defaultScreen\.when: unknown field/);
+  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "sunrise-sunset" }], "p", {}, screens)), /sunrise, sunset, dawn and dusk aren't supported/);
+  assert.match(
+    errorOf(() => expandPlaylist([{ screen: "placeholder", when: "SH" }], "p", {}, screens, [], { country: "de" })),
+    /p\[0\]\.when: no holidays known for this location \(school holidays, SH, need its state/,
+  );
+});
+
+test("named playlists with SH are checked without a top-level location (devices may have their own)", () => {
+  assert.doesNotThrow(() => readNamedPlaylists({ school: [{ screen: "placeholder", when: "SH" }] }, screens));
+});
+
+test("locations: a country code and optionally a state", () => {
+  assert.deepEqual(readLocation({ country: "DE", state: "Bayern" }, "location"), { country: "de", state: "Bayern" });
+  assert.deepEqual(readLocation({ country: "at" }, "location"), { country: "at" });
+  assert.equal(readLocation(undefined, "location"), undefined);
+  assert.match(errorOf(() => readLocation({ country: "Germany" }, "devices[0].location")), /devices\[0\]\.location\.country must be a two-letter country code/);
+  assert.match(errorOf(() => readLocation("de", "location")), /location must be a country/);
 });
 
 test("durations: 90s, 10m, 1h, 1h30m", () => {
@@ -149,6 +204,15 @@ test("defaultScreen: a name, screen and inputs, or a sensible default", () => {
   assert.match(errorOf(() => readDefaultScreen("nope", screens)), /^defaultScreen must be one of/);
   assert.match(errorOf(() => readDefaultScreen({ screen: "nope" }, screens)), /^defaultScreen\.screen must be one of/);
   assert.match(errorOf(() => readDefaultScreen({ screen: "placeholder", when: "Mo-Fr" }, screens)), /defaultScreen\.when: unknown field/);
+  assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", when: "sunrise-sunset" }], "p", {}, screens)), /sunrise, sunset, dawn and dusk aren't supported/);
+  assert.match(
+    errorOf(() => expandPlaylist([{ screen: "placeholder", when: "SH" }], "p", {}, screens, [], { country: "de" })),
+    /p\[0\]\.when: no holidays known for this location \(school holidays, SH, need its state/,
+  );
+});
+
+test("named playlists with SH are checked without a top-level location (devices may have their own)", () => {
+  assert.doesNotThrow(() => readNamedPlaylists({ school: [{ screen: "placeholder", when: "SH" }] }, screens));
 });
 
 test("a name alone in a playlist includes that named playlist", () => {

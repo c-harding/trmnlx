@@ -1,10 +1,12 @@
 // Playlists from devices.yaml: what a device shows, as a list of entries, each a screen with its
 // inputs. Named playlists (top-level `playlists`) can be used by devices and included in each other,
 // as `playlist: <name>` or just `<name>`; includes are expanded here, so a device ends up with one
-// flat list.
+// flat list. Each entry's `when` is combined with its includes' then, and `otherwise` resolved, so
+// each entry has one condition (see conditions.ts).
 //
 // Plain functions that throw a ConfigError, so config.ts can report it and stop, and tests can call
 // them with made-up screens.
+import { ALWAYS, all, any, not, parseHours, type Condition, type Location } from "./conditions.ts";
 import { matchesInput, type InputDefinitions } from "./define-screen.ts";
 
 /** One screen with its inputs (values as written in devices.yaml, checked against the screen's). */
@@ -13,15 +15,14 @@ export interface PlaylistEntry {
   inputs: Record<string, unknown>;
   /** How long it stays before the playlist moves on (s); without it, until a press */
   duration?: number;
+  /** When it applies; without it, always */
+  when?: Condition;
 }
 
 export class ConfigError extends Error {}
 
 /** The screens there are, with their input definitions: all that checking a playlist needs. */
 export type ScreenInputs = Record<string, InputDefinitions>;
-
-// Planned (see ARCHITECTURE.md), but not built yet: rejected rather than silently ignored
-const NOT_YET = ["when"];
 
 // A device wakes at most every 5 seconds, and a playlist moving faster than the screen page polls
 // would skip entries there
@@ -47,10 +48,34 @@ function describe(value: unknown): string {
   return i < 0 ? "a list" : `a list with ${describe(value[i])} at position ${i + 1}`;
 }
 
-function checkFields(entry: Record<string, unknown>, allowed: string[], where: string, notYet = NOT_YET) {
+function checkFields(entry: Record<string, unknown>, allowed: string[], where: string) {
   for (const field of Object.keys(entry)) {
-    if (notYet.includes(field)) throw new ConfigError(`${where}.${field}: not supported yet`);
     if (!allowed.includes(field)) throw new ConfigError(`${where}.${field}: unknown field (expected ${allowed.join(", ")})`);
+  }
+}
+
+// `when: otherwise`, until it's resolved against its siblings
+const OTHERWISE = "otherwise";
+
+/** An entry's or include's `when`: a condition, or `otherwise`. */
+function parseWhen(value: unknown, where: string, location: Location | undefined): Condition | typeof OTHERWISE {
+  if (value === OTHERWISE) return OTHERWISE;
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new ConfigError(`${where} must be opening hours such as Mo-Fr 06:30-09:00 (OpenStreetMap's opening_hours syntax), or otherwise`);
+  }
+  // The library needs real coordinates for these, and would silently use fixed times instead
+  if (/sunrise|sunset|dawn|dusk/i.test(value)) throw new ConfigError(`${where}: sunrise, sunset, dawn and dusk aren't supported`);
+  try {
+    return parseHours(value, location);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith("Country code missing")) {
+      throw new ConfigError(`${where}: holidays (PH, SH) need a location, e.g. location: { country: de, state: Bayern }`);
+    }
+    if (/no holidays .* defined for country/.test(message)) {
+      throw new ConfigError(`${where}: no holidays known for this location (school holidays, SH, need its state, e.g. state: Bayern)`);
+    }
+    throw new ConfigError(`${where} isn't valid opening hours: ${message.trim()}`);
   }
 }
 
@@ -75,19 +100,18 @@ function checkInputs(screen: string, inputs: unknown, where: string, screens: Sc
 }
 
 /**
- * A screen entry: `screen`, optionally `inputs`, and in a playlist `duration`. `screenAt` is where
- * the screen's name was given, for messages; `notYet` the fields still to come there.
+ * A screen entry: `screen`, optionally `inputs`, and in a playlist `duration` and `when` (which
+ * expandPlaylist reads). `screenAt` is where the screen's name was given, for messages.
  */
 function screenEntry(
   entry: Record<string, unknown>,
   where: string,
   screens: ScreenInputs,
   screenAt = `${where}.screen`,
-  notYet = NOT_YET,
-  fields = ["screen", "inputs", "duration"],
+  fields = ["screen", "inputs", "duration", "when"],
 ): PlaylistEntry {
   if (entry.playlist !== undefined) throw new ConfigError(`${where}: give either screen or playlist, not both`);
-  checkFields(entry, fields, where, notYet);
+  checkFields(entry, fields, where);
   if (typeof entry.screen !== "string" || !Object.hasOwn(screens, entry.screen)) {
     throw new ConfigError(`${screenAt} must be one of ${Object.keys(screens).join(", ")}`);
   }
@@ -98,7 +122,9 @@ function screenEntry(
 
 /**
  * A playlist's entries, with includes (`playlist: <name>`, or just the name) replaced by the named
- * playlist's entries.
+ * playlist's entries, and each entry's condition: its own `when`, and its includes' (all must
+ * apply). `when: otherwise` applies when none of its siblings in this list does (an include
+ * counting as applying when any of its entries does). `location` is for holidays in `when`.
  * `named` are the raw named playlists; `including` the names being expanded, to catch cycles.
  */
 export function expandPlaylist(
@@ -107,21 +133,38 @@ export function expandPlaylist(
   named: Record<string, unknown>,
   screens: ScreenInputs,
   including: string[] = [],
+  location?: Location,
 ): PlaylistEntry[] {
   if (!Array.isArray(raw) || raw.length === 0) throw new ConfigError(`${where} must be a non-empty list of entries`);
-  return raw.flatMap((entry, i): PlaylistEntry[] => {
+  // Each item of the list: its entries, and its own `when`
+  const items = raw.map((entry, i): { entries: PlaylistEntry[]; when: Condition | typeof OTHERWISE } => {
     const at = `${where}[${i}]`;
     // A name alone includes that playlist
-    if (typeof entry === "string" || typeof entry === "number") return namedPlaylist(nameOf(entry), at, named, screens, including);
+    if (typeof entry === "string" || typeof entry === "number") {
+      return { entries: namedPlaylist(nameOf(entry), at, named, screens, including, location), when: ALWAYS };
+    }
     if (!isObject(entry)) throw new ConfigError(`${at} must be a playlist's name or an entry (screen: …, or playlist: …)`);
-    if (entry.playlist === undefined || entry.screen !== undefined) return [screenEntry(entry, at, screens)];
-    checkFields(entry, ["playlist", "duration"], at);
-    const entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including);
-    if (entry.duration === undefined) return entries;
+    const when = entry.when === undefined ? ALWAYS : parseWhen(entry.when, `${at}.when`, location);
+    if (entry.playlist === undefined || entry.screen !== undefined) return { entries: [screenEntry(entry, at, screens)], when };
+    checkFields(entry, ["playlist", "duration", "when"], at);
+    const entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including, location);
+    if (entry.duration === undefined) return { entries, when };
     // The include's duration, for its entries without their own
     const duration = parseDuration(entry.duration, `${at}.duration`);
-    return entries.map((included) => (included.duration === undefined ? { ...included, duration } : included));
+    return { entries: entries.map((included) => (included.duration === undefined ? { ...included, duration } : included)), when };
   });
+  // When each item applies: its own `when`, and for an include any of its entries' conditions
+  const appliesWhen = (item: (typeof items)[number]) =>
+    item.when === OTHERWISE ? undefined : all([item.when, any(item.entries.map((entry) => entry.when ?? ALWAYS))]);
+  const otherwise = not(any(items.map(appliesWhen).filter((condition) => condition !== undefined)));
+  return items.flatMap(({ entries, when }) =>
+    entries.map((entry) => withWhen(entry, all([when === OTHERWISE ? otherwise : when, entry.when ?? ALWAYS]))),
+  );
+}
+
+/** An entry with a condition: none for one that always applies. */
+function withWhen({ when: _, ...entry }: PlaylistEntry, when: Condition): PlaylistEntry {
+  return when.kind === "always" ? entry : { ...entry, when };
 }
 
 // YAML reads a name like 1 as a number, but keys (the names in `playlists`) as strings
@@ -134,6 +177,7 @@ function namedPlaylist(
   named: Record<string, unknown>,
   screens: ScreenInputs,
   including: string[],
+  location: Location | undefined,
 ): PlaylistEntry[] {
   if (typeof name !== "string" || !Object.hasOwn(named, name)) {
     const known = Object.keys(named);
@@ -142,15 +186,36 @@ function namedPlaylist(
     throw new ConfigError(`${where} must name a playlist (${known.length ? `there are ${known.join(", ")}` : "there are none under playlists"}${screen})`);
   }
   if (including.includes(name)) throw new ConfigError(`Playlists include each other: ${[...including, name].join(" → ")}`);
-  return expandPlaylist(named[name], `playlists.${name}`, named, screens, [...including, name]);
+  return expandPlaylist(named[name], `playlists.${name}`, named, screens, [...including, name], location);
 }
 
-/** The top-level `playlists`: checked as a whole, so mistakes in unused ones are found too. */
-export function readNamedPlaylists(raw: unknown, screens: ScreenInputs): Record<string, unknown> {
+// For checking named playlists before knowing which devices use them, and so which location they
+// get: only needed for holidays to parse, the real location comes with each device
+const CHECKING_LOCATION: Location = { country: "de", state: "Bayern" };
+
+/**
+ * The top-level `playlists`: checked as a whole, so mistakes in unused ones are found too. A
+ * missing location for holidays is only found with the devices using them (they may have one).
+ */
+export function readNamedPlaylists(raw: unknown, screens: ScreenInputs, location?: Location): Record<string, unknown> {
   if (raw === undefined) return {};
   if (!isObject(raw)) throw new ConfigError("playlists must be a mapping of names to lists of entries");
-  for (const name of Object.keys(raw)) namedPlaylist(name, "playlists", raw, screens, []);
+  for (const name of Object.keys(raw)) namedPlaylist(name, "playlists", raw, screens, [], location ?? CHECKING_LOCATION);
   return raw;
+}
+
+/** A `location`, at the top level or a device's: `country` (e.g. de) and optionally `state`. */
+export function readLocation(raw: unknown, where: string): Location | undefined {
+  if (raw === undefined) return undefined;
+  if (!isObject(raw)) throw new ConfigError(`${where} must be a country and optionally a state, e.g. { country: de, state: Bayern }`);
+  checkFields(raw, ["country", "state"], where);
+  if (typeof raw.country !== "string" || !/^[a-z]{2}$/i.test(raw.country)) {
+    throw new ConfigError(`${where}.country must be a two-letter country code, e.g. de or at`);
+  }
+  if (raw.state !== undefined && (typeof raw.state !== "string" || raw.state === "")) {
+    throw new ConfigError(`${where}.state must be a state's name as OpenStreetMap writes it, e.g. Bayern or Tirol`);
+  }
+  return { country: raw.country.toLowerCase(), ...(raw.state === undefined ? {} : { state: raw.state as string }) };
 }
 
 /** The top-level `defaultScreen`: a screen's name, or `screen` and `inputs` like an entry. */
@@ -161,14 +226,15 @@ export function readDefaultScreen(raw: unknown, screens: ScreenInputs): Playlist
   if (raw === undefined) return { screen: available.includes("placeholder") ? "placeholder" : available[0], inputs: {} };
   // Not planned to get `when` or `duration`: it's what shows when no entry applies
   const fields = ["screen", "inputs"];
-  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, "defaultScreen", [], fields);
-  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, "defaultScreen.screen", [], fields);
+  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, "defaultScreen", fields);
+  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, "defaultScreen.screen", fields);
   throw new ConfigError(`defaultScreen must be a screen's name, or screen and inputs`);
 }
 
 /**
  * A device's playlist: its `playlist` (a list of entries, or a named playlist's name), or its
- * `screen` as a playlist of one, or otherwise the default screen.
+ * `screen` as a playlist of one, or otherwise the default screen. `location` is the device's, for
+ * holidays in `when`.
  */
 export function devicePlaylist(
   device: { screen?: unknown; playlist?: unknown },
@@ -176,13 +242,14 @@ export function devicePlaylist(
   named: Record<string, unknown>,
   screens: ScreenInputs,
   defaultScreen: PlaylistEntry,
+  location?: Location,
 ): PlaylistEntry[] {
   if (device.screen !== undefined && device.playlist !== undefined) {
     throw new ConfigError(`${where}: give either screen or playlist, not both`);
   }
   if (device.screen !== undefined) return [screenEntry({ screen: device.screen }, where, screens)];
   const name = nameOf(device.playlist);
-  if (typeof name === "string") return namedPlaylist(name, `${where}.playlist`, named, screens, []);
-  if (device.playlist !== undefined) return expandPlaylist(device.playlist, `${where}.playlist`, named, screens);
+  if (typeof name === "string") return namedPlaylist(name, `${where}.playlist`, named, screens, [], location);
+  if (device.playlist !== undefined) return expandPlaylist(device.playlist, `${where}.playlist`, named, screens, [], location);
   return [defaultScreen];
 }
