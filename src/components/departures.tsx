@@ -3,16 +3,15 @@
 import type { ComponentChildren } from "preact";
 import type { Departure, DepartureKind } from "../departure.ts";
 import { HEIGHT } from "../render.ts";
-import { batteryText, type Telemetry } from "../telemetry.ts";
+import type { Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
+import { BatteryAndClock, ellipsis, Header, HEADER_GAP, HEADER_HEIGHT } from "./header.tsx";
 
 const ROW_HEIGHT = 44;
 // A row with notes gets a second, smaller line under the destination
 const NOTE_ROW_HEIGHT = 64;
 // Fixed heights of everything around the rows, so the space left for rows can be calculated
 const PADDING_Y = 12;
-const HEADER_HEIGHT = 55; // including its bottom border
-const HEADER_GAP = 4;
 const ROWS_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP;
 // The thicker line above pinned departures
 const PINNED_RULE = 3;
@@ -102,8 +101,6 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
     </div>
   );
 }
-
-const ellipsis = { overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" } as const;
 
 // Digits of equal width (Inter's tabular figures), so times line up from row to row
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
@@ -282,27 +279,9 @@ export function DepartureBoard(props: {
         fontSize: 28,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          height: HEADER_HEIGHT,
-          boxSizing: "border-box",
-          paddingBottom: 8,
-          borderBottom: "3px solid #000",
-          marginBottom: HEADER_GAP,
-        }}
-      >
-        {/* A long station name is cut off with "…", leaving room for battery and clock */}
-        <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: 16, fontSize: 36, fontWeight: 700, ...ellipsis }}>
-          {title}
-        </div>
-        <div style={{ display: "flex", flexShrink: 0, alignItems: "baseline", fontSize: 20 }}>
-          {`${batteryText(telemetry)} · `}
-          <span style={{ fontWeight: 700, fontSize: 28, marginLeft: 6 }}>{formatTime(now, timeZone)}</span>
-        </div>
-      </div>
+      <Header title={title} titleSize={36}>
+        <BatteryAndClock telemetry={telemetry} now={now} timeZone={timeZone} />
+      </Header>
 
       {rows.length === 0 && extra.length === 0 ? (
         <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>

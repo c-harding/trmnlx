@@ -3,15 +3,12 @@
 import type { ComponentChildren } from "preact";
 import { allowedOnRoute, type Route, type Rule } from "../journey-routes.ts";
 import type { Journey, JourneyLeg, JourneysResult } from "../sources/transitous.ts";
-import { batteryText, type Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
+import { ellipsis } from "./header.tsx";
 
-// The header as on the departures screen
+// Above the header, as on the departures screen
 export const PADDING_Y = 12;
-const HEADER_HEIGHT = 55; // including its bottom border
-const HEADER_GAP = 4;
 
-export const ellipsis = { overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" } as const;
 // Digits of equal width (Inter's tabular figures), so times line up
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
@@ -237,34 +234,6 @@ export function JourneyList(props: {
       {journeys.map((journey, i) => (
         <JourneyBlock key={i} journey={journey} timeZone={timeZone} size={size} />
       ))}
-    </div>
-  );
-}
-
-/** The screen's header, as on the departures screen: a title, then battery and clock. */
-export function Header(props: { title: string; telemetry: Telemetry | undefined; now: Date; timeZone: string }) {
-  const { title, telemetry, now, timeZone } = props;
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "baseline",
-        height: HEADER_HEIGHT,
-        boxSizing: "border-box",
-        paddingBottom: 8,
-        borderBottom: "3px solid #000",
-        marginBottom: HEADER_GAP,
-      }}
-    >
-      {/* A long title is cut off with "…", leaving room for battery and clock */}
-      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: 16, fontSize: 32, fontWeight: 700, ...ellipsis }}>
-        {title}
-      </div>
-      <div style={{ display: "flex", flexShrink: 0, alignItems: "baseline", fontSize: 20 }}>
-        {`${batteryText(telemetry)} · `}
-        <span style={{ fontWeight: 700, fontSize: 28, marginLeft: 6 }}>{formatTime(now, timeZone)}</span>
-      </div>
     </div>
   );
 }
