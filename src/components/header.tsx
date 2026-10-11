@@ -4,6 +4,10 @@ import type { ComponentChildren } from "preact";
 import { batteryText, type Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
 
+// The space around the screens' content: above and below, and left and right
+export const PADDING_Y = 12;
+export const PADDING_X = 28;
+
 export const HEADER_HEIGHT = 55; // including its rule
 // Between the rule and what's below it
 export const HEADER_GAP = 4;

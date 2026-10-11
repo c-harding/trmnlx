@@ -1,15 +1,13 @@
 // A street map, like a printed one: roads in black, railways in dark gray, water in light gray,
 // under the place's name. Drawn once per place from OpenStreetMap data and kept (see
 // sources/map.ts), so showing it costs no more than any other screen, and it never changes by itself.
-import { Header, HEADER_HEIGHT_WITHOUT_RULE } from "../components/header.tsx";
-import { PADDING_Y } from "../components/journeys.tsx";
+import { Header, HEADER_HEIGHT_WITHOUT_RULE, PADDING_X, PADDING_Y } from "../components/header.tsx";
 import { defineScreen } from "../define-screen.ts";
 import { HEIGHT, WIDTH } from "../render.ts";
 import { loadMap } from "../sources/map.ts";
 
 // The header as on the other screens (without battery, clock or rule), with the same padding; the map
 // goes edge to edge below it, from where the rule would be
-const PADDING_X = 28;
 const MAP_HEIGHT = HEIGHT - PADDING_Y - HEADER_HEIGHT_WITHOUT_RULE;
 
 export default defineScreen({

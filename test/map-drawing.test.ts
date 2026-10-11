@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildMapSvg, tilesFor, tileZoom, worldPixel, type MapView, type PlacedTile, type TileFeature } from "../src/map-drawing.ts";
 
-const view: MapView = { lat: 48.1374, lon: 11.5755, zoom: 14, width: 800, height: 424 };
+// The map screen's size: the screen's height less its padding and header
+const view: MapView = { lat: 48.1374, lon: 11.5755, zoom: 14, width: 800, height: 416 };
 
 test("worldPixel puts 0, 0 in the middle of the world and scales with the zoom", () => {
   assert.deepEqual(worldPixel(0, 0, 0), { x: 128, y: 128 });

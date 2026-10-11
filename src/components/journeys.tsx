@@ -6,8 +6,6 @@ import type { Journey, JourneyLeg, JourneysResult } from "../sources/transitous.
 import { formatTime } from "../time.ts";
 import { ellipsis } from "./header.tsx";
 
-// Above the header, as on the departures screen
-export const PADDING_Y = 12;
 
 // Digits of equal width (Inter's tabular figures), so times line up
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;

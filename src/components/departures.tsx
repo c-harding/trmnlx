@@ -5,13 +5,12 @@ import type { Departure, DepartureKind } from "../departure.ts";
 import { HEIGHT } from "../render.ts";
 import type { Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
-import { BatteryAndClock, ellipsis, Header, HEADER_GAP, HEADER_HEIGHT } from "./header.tsx";
+import { BatteryAndClock, ellipsis, Header, HEADER_GAP, HEADER_HEIGHT, PADDING_X, PADDING_Y } from "./header.tsx";
 
 const ROW_HEIGHT = 44;
 // A row with notes gets a second, smaller line under the destination
 const NOTE_ROW_HEIGHT = 64;
 // Fixed heights of everything around the rows, so the space left for rows can be calculated
-const PADDING_Y = 12;
 const ROWS_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP;
 // The thicker line above pinned departures
 const PINNED_RULE = 3;
@@ -272,7 +271,7 @@ export function DepartureBoard(props: {
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
-        padding: `${PADDING_Y}px 28px`,
+        padding: `${PADDING_Y}px ${PADDING_X}px`,
         background: "#fff",
         color: "#000",
         fontFamily: "Inter",

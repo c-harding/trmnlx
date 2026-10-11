@@ -1,8 +1,8 @@
 // The next connections on one to four routes (see journey-routes.ts for how they're written): one
 // route fills the screen; more go side by side in panels (see COLUMNS).
 import type { ComponentChildren } from "preact";
-import { BatteryAndClock, ellipsis, Header } from "../components/header.tsx";
-import { JourneyList, PADDING_Y } from "../components/journeys.tsx";
+import { BatteryAndClock, ellipsis, Header, PADDING_X, PADDING_Y } from "../components/header.tsx";
+import { JourneyList } from "../components/journeys.tsx";
 import { defineScreen } from "../define-screen.ts";
 import { parseRoute, parseRules, routeTitle, type Route, type Rule } from "../journey-routes.ts";
 import { loadJourneys, type JourneysResult } from "../sources/transitous.ts";
@@ -102,7 +102,7 @@ export default defineScreen({
           width: "100%",
           height: "100%",
           boxSizing: "border-box",
-          padding: `${PADDING_Y}px 28px`,
+          padding: `${PADDING_Y}px ${PADDING_X}px`,
           background: "#fff",
           color: "#000",
           fontFamily: "Inter",

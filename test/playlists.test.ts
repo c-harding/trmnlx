@@ -91,6 +91,9 @@ test("inputs are checked against the screen's", () => {
   assert.match(check({ routes: ["a", 3] }), /must be a list of strings, not a list/);
   assert.match(check({ count: "3" }), /p\[0\]\.inputs\.count must be a whole number, not a string/);
   assert.match(check({ count: 2.5 }), /p\[0\]\.inputs\.count must be a whole number, not a fraction \(2\.5\)/);
+  // YAML's .inf and .nan
+  assert.match(check({ count: Infinity }), /count must be a whole number, not \.inf \(infinite\)/);
+  assert.match(check({ count: NaN }), /count must be a whole number, not \.nan \(not a number\)/);
   assert.match(check({ routes: ["a", 54] }), /not a list with a number at position 2/);
   assert.match(check({ constructor: "x" }), /journeys has no such input/);
   assert.match(check(["routes"]), /inputs must be a mapping/);

@@ -43,8 +43,13 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 function describe(value: unknown): string {
   if (value === null) return "empty";
-  // For a whole number input: "not a number" would say nothing
-  if (typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value)) return `a fraction (${value})`;
+  if (typeof value === "number") {
+    // YAML's .nan and .inf: "a number" would say nothing
+    if (Number.isNaN(value)) return ".nan (not a number)";
+    if (!Number.isFinite(value)) return ".inf (infinite)";
+    // For a whole number input
+    if (!Number.isInteger(value)) return `a fraction (${value})`;
+  }
   if (!Array.isArray(value)) return `a ${typeof value}`;
   // A list: say what's wrong in it, e.g. a hide rule written as a bare number
   const i = value.findIndex((item) => typeof item !== "string");
