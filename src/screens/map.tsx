@@ -21,6 +21,12 @@ export default defineScreen({
     zoom: { type: "number", default: 12.1 },
   },
 
+  // Linked in the browser; on the screen, the header says the same (see below)
+  credits: [
+    { text: "© OpenMapTiles", url: "https://openmaptiles.org/" },
+    { text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" },
+  ],
+
   dependencies: {
     map: [
       loadMap,

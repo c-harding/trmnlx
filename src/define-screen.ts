@@ -65,11 +65,22 @@ export interface ViewProps<I extends InputDefinitions, D> extends ScreenProps<I>
   data: D;
 }
 
+/** A credit for what a screen shows (e.g. map data), linked in the browser under its preview. */
+export interface Credit {
+  text: string;
+  url: string;
+}
+
 interface CommonDefinition<I extends InputDefinitions, D> {
   /** Its settings, e.g. { station: { type: "string", default: "Marienplatz" } } */
   inputs?: I;
   /** 2 (black and white) or 4 grays (default) */
   colors?: 2 | 4;
+  /**
+   * Credits for what it shows, as links under the preview in the browser (the image itself can't
+   * link): e.g. a map's data, whose licences ask for a link where possible
+   */
+  credits?: Credit[];
   /** Seconds the screen stays valid, Infinity if it never changes */
   ttl: (props: ViewProps<I, D>) => number;
   /** The layout, in JSX */
@@ -110,6 +121,7 @@ export interface RenderProps {
 export interface Screen {
   inputs: InputDefinitions;
   colors: 2 | 4;
+  credits: Credit[];
   /** The layout, how long it stays valid (s), and how long loading its data took (ms) */
   render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number; loadMs: number }>;
   /**
@@ -207,6 +219,7 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
   const screen: Screen = {
     inputs: definition.inputs ?? {},
     colors: definition.colors ?? 4,
+    credits: definition.credits ?? [],
     async render({ device, now, telemetry, inputs }) {
       const props: ScreenProps<I> = {
         device,

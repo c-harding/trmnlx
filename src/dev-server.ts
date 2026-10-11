@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import express, { type ErrorRequestHandler } from "express";
 import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
 import { readDevConfig } from "./dev-config.ts";
+import { CREDITS_SCRIPT, creditsHtml } from "./credits.ts";
 import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 import { renderScreen, screens } from "./screen.ts";
 
@@ -40,6 +41,8 @@ body { display: flex; flex-direction: column; }
 /* At native size, it wants the preview's whole height, taking it from the controls down to half the
    page as before, and scrolls beyond that */
 #preview-area:has(.native) { flex-basis: 482px; min-height: min(482px, 50%); }
+/* The rendered screen's credits, under the preview */
+#credits { flex: none; margin: 0; padding: 0 8px 8px; }
 </style>
 <div id="controls">
 <h1>TRMNL screen development</h1>
@@ -78,6 +81,7 @@ body { display: flex; flex-direction: column; }
 #preview img { display: block; width: 100%; height: 100%; }
 ${loadingMarkCss("#preview")}</style>
 <div id="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Rendered screen" hidden>${LOADING_MARK}</div></div>
+${creditsHtml([])}
 <script>
 const SCREEN_INPUTS = ${screenInputsJson};
 const form = document.getElementById("form");
@@ -86,6 +90,7 @@ const inputsBox = document.getElementById("screen-inputs");
 const img = document.getElementById("screen");
 const preview = document.getElementById("preview");
 preview.addEventListener("click", () => preview.classList.toggle("native"));
+${CREDITS_SCRIPT}
 const info = document.getElementById("info");
 
 // One field per input of the selected screen, named "input.<name>"
@@ -230,6 +235,8 @@ async function render() {
   } finally {
     preview.classList.remove("loading");
   }
+  // Sent URI-encoded, as header values can't take all of Unicode
+  showCredits(JSON.parse(decodeURIComponent(res.headers.get("X-Credits") ?? "%5B%5D")));
   if (img.src) URL.revokeObjectURL(img.src);
   img.src = URL.createObjectURL(blob);
   img.hidden = false;
@@ -346,6 +353,7 @@ app.get("/render", async (req, res) => {
       "X-TTL": String(result.ttl),
       "X-Colors": String(result.colors),
       "X-Load-Ms": result.loadMs.toFixed(0),
+      "X-Credits": encodeURIComponent(JSON.stringify(screen.credits)),
       "X-Render-Ms": result.renderMs.toFixed(0),
     })
     .send(result.png);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { creditsHtml } from "../src/credits.ts";
 import { statusText } from "../src/pages.ts";
 
 // journeys, the second of three entries that apply now; departures applies at other times
@@ -9,6 +10,7 @@ const status = {
   position: 2,
   count: 3,
   otherTimes: ["departures"],
+  credits: [],
   now: new Date("2026-10-12T10:00:00Z"),
   timeZone: "Europe/Berlin",
 };
@@ -42,4 +44,12 @@ test("otherwise it says when the device will pick it up", () => {
   // Overdue, or no check-in since the server started
   assert.equal(caption({ shown: 0, next: "2026-10-12T09:58:00Z" }), "Preview (will be applied when device comes online):");
   assert.equal(caption(undefined), "Preview (will be applied when device comes online):");
+});
+
+test("the shown screen's credits go along with the status, and are linked under the preview", () => {
+  const credits = [{ text: "© OpenStreetMap", url: "https://www.openstreetmap.org/copyright" }];
+  assert.deepEqual(statusText({ ...status, credits, checkIn: undefined }).credits, credits);
+  assert.equal(creditsHtml(credits), '<p id="credits"><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a></p>');
+  assert.equal(creditsHtml([]), '<p id="credits" hidden></p>');
+  assert.equal(creditsHtml([{ text: "<b>", url: '"x' }]), '<p id="credits"><a href="&#34;x">&#60;b&#62;</a></p>');
 });
