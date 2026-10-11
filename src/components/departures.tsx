@@ -162,8 +162,9 @@ function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone:
  * A rule for which departures are hidden, as "<types> [line] [-> <destination>]", with the source's
  * own types (MVG's "BUS", "SBAHN", …; Transitous' "BUS", "METRO", …): "BUS" hides all buses,
  * "TRAM -> Amalienburgstraße" trams going there, "BUS 54" one bus line. Several types are separated
- * by "|" ("BUS|REGIONAL_BUS"), "*" means any; line and destination are compared ignoring case. A "!"
- * in front makes it an exception that shows matching departures again.
+ * by "|" ("BUS|REGIONAL_BUS"), "*" means any; line and destination are compared ignoring case.
+ * "show" in front ("show BUS 54") makes it an exception that shows matching departures again; "!"
+ * does too, but in YAML only quoted ("- '!BUS 54'"), since an unquoted "!" starts a YAML tag.
  */
 export interface HideRule {
   show: boolean;
@@ -173,8 +174,9 @@ export interface HideRule {
 }
 
 export const parseHideRule = (text: string): HideRule | undefined => {
-  const show = text.startsWith("!");
-  const [departure, ...arrow] = text.slice(show ? 1 : 0).split("->");
+  const marker = /^(?:show\s+|!)/i.exec(text.trim())?.[0];
+  const show = marker !== undefined;
+  const [departure, ...arrow] = text.trim().slice(marker?.length ?? 0).split("->");
   const [types, line, ...extra] = departure.trim().split(/\s+/);
   const destination = arrow.join("->").trim();
   if (!types || extra.length > 0 || (arrow.length > 0 && !destination)) {

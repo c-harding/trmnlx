@@ -22,7 +22,7 @@ export default defineScreen({
     // Departures left out, one rule per line, with MVG's transport types (see HideRule in
     // components/departures.tsx); later rules win. They don't take up rows, and apply to pinned
     // connections too.
-    hide: { type: "list", default: ["BUS|REGIONAL_BUS", "!BUS 54", "TRAM -> Amalienburgstraße"] },
+    hide: { type: "list", default: ["BUS|REGIONAL_BUS", "show BUS 54", "TRAM -> Amalienburgstraße"] },
   },
 
   // Only black and white: the firmware then uses its fast partial refresh, without the flashing of
