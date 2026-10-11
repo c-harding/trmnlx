@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import type { Condition } from "../src/conditions.ts";
-import { devicePlaylist, expandPlaylist, parseDuration, readDefaultScreen, readLocation, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
+import { devicePlaylist, devicePlaylists, expandPlaylist, parseDuration, readDefaultScreen, readLocation, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
 
 const screens: ScreenInputs = {
   placeholder: {},
@@ -265,4 +265,34 @@ test("an unknown screen is left out with a warning, once; defaultScreen when not
   }
   // The entry's other fields are still checked
   assert.match(errorOf(() => expandPlaylist([{ screen: "gone", duration: "soon" }], "p", {}, screens)), /p\[0\]\.duration must be a duration/);
+});
+
+test("a device's playlists: its own as default, then its alternatives in order", () => {
+  const named = { travel: [{ screen: "journeys" }], maps: [{ screen: "placeholder" }] };
+  const summary = (device: Record<string, unknown>) =>
+    devicePlaylists(device, "devices[0]", named, screens, fallback).map(({ name, entries, offered }) => [name, entries.map((e) => e.screen), offered]);
+  assert.deepEqual(summary({ playlist: "travel", playlists: { morning: [{ screen: "mvg-departures" }], maps: "maps" } }), [
+    ["default", ["journeys"], true],
+    ["morning", ["mvg-departures"], true],
+    ["maps", ["placeholder"], true],
+  ]);
+  // A list of named playlists, each under its own name; without a playlist or screen of its own,
+  // the default screen, which isn't offered
+  assert.deepEqual(summary({ playlists: ["maps", "travel"] }), [
+    ["default", ["placeholder"], false],
+    ["maps", ["placeholder"], true],
+    ["travel", ["journeys"], true],
+  ]);
+  assert.deepEqual(summary({ screen: "journeys" }), [["default", ["journeys"], true]]);
+});
+
+test("a device's playlists are checked", () => {
+  const named = { travel: [{ screen: "journeys" }] };
+  const error = (playlists: unknown) => errorOf(() => devicePlaylists({ playlists }, "devices[0]", named, screens, fallback));
+  assert.match(error({ default: "travel" }), /devices\[0\]\.playlists: default is the name of the device's playlist/);
+  assert.match(error(["travel", "travel"]), /devices\[0\]\.playlists\[1\]: travel is given twice/);
+  assert.match(error([{ screen: "journeys" }]), /devices\[0\]\.playlists\[0\] must be a playlist's name; for entries of its own/);
+  assert.match(error(["nope"]), /devices\[0\]\.playlists\.nope must name a playlist \(there are travel\)/);
+  assert.match(error("travel"), /devices\[0\]\.playlists must be a mapping of names to playlists, or a list/);
+  assert.match(error({ evening: [{ screen: "journeys", inputs: { count: "five" } }] }), /devices\[0\]\.playlists\.evening\[0\]\.inputs\.count must be/);
 });

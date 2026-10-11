@@ -37,6 +37,11 @@ devices:
     #     duration: 5m  # For the included entries without their own
     #   - screen: placeholder
     #     when: otherwise  # When nothing else in this list applies
+    # playlists:  # Others to switch to on the screen page, after this playlist (offered as default)
+    #   evening:  # Each like playlist: a list of entries, or the name of a playlist above
+    #     - screen: journeys
+    #   maps: travel
+    # playlists: [travel, maps]  # Or just playlists above, each offered under its own name
     # fullRefresh: false  # Default true: full refresh on every update; false allows partial refreshes (see ARCHITECTURE.md)
     # temperatureProfile: a  # How the firmware drives the panel: default, a or b (see ARCHITECTURE.md)
     # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one

@@ -32,8 +32,11 @@ function formatTime(date: Date, now: Date, timeZone: string) {
   return new Intl.DateTimeFormat("en-GB", { timeStyle: "short", ...(day(date) !== day(now) && { dateStyle: "medium" }), timeZone }).format(date);
 }
 
-/** Where the device is in its playlist, and what it got at its last check-in. */
+/** Which playlist the device shows, where it is in it, and what it got at its last check-in. */
 export interface PlaylistStatus {
+  /** The playlist's name (`default` for the device's `playlist`), and those the page offers */
+  playlist: string;
+  choices: string[];
   /** The entry shown now: its screen, and its label if it has one ("map: Graz") */
   screen: string;
   /** Its entry's index in the playlist, or -1 for the default screen (no entry applies) */
@@ -60,7 +63,7 @@ export interface PlaylistStatus {
  * says whether the preview is live: whether the device got this entry at its last check-in (by
  * entry, not image: the preview is rendered fresh, so its data can be newer), or when it will.
  */
-export function statusText({ screen, index, position, count, otherTimes, checkIn, now, timeZone }: PlaylistStatus) {
+export function statusText({ playlist, screen, index, position, count, otherTimes, checkIn, now, timeZone }: PlaylistStatus) {
   const showing =
     index < 0
       ? `Showing ${screen}, the default: nothing in the playlist applies now`
@@ -73,20 +76,28 @@ export function statusText({ screen, index, position, count, otherTimes, checkIn
   // An overdue device: it's offline, or its battery is flat
   else if (checkIn && checkIn.next >= now) caption = `Preview (will be applied at ${formatTime(checkIn.next, now, timeZone)}):`;
   // Prev and Next only with something to move to
-  return { showing, title, caption, canMove: index >= 0 && count > 1 };
+  return { playlist, showing, title, caption, canMove: index >= 0 && count > 1 };
 }
 
-export const screenPage = (name: string, status: PlaylistStatus, playlistLength: number) => {
+/**
+ * The choice of playlist: when there's another to switch to. Before one is chosen, a device
+ * without its own `playlist` shows the default screen, which isn't a choice of its own.
+ */
+export function playlistChoice({ playlist, choices }: Pick<PlaylistStatus, "playlist" | "choices">) {
+  const offered = choices.includes(playlist);
+  if (choices.length < (offered ? 2 : 1)) return "";
+  const none = offered ? "" : `<option value="" selected disabled>none (default screen)</option>`;
+  const options = choices.map((choice) => `<option value="${escapeHtml(choice)}"${choice === playlist ? " selected" : ""}>${escapeHtml(choice)}</option>`);
+  return `<form method="post" action="/playlist"><p><label>Playlist <select name="name" id="playlist">${none}${options.join("")}</select></label> <noscript><button>Switch</button></noscript></p></form>\n`;
+}
+
+export const screenPage = (name: string, status: PlaylistStatus) => {
   const { showing, title, caption, canMove } = statusText(status);
-  const showingHtml = `<span id="showing" title="${escapeHtml(title)}">${escapeHtml(showing)}</span>`;
-  // With one entry, there's never anything to move to; otherwise the buttons show when there is
-  const playlist =
-    playlistLength > 1
-      ? `<form method="post" action="/next"><p>${showingHtml} <span id="moves"${canMove ? "" : " hidden"}><button formaction="/previous">Prev</button> <button>Next</button></span></p></form>`
-      : `<p>${showingHtml}</p>`;
+  // The buttons show when there's something to move to, which can change with the time and the playlist
+  const playlist = `<form method="post" action="/next"><p><span id="showing" title="${escapeHtml(title)}">${escapeHtml(showing)}</span> <span id="moves"${canMove ? "" : " hidden"}><button formaction="/previous">Prev</button> <button>Next</button></span></p></form>`;
   return page(
     `TRMNLx: ${name}`,
-    `${playlist}
+    `${playlistChoice(status)}${playlist}
 <p id="caption">${escapeHtml(caption)}</p>
 <style>
 /* The page is a column as high as the window, its lines evenly spaced; the preview shrinks to the
@@ -120,6 +131,9 @@ ${creditsHtml([])}
 const img = document.getElementById("screen");
 const preview = document.getElementById("preview");
 preview.addEventListener("click", () => document.body.classList.toggle("actual-size"));
+// Choosing a playlist switches to it straight away (without JavaScript, the Switch button does)
+const choice = document.getElementById("playlist");
+choice?.addEventListener("change", () => choice.form.submit());
 ${CREDITS_SCRIPT}
 async function refresh() {
   let delay = 30;
@@ -139,11 +153,12 @@ async function refresh() {
       delay = Number.isNaN(ttl) ? 60 : Math.max(ttl, 1);
       const status = res.headers.get("X-Status");
       if (status) {
-        const { showing, title, caption, canMove } = JSON.parse(decodeURIComponent(status));
+        const { playlist, showing, title, caption, canMove } = JSON.parse(decodeURIComponent(status));
+        // Another tab may have switched it (to one not offered here: the "none" option)
+        if (choice) choice.value = [...choice.options].some((option) => option.value === playlist) ? playlist : "";
         document.getElementById("showing").textContent = showing;
         document.getElementById("showing").title = title;
-        const moves = document.getElementById("moves");
-        if (moves) moves.hidden = !canMove;
+        document.getElementById("moves").hidden = !canMove;
         document.getElementById("caption").textContent = caption;
       }
       const untilCheckIn = (Number(res.headers.get("X-Check-In")) - Date.now()) / 1000 + 30;

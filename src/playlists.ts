@@ -301,10 +301,72 @@ export function devicePlaylist(
   } else if (device.playlist !== undefined) {
     playlist = expandPlaylist(device.playlist, `${where}.playlist`, named, screens, [], location);
   }
-  // Every screen in it was left out
-  if (playlist.length === 0) {
-    warn(`${where}: none of its playlist's screens exist, so it shows defaultScreen (${defaultScreen.screen})`);
-    return [defaultScreen];
+  return orDefault(playlist, where, defaultScreen);
+}
+
+/** A playlist, or the default screen if every screen in it was left out. */
+function orDefault(playlist: PlaylistEntry[], where: string, defaultScreen: PlaylistEntry) {
+  if (playlist.length > 0) return playlist;
+  warn(`${where}: none of its playlist's screens exist, so it shows defaultScreen (${defaultScreen.screen})`);
+  return [defaultScreen];
+}
+
+/** One of a device's playlists, which the screen page switches between. */
+export interface DevicePlaylist {
+  name: string;
+  entries: PlaylistEntry[];
+  /** Whether the screen page offers it: not `default` when it's only the default screen */
+  offered: boolean;
+}
+
+// The name of a device's `playlist` (or `screen`) among its playlists
+export const DEFAULT_PLAYLIST = "default";
+
+/**
+ * A device's playlists: first `default` (its `playlist` or `screen`, see devicePlaylist), offered
+ * only if it has one of those, then those of its `playlists`, in order. `playlists` is a mapping
+ * of names to playlists (a list of entries, or a named playlist's name, like `playlist`), or a
+ * list of named playlists' names, each offered under its own name.
+ */
+export function devicePlaylists(
+  device: { screen?: unknown; playlist?: unknown; playlists?: unknown },
+  where: string,
+  named: Record<string, unknown>,
+  screens: ScreenInputs,
+  defaultScreen: PlaylistEntry,
+  location?: Location,
+): DevicePlaylist[] {
+  const result: DevicePlaylist[] = [
+    {
+      name: DEFAULT_PLAYLIST,
+      entries: devicePlaylist(device, where, named, screens, defaultScreen, location),
+      offered: device.screen !== undefined || device.playlist !== undefined,
+    },
+  ];
+  if (device.playlists === undefined) return result;
+  const at = `${where}.playlists`;
+  let alternatives: Record<string, unknown>;
+  if (Array.isArray(device.playlists)) {
+    alternatives = {};
+    device.playlists.forEach((name, i) => {
+      if (typeof name !== "string" && typeof name !== "number") {
+        throw new ConfigError(`${at}[${i}] must be a playlist's name; for entries of its own, give playlists as a mapping of names to entries`);
+      }
+      if (Object.hasOwn(alternatives, String(name))) throw new ConfigError(`${at}[${i}]: ${name} is given twice`);
+      alternatives[String(name)] = String(name);
+    });
+  } else if (isObject(device.playlists)) {
+    alternatives = device.playlists;
+  } else {
+    throw new ConfigError(`${at} must be a mapping of names to playlists, or a list of playlists' names`);
   }
-  return playlist;
+  for (const [name, raw] of Object.entries(alternatives)) {
+    if (name === DEFAULT_PLAYLIST) throw new ConfigError(`${at}: ${DEFAULT_PLAYLIST} is the name of the device's playlist (or screen), so it can't name another`);
+    const entries =
+      typeof nameOf(raw) === "string"
+        ? namedPlaylist(nameOf(raw), `${at}.${name}`, named, screens, [], location)
+        : expandPlaylist(raw, `${at}.${name}`, named, screens, [], location);
+    result.push({ name, entries: orDefault(entries, `${at}.${name}`, defaultScreen), offered: true });
+  }
+  return result;
 }

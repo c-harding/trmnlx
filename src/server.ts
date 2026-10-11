@@ -3,7 +3,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./config.ts";
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
-import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
+import { activePlaylist, choosePlaylist, currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
 import type { MapView } from "./map-drawing.ts";
 import type { PlaylistEntry } from "./playlists.ts";
 import { renderDeviceScreen, screens, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
@@ -23,9 +23,10 @@ if (checkOnly) {
 persistTo(new URL("./state/", import.meta.url));
 
 // Saved maps of views no longer in devices.yaml, or drawn in an older style, take up space for nothing.
-// The views in use: what every entry's (and default screen's) render would ask the map source for
+// The views in use: what every entry's of every playlist (and default screen's) render would ask the
+// map source for
 const mapViews = devices.flatMap((device) =>
-  [...device.playlist, device.defaultScreen].flatMap((entry) =>
+  [...device.playlists.flatMap((playlist) => playlist.entries), device.defaultScreen].flatMap((entry) =>
     screens[entry.screen]
       .calls({ device, now: new Date(), telemetry: undefined, inputs: entry.inputs })
       .filter((call) => call.source === loadMap)
@@ -53,7 +54,7 @@ app.use(cookieParser());
 app.get("/", (req, res) => {
   const device = sessionDevice(req);
   if (!device) return res.redirect(303, "/login");
-  res.type("html").send(screenPage(device.username, playlistStatus(device), device.playlist.length));
+  res.type("html").send(screenPage(device.username, playlistStatus(device)));
 });
 
 /** An entry as the page names it: its screen, and its label if it has one, e.g. "map: Graz". */
@@ -65,12 +66,15 @@ function entryName({ screen, inputs }: PlaylistEntry) {
 function playlistStatus(device: Device): PlaylistStatus {
   const { entry, index, applying } = currentEntry(device);
   const checkIn = lastCheckIn(device);
+  const playlist = activePlaylist(device);
   return {
+    playlist: playlist.name,
+    choices: device.playlists.filter((p) => p.offered).map((p) => p.name),
     screen: entryName(entry),
     index,
     position: applying.indexOf(index) + 1,
     count: applying.length,
-    otherTimes: [...new Set(device.playlist.filter((_entry, i) => !applying.includes(i)).map(entryName))],
+    otherTimes: [...new Set(playlist.entries.filter((_entry, i) => !applying.includes(i)).map(entryName))],
     checkIn,
     now: new Date(),
     timeZone: device.timeZone,
@@ -87,6 +91,20 @@ for (const [path, step] of [["/next", 1], ["/previous", -1]] as const) {
     res.redirect(303, "/");
   });
 }
+
+// Switch the device to another of its playlists; the device shows it from its next check-in
+app.post("/playlist", express.urlencoded({ extended: false, limit: "4kb" }), (req, res) => {
+  const device = sessionDevice(req);
+  if (!device) return res.redirect(303, "/login");
+  const { name } = req.body ?? {};
+  if (typeof name === "string") {
+    choosePlaylist(device, name);
+    warmDeviceScreens(device);
+    // Its `when` windows are another playlist's
+    warmAtWindowChanges(device);
+  }
+  res.redirect(303, "/");
+});
 
 app.get("/screen.png", async (req, res) => {
   const device = sessionDevice(req);

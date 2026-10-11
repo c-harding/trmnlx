@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import {
   ConfigError,
-  devicePlaylist,
+  devicePlaylists,
   readDefaultScreen,
   readLocation,
   readNamedPlaylists,
+  type DevicePlaylist,
   type PlaylistEntry,
   type ScreenInputs,
 } from "./playlists.ts";
@@ -29,8 +30,11 @@ export interface Device {
   token: string | undefined;
   timeZone: string;
   refreshRate: number;
-  /** What it shows: at least one entry (see playlists.ts) */
-  playlist: PlaylistEntry[];
+  /**
+   * What it can show: `default` (its `playlist`) first, then its `playlists`, each at least one
+   * entry; the screen page switches between them (see playlists.ts)
+   */
+  playlists: DevicePlaylist[];
   /** What it shows when no entry of its playlist applies */
   defaultScreen: PlaylistEntry;
   temperatureProfile: TemperatureProfile | undefined;
@@ -123,10 +127,10 @@ function loadDevices(): Device[] {
       token: device.token,
       timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
-      playlist: orFail(() => {
+      playlists: orFail(() => {
         // Its own location for holidays, or the top-level one
         const own = readLocation(device.location, `${where}.location`);
-        return devicePlaylist(device, where, playlists, screenInputs, defaultScreen, own ?? location);
+        return devicePlaylists(device, where, playlists, screenInputs, defaultScreen, own ?? location);
       }),
       defaultScreen,
       temperatureProfile: device.temperatureProfile,

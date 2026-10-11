@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { creditsHtml } from "../src/credits.ts";
-import { statusText } from "../src/pages.ts";
+import { playlistChoice, screenPage, statusText } from "../src/pages.ts";
 
 // journeys, the second of three entries that apply now; departures applies at other times
 const status = {
+  playlist: "default",
+  choices: ["default"],
   screen: "journeys",
   index: 1,
   position: 2,
@@ -43,6 +45,24 @@ test("otherwise it says when the device will pick it up", () => {
   // Overdue, or no check-in since the server started
   assert.equal(caption({ shown: 0, next: "2026-10-12T09:58:00Z" }), "Preview (will be applied when device comes online):");
   assert.equal(caption(undefined), "Preview (will be applied when device comes online):");
+});
+
+test("a playlist can be chosen when there's another to switch to", () => {
+  // Only its own playlist: nothing to choose
+  assert.equal(playlistChoice({ playlist: "default", choices: ["default"] }), "");
+  assert.equal(
+    playlistChoice({ playlist: "travel", choices: ["default", "travel", "<maps>"] }),
+    '<form method="post" action="/playlist"><p><label>Playlist <select name="name" id="playlist"><option value="default">default</option><option value="travel" selected>travel</option><option value="&#60;maps&#62;">&#60;maps&#62;</option></select></label> <noscript><button>Switch</button></noscript></p></form>\n',
+  );
+  // Without a playlist of its own, it shows the default screen until one is chosen, even if there's only one
+  const before = playlistChoice({ playlist: "default", choices: ["travel"] });
+  assert.match(before, /<option value="" selected disabled>none \(default screen\)<\/option><option value="travel">travel<\/option>/);
+  assert.equal(playlistChoice({ playlist: "travel", choices: ["travel"] }), "");
+});
+
+test("Prev and Next are on the page even when there's nothing to move to, for a switch from another tab", () => {
+  const html = screenPage("kitchen", { ...status, count: 1, position: 1, checkIn: undefined });
+  assert.match(html, /<span id="moves" hidden>/);
 });
 
 test("credits are linked under the preview, escaped", () => {

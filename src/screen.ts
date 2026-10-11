@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises";
 import type { Device } from "./config.ts";
 import { isScreen, type Screen, type ScreenDevice } from "./define-screen.ts";
 import { earliest } from "./conditions.ts";
-import { currentEntry, entriesNearby, evaluate } from "./device-state.ts";
+import { activePlaylist, currentEntry, entriesNearby, evaluate } from "./device-state.ts";
 import { renderPng } from "./render.ts";
 import { telemetryFor, type Telemetry } from "./telemetry.ts";
 import { SAFETY_SECONDS } from "./time.ts";
@@ -94,7 +94,7 @@ const RECHECK_MS = 24 * 3600 * 1000;
  */
 export function warmAtWindowChanges(device: Device) {
   clearTimeout(windowTimers.get(device.mac));
-  if (!device.playlist.some((entry) => entry.when)) return;
+  if (!activePlaylist(device).entries.some((entry) => entry.when)) return;
   const now = new Date();
   const next = earliest(evaluate(device, now).changes);
   // A second after the change, so it counts as past

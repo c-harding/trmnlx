@@ -3,8 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { findEntry, restoreState } from "../src/device-state.ts";
-import { StateFile } from "../src/state-file.ts";
+import { pathToFileURL } from "node:url";
+import { activePlaylist, choosePlaylist, currentEntry, findEntry, restoreState } from "../src/device-state.ts";
+import { flushState, persistTo, StateFile } from "../src/state-file.ts";
 import { restoreTelemetry } from "../src/telemetry.ts";
 
 const entry = (screen: string, inputs: Record<string, unknown> = {}) => ({ screen, inputs });
@@ -102,4 +103,36 @@ test("when the current entry started comes back only for the same entry", () => 
   // Its entry is gone: the first entry starts afresh
   assert.deepEqual(restoreState([entry("placeholder")], { entry: { index: 1, ...playlist[1] }, since }), { index: 0 });
   assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since: "soon" }), { index: 1 });
+});
+
+test("the playlist chosen comes back by name; one that's gone falls back to default", () => {
+  const dir = mkdtempSync(join(tmpdir(), "trmnl-state-"));
+  try {
+    persistTo(pathToFileURL(`${dir}/`));
+    const device = (username: string) => ({
+      mac: username,
+      username,
+      playlists: [
+        { name: "default", entries: [entry("mvg-departures"), entry("journeys")], offered: true },
+        { name: "travel", entries: [entry("map"), entry("journeys")], offered: true },
+      ],
+      defaultScreen: entry("placeholder"),
+      timeZone: "Europe/Berlin",
+    });
+    writeFileSync(join(dir, "kitchen.json"), JSON.stringify({ playlist: { playlist: "travel", entry: { index: 1, ...entry("journeys") } } }));
+    writeFileSync(join(dir, "hallway.json"), JSON.stringify({ playlist: { playlist: "gone", entry: { index: 1, ...entry("journeys") } } }));
+    const kitchen = device("kitchen");
+    assert.equal(activePlaylist(kitchen).name, "travel");
+    assert.equal(currentEntry(kitchen).index, 1);
+    // The saved entry is looked for in default
+    const hallway = device("hallway");
+    assert.equal(activePlaylist(hallway).name, "default");
+    assert.equal(currentEntry(hallway).index, 1);
+    choosePlaylist(hallway, "travel");
+    flushState();
+    const saved = JSON.parse(readFileSync(join(dir, "hallway.json"), "utf8")).playlist;
+    assert.deepEqual([saved.playlist, saved.entry], ["travel", { index: 0, ...entry("map") }]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

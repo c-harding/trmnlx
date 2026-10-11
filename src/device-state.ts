@@ -1,5 +1,5 @@
-// What the server remembers about each device: where it is in its playlist (and since when, for the
-// entry's `duration`), and when it last checked in. Saved across restarts in the device's file (see
+// What the server remembers about each device: which of its playlists it shows (chosen on the screen
+// page), where it is in it (and since when, for the entry's `duration`), and when it last checked in. Saved across restarts in the device's file (see
 // state-file.ts), read on first need.
 //
 // The playlist moves through the entries that apply (their `when`, see conditions.ts): on a press,
@@ -7,10 +7,12 @@
 // interrupt the current entry. When none applies, the device shows its default screen.
 import { applies, earliest, inTimeZone, nextChange } from "./conditions.ts";
 import { canonicalKey } from "./define-source.ts";
-import type { PlaylistEntry } from "./playlists.ts";
+import type { DevicePlaylist, PlaylistEntry } from "./playlists.ts";
 import { savedState, stateChanged, type StateDevice } from "./state-file.ts";
 
 interface DeviceState {
+  /** The playlist shown: its index in the device's playlists (0 is `default`) */
+  playlist: number;
   /** The current playlist entry's index; while none applies, the one shown last */
   index: number;
   /** When the current entry started, for its `duration`: set by each move */
@@ -27,7 +29,8 @@ interface DeviceState {
 
 /** What this module needs of a device. */
 interface PlaylistDevice extends StateDevice {
-  playlist: PlaylistEntry[];
+  /** `default` first (see playlists.ts) */
+  playlists: DevicePlaylist[];
   /** Shown while no entry applies */
   defaultScreen: PlaylistEntry;
   /** Where `when` is evaluated */
@@ -38,13 +41,20 @@ const states = new Map<string, DeviceState>();
 
 const stateOf = (device: PlaylistDevice) => {
   let state = states.get(device.mac);
-  if (!state) states.set(device.mac, (state = restoreState(device.playlist, savedState(device, SECTION))));
+  if (!state) states.set(device.mac, (state = restoreDevice(device)));
   return state;
 };
 
-// Saved state: the current entry and the last check-in, with each entry saved
-// as its index, screen and inputs. After a restart with a changed playlist, an entry is found again
-// by its screen and inputs; one that's gone counts as unknown.
+/** The playlist the device shows: `default` until the screen page chooses another. */
+export const activePlaylist = (device: PlaylistDevice) => device.playlists[stateOf(device).playlist];
+
+// The entries of the playlist the device shows
+const entriesOf = (device: PlaylistDevice) => activePlaylist(device).entries;
+
+// Saved state: the playlist shown (by name), its current entry and the last check-in, with each entry
+// saved as its index, screen and inputs. After a restart with a changed playlist, an entry is found
+// again by its screen and inputs; one that's gone counts as unknown. A playlist that's gone falls back
+// to `default`.
 const SECTION = "playlist";
 
 const isObject = (value: unknown): value is Record<string, any> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -63,11 +73,19 @@ export function findEntry(playlist: PlaylistEntry[], saved: unknown): number | u
   return index < 0 ? undefined : index;
 }
 
-/** A device's state from what was saved (anything missing or broken is left out). */
-export function restoreState(playlist: PlaylistEntry[], saved: unknown): DeviceState {
+/** A device's state from what was saved: the playlist it showed, if it still has it, and its place there. */
+function restoreDevice(device: PlaylistDevice): DeviceState {
+  const saved = savedState(device, SECTION);
+  const name = isObject(saved) ? saved.playlist : undefined;
+  const playlist = Math.max(0, device.playlists.findIndex((p) => p.name === name));
+  return { playlist, ...restoreState(device.playlists[playlist].entries, saved) };
+}
+
+/** The place in a playlist from what was saved (anything missing or broken is left out). */
+export function restoreState(playlist: PlaylistEntry[], saved: unknown): Omit<DeviceState, "playlist"> {
   const record = isObject(saved) ? saved : {};
   const index = findEntry(playlist, record.entry);
-  const state: DeviceState = { index: index ?? 0 };
+  const state: Omit<DeviceState, "playlist"> = { index: index ?? 0 };
   // Only for the same entry, wherever it is now: one that's gone starts afresh
   const since = typeof record.since === "string" ? new Date(record.since) : undefined;
   if (index !== undefined && since && !Number.isNaN(since.getTime())) state.since = since;
@@ -81,10 +99,11 @@ export function restoreState(playlist: PlaylistEntry[], saved: unknown): DeviceS
 
 /** Schedules saving the device's state. */
 function changed(device: PlaylistDevice) {
-  const { playlist } = device;
   stateChanged(device, SECTION, () => {
     const { index, since, checkIn } = stateOf(device);
+    const { name, entries: playlist } = activePlaylist(device);
     return {
+      playlist: name,
       entry: saveEntry(playlist, index % playlist.length),
       since,
       checkIn: checkIn && {
@@ -112,7 +131,7 @@ const RETRY_EVALUATION_MS = 5 * 60 * 1000;
  * (undefined: not within a day). Without any `when`, all apply, without switching time zones.
  */
 export function evaluate(device: PlaylistDevice, now: Date): { applying: boolean[]; changes: (Date | undefined)[] } {
-  const { playlist } = device;
+  const playlist = entriesOf(device);
   if (!playlist.some((entry) => entry.when)) return { applying: playlist.map(() => true), changes: playlist.map(() => undefined) };
   const until = new Date(now.getTime() + HORIZON_MS);
   return inTimeZone(device.timeZone, () => {
@@ -152,13 +171,14 @@ export function currentEntry(device: PlaylistDevice, now = new Date()) {
   const { applying, changes } = evaluate(device, now);
   moveOnIfDue(device, now, applying);
   const state = stateOf(device);
-  const index = state.index % device.playlist.length;
+  const playlist = entriesOf(device);
+  const index = state.index % playlist.length;
   const applyingIndices = applying.flatMap((applies, i) => (applies ? [i] : []));
   if (!applying[index]) {
     const check = earliest(changes) ?? new Date(now.getTime() + HORIZON_MS);
     return { entry: device.defaultScreen, index: -1, applying: applyingIndices, untilMove: secondsUntil(check, now) };
   }
-  const entry = device.playlist[index];
+  const entry = playlist[index];
   // Worked out together with the entry, so a move by another request later can't mix the two up
   let durationEnd = entry.duration !== undefined && state.since ? new Date(state.since.getTime() + entry.duration * 1000) : undefined;
   if (durationEnd && applyingIndices.length === 1) {
@@ -176,13 +196,14 @@ export function currentEntry(device: PlaylistDevice, now = new Date()) {
  */
 function moveOnIfDue(device: PlaylistDevice, now: Date, applying: boolean[]) {
   const state = stateOf(device);
-  const index = state.index % device.playlist.length;
+  const playlist = entriesOf(device);
+  const index = state.index % playlist.length;
   if (!applying[index]) {
     const next = stepApplying(index, 1, applying);
     if (next !== undefined) moveTo(device, next, now);
     return;
   }
-  const { duration } = device.playlist[index];
+  const { duration } = playlist[index];
   if (duration === undefined) return;
   if (!state.since) {
     // E.g. the first time, or after a restart with a changed playlist
@@ -213,7 +234,8 @@ export function entriesNearby(device: PlaylistDevice, now = new Date()): Playlis
   // Its place among the entries that apply, and the ones either side of it there
   const at = applying.indexOf(index);
   const near = new Set([index, applying[stepIndex(at, applying.length, 1)], applying[stepIndex(at, applying.length, -1)]]);
-  return [...near].map((i) => device.playlist[i]);
+  const playlist = entriesOf(device);
+  return [...near].map((i) => playlist[i]);
 }
 
 /**
@@ -225,6 +247,25 @@ export function moveOn(device: PlaylistDevice, step: number, now = new Date()) {
   if (index < 0) return;
   const { applying } = evaluate(device, now);
   moveTo(device, stepApplying(index, step, applying) ?? index, now);
+}
+
+/**
+ * Switches the device to another of its playlists, by name (only those the screen page offers),
+ * starting at its first entry that applies, with its full duration. The entry the device was sent
+ * is looked for in the new playlist, so the page still knows whether its preview is live: the
+ * default screen stays itself, another entry is unknown unless it's in the new playlist too.
+ */
+export function choosePlaylist(device: PlaylistDevice, name: string, now = new Date()) {
+  const state = stateOf(device);
+  const chosen = device.playlists.findIndex((playlist) => playlist.name === name && playlist.offered);
+  if (chosen < 0 || chosen === state.playlist) return;
+  const { checkIn } = state;
+  if (checkIn?.shown !== undefined && checkIn.shown >= 0) {
+    checkIn.shown = findEntry(device.playlists[chosen].entries, saveEntry(entriesOf(device), checkIn.shown));
+  }
+  state.playlist = chosen;
+  // The first entry, or if it doesn't apply, the next that does (see moveOnIfDue)
+  moveTo(device, 0, now);
 }
 
 // What woke the device when it was the button (KEY3 on the 7.5" DIY kit), by chip: Update-Source is the
