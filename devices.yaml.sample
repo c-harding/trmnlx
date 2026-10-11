@@ -17,7 +17,7 @@ devices:
     #   - screen: mvg-departures
     #     inputs:
     #       station: Marienplatz
-    #   - playlist: travel  # Includes a named playlist
+    #   - playlist: travel  # Includes a named playlist; just `- travel` does too
     # fullRefresh: false  # Default true: full refresh on every update; false allows partial refreshes (see ARCHITECTURE.md)
     # temperatureProfile: a  # How the firmware drives the panel: default, a or b (see ARCHITECTURE.md)
     # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one

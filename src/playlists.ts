@@ -1,6 +1,7 @@
 // Playlists from devices.yaml: what a device shows, as a list of entries, each a screen with its
-// inputs. Named playlists (top-level `playlists`) can be used by devices and included in each other;
-// includes are expanded here, so a device ends up with one flat list.
+// inputs. Named playlists (top-level `playlists`) can be used by devices and included in each other,
+// as `playlist: <name>` or just `<name>`; includes are expanded here, so a device ends up with one
+// flat list.
 //
 // Plain functions that throw a ConfigError, so config.ts can report it and stop, and tests can call
 // them with made-up screens.
@@ -78,7 +79,8 @@ function screenEntry(
 }
 
 /**
- * A playlist's entries, with includes (`playlist: <name>`) replaced by the named playlist's entries.
+ * A playlist's entries, with includes (`playlist: <name>`, or just the name) replaced by the named
+ * playlist's entries.
  * `named` are the raw named playlists; `including` the names being expanded, to catch cycles.
  */
 export function expandPlaylist(
@@ -91,7 +93,9 @@ export function expandPlaylist(
   if (!Array.isArray(raw) || raw.length === 0) throw new ConfigError(`${where} must be a non-empty list of entries`);
   return raw.flatMap((entry, i): PlaylistEntry[] => {
     const at = `${where}[${i}]`;
-    if (!isObject(entry)) throw new ConfigError(`${at} must be an entry (screen: …, or playlist: …)`);
+    // A name alone includes that playlist
+    if (typeof entry === "string" || typeof entry === "number") return namedPlaylist(nameOf(entry), at, named, screens, including);
+    if (!isObject(entry)) throw new ConfigError(`${at} must be a playlist's name or an entry (screen: …, or playlist: …)`);
     if (entry.playlist === undefined || entry.screen !== undefined) return [screenEntry(entry, at, screens)];
     checkFields(entry, ["playlist"], at);
     return namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including);
@@ -111,7 +115,9 @@ function namedPlaylist(
 ): PlaylistEntry[] {
   if (typeof name !== "string" || !Object.hasOwn(named, name)) {
     const known = Object.keys(named);
-    throw new ConfigError(`${where} must name a playlist (${known.length ? `there are ${known.join(", ")}` : "there are none under playlists"})`);
+    // A screen's name where a playlist's is expected: say how to show the screen
+    const screen = typeof name === "string" && Object.hasOwn(screens, name) ? `; for the screen ${name}, write screen: ${name}` : "";
+    throw new ConfigError(`${where} must name a playlist (${known.length ? `there are ${known.join(", ")}` : "there are none under playlists"}${screen})`);
   }
   if (including.includes(name)) throw new ConfigError(`Playlists include each other: ${[...including, name].join(" → ")}`);
   return expandPlaylist(named[name], `playlists.${name}`, named, screens, [...including, name]);

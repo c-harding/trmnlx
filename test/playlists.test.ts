@@ -112,7 +112,7 @@ test("an entry can't be both a screen and an include", () => {
 test("unknown fields and empty playlists are rejected", () => {
   assert.match(errorOf(() => expandPlaylist([{ screen: "placeholder", input: {} }], "p", {}, screens)), /p\[0\]\.input: unknown field/);
   assert.match(errorOf(() => expandPlaylist([], "p", {}, screens)), /p must be a non-empty list/);
-  assert.match(errorOf(() => expandPlaylist(["placeholder"], "p", {}, screens)), /p\[0\] must be an entry/);
+  assert.match(errorOf(() => expandPlaylist([true], "p", {}, screens)), /p\[0\] must be a playlist's name or an entry/);
 });
 
 test("defaultScreen: a name, screen and inputs, or a sensible default", () => {
@@ -126,4 +126,20 @@ test("defaultScreen: a name, screen and inputs, or a sensible default", () => {
   assert.match(errorOf(() => readDefaultScreen("nope", screens)), /^defaultScreen must be one of/);
   assert.match(errorOf(() => readDefaultScreen({ screen: "nope" }, screens)), /^defaultScreen\.screen must be one of/);
   assert.match(errorOf(() => readDefaultScreen({ screen: "placeholder", when: "Mo-Fr" }, screens)), /defaultScreen\.when: unknown field/);
+});
+
+test("a name alone in a playlist includes that named playlist", () => {
+  const named = readNamedPlaylists({ departures: [{ screen: "mvg-departures" }], travel: [{ screen: "journeys" }, "departures"] }, screens);
+  assert.deepEqual(
+    devicePlaylist({ playlist: ["departures", "travel"] }, "devices[0]", named, screens, fallback).map((e) => e.screen),
+    ["mvg-departures", "journeys", "mvg-departures"],
+  );
+  assert.match(errorOf(() => readNamedPlaylists({ a: ["a"] }, screens)), /include each other: a → a/);
+});
+
+test("a screen's name where a playlist's is expected says how to show the screen", () => {
+  assert.match(
+    errorOf(() => expandPlaylist(["journeys"], "devices[0].playlist", {}, screens)),
+    /devices\[0\]\.playlist\[0\] must name a playlist \(there are none under playlists; for the screen journeys, write screen: journeys\)/,
+  );
 });
