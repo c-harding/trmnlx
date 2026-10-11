@@ -16,4 +16,6 @@ COPY . ./
 ARG ENV_HASH
 RUN --mount=type=secret,id=env node --env-file=/run/secrets/env server.js --check-config
 
-CMD ["node", "server.js"]
+# A cap on the JavaScript heap (it uses about 30 MB, briefly more while drawing a map), so a leak
+# makes the server crash and restart (restart: always) rather than take the machine's memory
+CMD ["node", "--max-old-space-size=256", "server.js"]
