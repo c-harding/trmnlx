@@ -92,3 +92,12 @@ export function expectedCheckIn(device: PlaylistDevice) {
   const checkIn = stateOf(device).checkIn;
   return checkIn && new Date(checkIn.at.getTime() + checkIn.refreshRate * 1000);
 }
+
+/**
+ * The device's last check-in: the playlist entry it was sent (its index), and when the next is
+ * expected. Undefined if it hasn't checked in since the server started.
+ */
+export function lastCheckIn(device: PlaylistDevice) {
+  const checkIn = stateOf(device).checkIn;
+  return checkIn && { shown: checkIn.shown, next: expectedCheckIn(device)! };
+}

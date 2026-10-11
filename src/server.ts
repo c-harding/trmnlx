@@ -3,7 +3,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { serverDomain, setupEnabled, type Device } from "./config.ts";
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
-import { currentEntry, expectedCheckIn, moveOn } from "./device-state.ts";
+import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
 import { renderDeviceScreen } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
 
@@ -26,23 +26,26 @@ app.get("/", (req, res) => {
 
 function playlistStatus(device: Device): PlaylistStatus {
   const { entry, index } = currentEntry(device);
+  const checkIn = lastCheckIn(device);
   return {
-    screen: entry.screen,
     position: index + 1,
+    screen: entry.screen,
     count: device.playlist.length,
-    expectedCheckIn: expectedCheckIn(device),
+    checkIn: checkIn && { shown: checkIn.shown + 1, next: checkIn.next },
     now: new Date(),
     timeZone: device.timeZone,
   };
 }
 
-// Moves the device's playlist on, as a KEY3 press will; the device shows it from its next check-in
-app.post("/next", (req, res) => {
-  const device = sessionDevice(req);
-  if (!device) return res.redirect(303, "/login");
-  moveOn(device, 1);
-  res.redirect(303, "/");
-});
+// Move the device's playlist on or back, as KEY3 does; the device shows it from its next check-in
+for (const [path, step] of [["/next", 1], ["/previous", -1]] as const) {
+  app.post(path, (req, res) => {
+    const device = sessionDevice(req);
+    if (!device) return res.redirect(303, "/login");
+    moveOn(device, step);
+    res.redirect(303, "/");
+  });
+}
 
 app.get("/screen.png", async (req, res) => {
   const device = sessionDevice(req);
@@ -57,7 +60,7 @@ app.get("/screen.png", async (req, res) => {
       "Cache-Control": "no-store",
       "X-TTL": String(ttl),
       "X-Status": encodeURIComponent(JSON.stringify(statusText(status))),
-      "X-Check-In": String(status.expectedCheckIn?.getTime() ?? ""),
+      "X-Check-In": String(status.checkIn?.next.getTime() ?? ""),
     })
     .send(png);
 });

@@ -27,13 +27,17 @@ function formatTime(date: Date, now: Date, timeZone: string) {
   return new Intl.DateTimeFormat("en-GB", { timeStyle: "short", ...(day(date) !== day(now) && { dateStyle: "medium" }), timeZone }).format(date);
 }
 
-/** Where the device is in its playlist, and when it's expected to check in next. */
+/** Where the device is in its playlist, and what it got at its last check-in. */
 export interface PlaylistStatus {
-  /** The current playlist entry's screen, its position (from 1) and the playlist's length */
-  screen: string;
+  /** The current playlist entry's position (from 1) and screen, and the playlist's length */
   position: number;
+  screen: string;
   count: number;
-  expectedCheckIn: Date | undefined;
+  /**
+   * Its last check-in: the position of the entry it was sent, and when the next is expected;
+   * undefined if none since the server started
+   */
+  checkIn: { shown: number; next: Date } | undefined;
   now: Date;
   timeZone: string;
 }
@@ -41,30 +45,30 @@ export interface PlaylistStatus {
 /**
  * The screen page's text about the playlist, as plain text: sent with the page, and again with
  * each /screen.png (X-Status), so the page keeps up when the device checks in or another tab
- * moves the playlist on.
+ * moves the playlist. The caption says whether the preview is live: whether the device got this
+ * entry at its last check-in (by entry, not image: the preview is rendered fresh, so its data can
+ * be newer), or when it will.
  */
-export function statusText({ screen, position, count, expectedCheckIn, now, timeZone }: PlaylistStatus) {
-  const showing = count > 1 ? `Showing ${screen} (${position} of ${count}).` : `Showing ${screen}.`;
-  // The device only picks up a change at its next check-in, if that's known
-  let checkIn = "It hasn't checked in since the server started.";
-  if (expectedCheckIn) {
-    const time = formatTime(expectedCheckIn, now, timeZone);
-    checkIn = expectedCheckIn >= now ? `Its next check-in is expected around ${time}.` : `Its next check-in was expected around ${time}.`;
-  }
-  return { showing, checkIn: `The device shows changes from its next check-in. ${checkIn}` };
+export function statusText({ position, screen, count, checkIn, now, timeZone }: PlaylistStatus) {
+  const showing = count > 1 ? `Showing ${screen} (${position}/${count})` : `Showing ${screen}`;
+  let caption = "Preview (will be applied when device comes online):";
+  if (checkIn?.shown === position) caption = "Live preview:";
+  // An overdue device: it's offline, or its battery is flat
+  else if (checkIn && checkIn.next >= now) caption = `Preview (will be applied at ${formatTime(checkIn.next, now, timeZone)}):`;
+  return { showing, caption };
 }
 
 export const screenPage = (name: string, status: PlaylistStatus) => {
-  const { showing, checkIn } = statusText(status);
+  const { showing, caption } = statusText(status);
   const showingHtml = `<span id="showing">${escapeHtml(showing)}</span>`;
   const playlist =
     status.count > 1
-      ? `<form method="post" action="/next"><p>${showingHtml} <button>Next</button></p></form>`
+      ? `<form method="post" action="/next"><p>${showingHtml} <button formaction="/previous">Prev</button> <button>Next</button></p></form>`
       : `<p>${showingHtml}</p>`;
   return page(
     `TRMNL: ${name}`,
     `${playlist}
-<p id="check-in">${escapeHtml(checkIn)}</p>
+<p id="caption">${escapeHtml(caption)}</p>
 <p><img id="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p>
 <noscript><p><img src="/screen.png" width="800" height="480" alt="Screen for ${escapeHtml(name)}"></p></noscript>
 <form method="post" action="/logout"><button>Log out</button></form>
@@ -88,9 +92,9 @@ async function refresh() {
       delay = Number.isNaN(ttl) ? 60 : Math.max(ttl, 1);
       const status = res.headers.get("X-Status");
       if (status) {
-        const { showing, checkIn } = JSON.parse(decodeURIComponent(status));
+        const { showing, caption } = JSON.parse(decodeURIComponent(status));
         document.getElementById("showing").textContent = showing;
-        document.getElementById("check-in").textContent = checkIn;
+        document.getElementById("caption").textContent = caption;
       }
       const untilCheckIn = (Number(res.headers.get("X-Check-In")) - Date.now()) / 1000 + 30;
       if (untilCheckIn > 0) delay = Math.min(delay, untilCheckIn);
