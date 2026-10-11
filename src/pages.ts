@@ -34,10 +34,10 @@ export interface PlaylistStatus {
   screen: string;
   count: number;
   /**
-   * Its last check-in: the position of the entry it was sent, and when the next is expected;
-   * undefined if none since the server started
+   * Its last check-in: the position of the entry it was sent (unknown if the playlist changed
+   * since), and when the next is expected; undefined if it has never checked in
    */
-  checkIn: { shown: number; next: Date } | undefined;
+  checkIn: { shown: number | undefined; next: Date } | undefined;
   now: Date;
   timeZone: string;
 }

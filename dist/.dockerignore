@@ -1,3 +1,5 @@
 **/node_modules/
 *.pem
 *.env
+# State from local runs: Docker would copy it into a new volume
+state/

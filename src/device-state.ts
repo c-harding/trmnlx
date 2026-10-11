@@ -1,20 +1,23 @@
-// What the server remembers about each device while it runs, by MAC: where it is in its playlist, and
-// when it last checked in. In memory only: after a restart, every device starts at its playlist's
-// first entry, and its next check-in is unknown until it checks in.
+// What the server remembers about each device: where it is in its playlist, and when it last checked
+// in. Saved across restarts in the device's file (see state-file.ts), read on first need.
 import type { PlaylistEntry } from "./playlists.ts";
+import { canonicalKey } from "./define-source.ts";
+import { savedState, stateChanged, type StateDevice } from "./state-file.ts";
 
 interface DeviceState {
   /** The current playlist entry's index */
   index: number;
-  /** The device's last /api/display, how long it was told to sleep (seconds), and the index of the entry it was sent */
-  checkIn?: { at: Date; refreshRate: number; shown: number };
+  /**
+   * The device's last /api/display, how long it was told to sleep (seconds), and the index of the
+   * entry it was sent (unknown if the playlist changed since, across a restart)
+   */
+  checkIn?: { at: Date; refreshRate: number; shown: number | undefined };
   /** The last button press handled: its wake (Wake-Time), and when */
   press?: { wake: string; at: Date };
 }
 
 /** What this module needs of a device. */
-interface PlaylistDevice {
-  mac: string;
+interface PlaylistDevice extends StateDevice {
   playlist: PlaylistEntry[];
 }
 
@@ -22,9 +25,62 @@ const states = new Map<string, DeviceState>();
 
 const stateOf = (device: PlaylistDevice) => {
   let state = states.get(device.mac);
-  if (!state) states.set(device.mac, (state = { index: 0 }));
+  if (!state) states.set(device.mac, (state = restoreState(device.playlist, savedState(device, SECTION))));
   return state;
 };
+
+// Saved state: the current entry and the last check-in, with each entry saved
+// as its index, screen and inputs. After a restart with a changed playlist, an entry is found again
+// by its screen and inputs; one that's gone counts as unknown.
+const SECTION = "playlist";
+
+interface SavedEntry extends PlaylistEntry {
+  index: number;
+}
+
+const isObject = (value: unknown): value is Record<string, any> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const saveEntry = (playlist: PlaylistEntry[], index: number): SavedEntry => ({ index, ...playlist[index] });
+
+/** A saved entry's index in the playlist: where it was if it's still there, else where it is now. */
+export function findEntry(playlist: PlaylistEntry[], saved: unknown): number | undefined {
+  if (!isObject(saved) || typeof saved.screen !== "string") return undefined;
+  // Whatever order the inputs are written in
+  const inputs = canonicalKey(saved.inputs);
+  const same = (entry: PlaylistEntry | undefined) =>
+    entry !== undefined && entry.screen === saved.screen && canonicalKey(entry.inputs) === inputs;
+  if (Number.isInteger(saved.index) && same(playlist[saved.index])) return saved.index;
+  const index = playlist.findIndex(same);
+  return index < 0 ? undefined : index;
+}
+
+/** A device's state from what was saved (anything missing or broken is left out). */
+export function restoreState(playlist: PlaylistEntry[], saved: unknown): DeviceState {
+  const record = isObject(saved) ? saved : {};
+  const state: DeviceState = { index: findEntry(playlist, record.entry) ?? 0 };
+  const checkIn = record.checkIn;
+  const at = isObject(checkIn) && typeof checkIn.at === "string" ? new Date(checkIn.at) : undefined;
+  if (at && !Number.isNaN(at.getTime()) && typeof checkIn?.refreshRate === "number") {
+    state.checkIn = { at, refreshRate: checkIn.refreshRate, shown: findEntry(playlist, checkIn.shown) };
+  }
+  return state;
+}
+
+/** Schedules saving the device's state. */
+function changed(device: PlaylistDevice) {
+  const { playlist } = device;
+  stateChanged(device, SECTION, () => {
+    const { index, checkIn } = stateOf(device);
+    return {
+      entry: saveEntry(playlist, index % playlist.length),
+      checkIn: checkIn && {
+        at: checkIn.at,
+        refreshRate: checkIn.refreshRate,
+        shown: checkIn.shown === undefined ? undefined : saveEntry(playlist, checkIn.shown),
+      },
+    };
+  });
+}
 
 /** An index moved by `step` entries (1 forward, -1 back) in a list of `length`, wrapping around. */
 export const stepIndex = (index: number, length: number, step: number) => (((index + step) % length) + length) % length;
@@ -39,6 +95,7 @@ export function currentEntry(device: PlaylistDevice) {
 export function moveOn(device: PlaylistDevice, step: number) {
   const state = stateOf(device);
   state.index = stepIndex(state.index, device.playlist.length, step);
+  changed(device);
 }
 
 // What woke the device when it was the button (KEY3 on the 7.5" DIY kit), by chip: Update-Source is the
@@ -75,17 +132,21 @@ export function pressButton(device: PlaylistDevice, step: number, wake: string |
   const chosen = currentEntry(device).index;
   if (shown === undefined || shown === chosen) return moveOn(device, step);
   // A change from the screen page the device hasn't picked up yet
-  if (step < 0) state.index = stepIndex(shown, device.playlist.length, step);
+  if (step < 0) {
+    state.index = stepIndex(shown, device.playlist.length, step);
+    changed(device);
+  }
 }
 
 /** Records a check-in (/api/display): the refresh_rate the device was sent, and the index of its entry. */
 export function recordCheckIn(device: PlaylistDevice, refreshRate: number, shown: number, at = new Date()) {
   stateOf(device).checkIn = { at, refreshRate, shown };
+  changed(device);
 }
 
 /**
  * When the device is expected to check in next: its last check-in plus the time it was told to
- * sleep. Undefined if it hasn't checked in since the server started. A little early in practice:
+ * sleep. Undefined if it has never checked in. A little early in practice:
  * it sleeps after drawing, which takes a few seconds.
  */
 export function expectedCheckIn(device: PlaylistDevice) {
@@ -94,8 +155,8 @@ export function expectedCheckIn(device: PlaylistDevice) {
 }
 
 /**
- * The device's last check-in: the playlist entry it was sent (its index), and when the next is
- * expected. Undefined if it hasn't checked in since the server started.
+ * The device's last check-in: the playlist entry it was sent (its index, if known), and when the
+ * next is expected. Undefined if it has never checked in.
  */
 export function lastCheckIn(device: PlaylistDevice) {
   const checkIn = stateOf(device).checkIn;

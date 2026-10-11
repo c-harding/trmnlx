@@ -1,1 +1,3 @@
 /node_modules/
+# State from local runs: the server keeps its own, in a Docker volume
+state/

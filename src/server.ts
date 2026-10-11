@@ -6,6 +6,7 @@ import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.
 import { currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
 import { renderDeviceScreen } from "./screen.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
+import { flushState, persistTo } from "./state-file.ts";
 
 const port = Number(process.env.SERVER_PORT ?? 7777);
 
@@ -14,6 +15,9 @@ if (checkOnly) {
   console.log(`Config OK: ${devices.length} device(s)`);
   process.exit(0);
 }
+
+// Next to server.js: a Docker volume on the server (see docker-compose.yml)
+persistTo(new URL("./state/", import.meta.url));
 
 const app = express();
 app.disable("x-powered-by");
@@ -37,7 +41,7 @@ function playlistStatus(device: Device): PlaylistStatus {
     position: index + 1,
     screen: entry.screen,
     count: device.playlist.length,
-    checkIn: checkIn && { shown: checkIn.shown + 1, next: checkIn.next },
+    checkIn: checkIn && { shown: checkIn.shown === undefined ? undefined : checkIn.shown + 1, next: checkIn.next },
     now: new Date(),
     timeZone: device.timeZone,
   };
@@ -98,8 +102,19 @@ app.use(((err, req, res, next) => {
   res.status(status).type("text").send(status === 500 ? "Internal error\n" : `${err.message}\n`);
 }) satisfies ErrorRequestHandler);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Listening on port ${port}`);
   if (!serverDomain) console.warn("SERVER_DOMAIN is not set: image URLs are built from each request's Host header");
   if (setupEnabled) console.warn("SETUP_ENABLED=1: /api/setup hands out tokens to any listed MAC. Turn it off after pairing.");
 });
+
+// docker stop sends SIGTERM (node as PID 1 would otherwise ignore it until killed): end open
+// requests, save pending state and stop
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    server.close();
+    server.closeAllConnections();
+    flushState();
+    process.exit(0);
+  });
+}

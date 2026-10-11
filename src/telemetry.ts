@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { savedState, stateChanged, type StateDevice } from "./state-file.ts";
 
 /** The readings a device sends with /api/display. Each is undefined if the device didn't send it. */
 export interface Telemetry {
@@ -10,28 +11,54 @@ export interface Telemetry {
   seenAt: Date;
 }
 
-// The latest readings each device sent with /api/display, by MAC. In memory only: after a restart
-// a device's readings are unknown until its next poll.
+// The latest readings each device sent with /api/display, by MAC. Saved across restarts, in the
+// device's file (see state-file.ts), read on first need.
 const latest = new Map<string, Telemetry>();
+const SECTION = "telemetry";
+
+/** Readings as saved (seenAt as text), or undefined if there are none or they're broken. */
+export function restoreTelemetry(saved: unknown): Telemetry | undefined {
+  if (typeof saved !== "object" || saved === null) return undefined;
+  const record = saved as Record<string, unknown>;
+  const seenAt = typeof record.seenAt === "string" ? new Date(record.seenAt) : undefined;
+  if (!seenAt || Number.isNaN(seenAt.getTime())) return undefined;
+  const ofType = <T>(value: unknown, type: string) => (typeof value === type ? (value as T) : undefined);
+  return {
+    batteryVoltage: ofType(record.batteryVoltage, "number"),
+    rssi: ofType(record.rssi, "number"),
+    firmwareVersion: ofType(record.firmwareVersion, "string"),
+    charging: ofType(record.charging, "boolean"),
+    usbConnected: ofType(record.usbConnected, "boolean"),
+    seenAt,
+  };
+}
 
 const number = (value: string | undefined) => (value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : Number(value));
 
 /** Stores the readings from the headers of a device's /api/display request. */
-export function recordTelemetry(device: { mac: string }, req: Request) {
+export function recordTelemetry(device: StateDevice, req: Request) {
   const charging = req.get("Battery-Charging");
   const usb = req.get("USB-Connected");
-  latest.set(device.mac, {
+  const telemetry: Telemetry = {
     batteryVoltage: number(req.get("Battery-Voltage")),
     rssi: number(req.get("RSSI")),
     firmwareVersion: req.get("FW-Version"),
     charging: charging === "1" ? true : charging === "0" ? false : undefined,
     usbConnected: usb === "true" ? true : usb === "false" ? false : undefined,
     seenAt: new Date(),
-  });
+  };
+  latest.set(device.mac, telemetry);
+  stateChanged(device, SECTION, () => telemetry);
 }
 
-/** The device's latest readings, or undefined if it hasn't polled since the server started. */
-export const telemetryFor = (device: { mac: string }) => latest.get(device.mac);
+/** The device's latest readings, or undefined if it has never polled. */
+export function telemetryFor(device: StateDevice) {
+  if (!latest.has(device.mac)) {
+    const saved = restoreTelemetry(savedState(device, SECTION));
+    if (saved) latest.set(device.mac, saved);
+  }
+  return latest.get(device.mac);
+}
 
 // A typical single-cell lithium battery under light load: voltage → rough charge left (%).
 // Only an estimate: the curve depends on the battery, its age and the temperature.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buttonStep, currentEntry, expectedCheckIn, moveOn, pressButton, recordCheckIn, stepIndex } from "../src/device-state.ts";
 
-const device = (mac: string, screens: string[]) => ({ mac, playlist: screens.map((screen) => ({ screen, inputs: {} })) });
+const device = (mac: string, screens: string[]) => ({ mac, username: mac, playlist: screens.map((screen) => ({ screen, inputs: {} })) });
 
 test("stepIndex wraps around in both directions", () => {
   assert.equal(stepIndex(0, 3, 1), 1);
