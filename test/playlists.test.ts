@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import type { Condition } from "../src/conditions.ts";
 import { devicePlaylist, expandPlaylist, parseDuration, readDefaultScreen, readLocation, readNamedPlaylists, type ScreenInputs } from "../src/playlists.ts";
 
@@ -76,7 +76,7 @@ test("playlists that include each other are rejected, even if unused", () => {
 });
 
 test("mistakes in named playlists are found even if no device uses them", () => {
-  assert.match(errorOf(() => readNamedPlaylists({ spare: [{ screen: "nope" }] }, screens)), /playlists\.spare\[0\]\.screen must be one of/);
+  assert.match(errorOf(() => readNamedPlaylists({ spare: [{ screen: "journeys", inputs: { rooutes: [] } }] }, screens)), /playlists\.spare\[0\]\.inputs\.rooutes/);
 });
 
 test("unknown playlist names are rejected", () => {
@@ -229,4 +229,25 @@ test("a screen's name where a playlist's is expected says how to show the screen
     errorOf(() => expandPlaylist(["journeys"], "devices[0].playlist", {}, screens)),
     /devices\[0\]\.playlist\[0\] must name a playlist \(there are none under playlists; for the screen journeys, write screen: journeys\)/,
   );
+});
+
+test("an unknown screen is left out with a warning, once; defaultScreen when nothing is left", () => {
+  const warnings: string[] = [];
+  const warn = mock.method(console, "warn", (message: string) => warnings.push(message));
+  try {
+    const named = readNamedPlaylists({ travel: [{ screen: "jouneys" }, { screen: "journeys" }] }, screens);
+    // Expanded again for a device: the same warning isn't repeated
+    assert.deepEqual(devicePlaylist({ playlist: "travel" }, "devices[0]", named, screens, fallback), [{ screen: "journeys", inputs: {} }]);
+    assert.deepEqual(warnings, [
+      "devices.yaml: playlists.travel[0].screen: there's no screen jouneys (there are placeholder, mvg-departures, journeys), so it's left out",
+    ]);
+    // Nothing left, or an unknown screen as the device's screen: its defaultScreen
+    assert.deepEqual(devicePlaylist({ playlist: [{ screen: "gone" }] }, "devices[1]", {}, screens, fallback), [fallback]);
+    assert.deepEqual(devicePlaylist({ screen: "gone" }, "devices[2]", {}, screens, fallback), [fallback]);
+    assert.match(warnings.at(-1)!, /devices\[2\]: none of its playlist's screens exist, so it shows defaultScreen \(placeholder\)/);
+  } finally {
+    warn.mock.restore();
+  }
+  // The entry's other fields are still checked
+  assert.match(errorOf(() => expandPlaylist([{ screen: "gone", duration: "soon" }], "p", {}, screens)), /p\[0\]\.duration must be a duration/);
 });

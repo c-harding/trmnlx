@@ -25,6 +25,8 @@ fail() {
 if ! config_check="$(node --env-file=dist/.env dist/server.js --check-config 2>&1)"; then
   fail "Not deploying: the config is broken" "$config_check"
 fi
+# "Config OK", and any warnings (e.g. a screen that doesn't exist, left out)
+echo "$config_check"
 
 # On the server, start the docker process, clear old docker images and then set up port forwarding
 # (assuming the server is set up as in this gist:

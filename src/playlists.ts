@@ -5,7 +5,8 @@
 // each entry has one condition (see conditions.ts).
 //
 // Plain functions that throw a ConfigError, so config.ts can report it and stop, and tests can call
-// them with made-up screens.
+// them with made-up screens. An unknown screen in a playlist is only a warning (the entry is
+// skipped), so a renamed or removed screen doesn't stop the server; anything else is an error.
 import { ALWAYS, all, any, not, parseHours, type Condition, type Location } from "./conditions.ts";
 import { matchesInput, type InputDefinitions } from "./define-screen.ts";
 
@@ -46,6 +47,15 @@ function describe(value: unknown): string {
   // A list: say what's wrong in it, e.g. a hide rule written as a bare number
   const i = value.findIndex((item) => typeof item !== "string");
   return i < 0 ? "a list" : `a list with ${describe(value[i])} at position ${i + 1}`;
+}
+
+// Warnings already given: named playlists are expanded once per device using them
+const warned = new Set<string>();
+
+function warn(message: string) {
+  if (warned.has(message)) return;
+  warned.add(message);
+  console.warn(`devices.yaml: ${message}`);
 }
 
 function checkFields(entry: Record<string, unknown>, allowed: string[], where: string) {
@@ -101,22 +111,29 @@ function checkInputs(screen: string, inputs: unknown, where: string, screens: Sc
 
 /**
  * A screen entry: `screen`, optionally `inputs`, and in a playlist `duration` and `when` (which
- * expandPlaylist reads). `screenAt` is where the screen's name was given, for messages.
+ * expandPlaylist reads). `screenAt` is where the screen's name was given, for messages. An unknown
+ * screen gives undefined and a warning (its inputs can't be checked, its other fields are), or an
+ * error if `required`.
  */
 function screenEntry(
   entry: Record<string, unknown>,
   where: string,
   screens: ScreenInputs,
-  screenAt = `${where}.screen`,
-  fields = ["screen", "inputs", "duration", "when"],
-): PlaylistEntry {
+  { screenAt = `${where}.screen`, fields = ["screen", "inputs", "duration", "when"], required = false } = {},
+): PlaylistEntry | undefined {
   if (entry.playlist !== undefined) throw new ConfigError(`${where}: give either screen or playlist, not both`);
   checkFields(entry, fields, where);
-  if (typeof entry.screen !== "string" || !Object.hasOwn(screens, entry.screen)) {
-    throw new ConfigError(`${screenAt} must be one of ${Object.keys(screens).join(", ")}`);
+  const duration = entry.duration === undefined ? undefined : parseDuration(entry.duration, `${where}.duration`);
+  const known = Object.keys(screens).join(", ");
+  if (typeof entry.screen !== "string" || (required && !Object.hasOwn(screens, entry.screen))) {
+    throw new ConfigError(`${screenAt} must be one of ${known}`);
+  }
+  if (!Object.hasOwn(screens, entry.screen)) {
+    warn(`${screenAt}: there's no screen ${entry.screen} (there are ${known}), so it's left out`);
+    return undefined;
   }
   const result: PlaylistEntry = { screen: entry.screen, inputs: checkInputs(entry.screen, entry.inputs, where, screens) };
-  if (entry.duration !== undefined) result.duration = parseDuration(entry.duration, `${where}.duration`);
+  if (duration !== undefined) result.duration = duration;
   return result;
 }
 
@@ -145,7 +162,10 @@ export function expandPlaylist(
     }
     if (!isObject(entry)) throw new ConfigError(`${at} must be a playlist's name or an entry (screen: …, or playlist: …)`);
     const when = entry.when === undefined ? ALWAYS : parseWhen(entry.when, `${at}.when`, location);
-    if (entry.playlist === undefined || entry.screen !== undefined) return { entries: [screenEntry(entry, at, screens)], when };
+    if (entry.playlist === undefined || entry.screen !== undefined) {
+      const screen = screenEntry(entry, at, screens);
+      return { entries: screen ? [screen] : [], when };
+    }
     checkFields(entry, ["playlist", "duration", "when"], at);
     const entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including, location);
     if (entry.duration === undefined) return { entries, when };
@@ -226,8 +246,10 @@ export function readDefaultScreen(raw: unknown, screens: ScreenInputs): Playlist
   if (raw === undefined) return { screen: available.includes("placeholder") ? "placeholder" : available[0], inputs: {} };
   // Not planned to get `when` or `duration`: it's what shows when no entry applies
   const fields = ["screen", "inputs"];
-  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, "defaultScreen", fields);
-  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, "defaultScreen.screen", fields);
+  // It must exist: it's what shows when nothing else can
+  const options = { fields, required: true };
+  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, { ...options, screenAt: "defaultScreen" })!;
+  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, { ...options, screenAt: "defaultScreen.screen" })!;
   throw new ConfigError(`defaultScreen must be a screen's name, or screen and inputs`);
 }
 
@@ -247,9 +269,20 @@ export function devicePlaylist(
   if (device.screen !== undefined && device.playlist !== undefined) {
     throw new ConfigError(`${where}: give either screen or playlist, not both`);
   }
-  if (device.screen !== undefined) return [screenEntry({ screen: device.screen }, where, screens)];
+  let playlist = [defaultScreen];
   const name = nameOf(device.playlist);
-  if (typeof name === "string") return namedPlaylist(name, `${where}.playlist`, named, screens, [], location);
-  if (device.playlist !== undefined) return expandPlaylist(device.playlist, `${where}.playlist`, named, screens, [], location);
-  return [defaultScreen];
+  if (device.screen !== undefined) {
+    const screen = screenEntry({ screen: device.screen }, where, screens);
+    playlist = screen ? [screen] : [];
+  } else if (typeof name === "string") {
+    playlist = namedPlaylist(name, `${where}.playlist`, named, screens, [], location);
+  } else if (device.playlist !== undefined) {
+    playlist = expandPlaylist(device.playlist, `${where}.playlist`, named, screens, [], location);
+  }
+  // Every screen in it was left out
+  if (playlist.length === 0) {
+    warn(`${where}: none of its playlist's screens exist, so it shows defaultScreen (${defaultScreen.screen})`);
+    return [defaultScreen];
+  }
+  return playlist;
 }
