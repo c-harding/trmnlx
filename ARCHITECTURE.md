@@ -156,32 +156,53 @@ Rendering happens during `/api/display` itself, which is fast enough that no sch
 
 ### Playlists
 
-Not built yet; this is the plan. Each device in `devices.yaml` gets a `playlist` of entries instead of a single `screen`:
+Not built yet; this is the design. A device shows a playlist: entries it moves through, each a screen with its inputs. Playlists can be named at the top level of `devices.yaml`, shared by devices and included in each other:
 
 ```yaml
+playlists:
+  morning:
+    - screen: mvg-departures
+      inputs:
+        station: Marienplatz
+        hide:
+          - BUS|REGIONAL_BUS
+          - show BUS 54
+  travel:
+    - screen: journeys
+      duration: 10m
+      inputs:
+        routes:
+          - Marienplatz -> München Ost
+          - Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]-> Innsbruck Hbf
+
+devices:
+  - username: kitchen
     playlist:
-      - screen: departures
+      - playlist: morning
         when: Mon-Fri 06:30-09:00
-        inputs: { station: Marienplatz, pinned: [UBAHN Hauptbahnhof] }
-      - screen: departures
-        for: 15m
-        inputs: { station: Hauptbahnhof }
-      - screen: weather
-        for: 30m
+      - playlist: travel
+      - screen: placeholder
+        duration: 5m
 ```
 
 | Field | Meaning |
 |-------|---------|
 | `screen` | The screen to show |
-| `inputs` | The screen's settings for this entry, so the same screen can appear more than once (e.g. two stations) |
-| `for` | How long the entry stays before the next one (its dwell). Without it, the entry stays until its `when` window ends, or for good if it is the only entry that applies |
-| `when` | When the entry applies, e.g. `Mon-Fri 06:30-09:00`. Without it, always. Entries that don't apply right now are skipped |
+| `inputs` | Its inputs, typed as the screen defines them (string, number, boolean, list); missing ones take the defaults. So the same screen can appear more than once (e.g. two stations) |
+| `duration` | How long the entry stays before the playlist moves on: `90s`, `10m`, `1h`. Without it, the entry stays while its `when` applies |
+| `when` | When the entry applies, in the device's time zone: `Mon-Fri 06:30-09:00`, `06:30-09:00` (every day), `Sat,Sun 08:00-12:00`, `22:00-02:00` (over midnight), or a list of these. Without it, always |
+| `playlist` | Instead of `screen`: includes a named playlist's entries here. It can have a `when`, which applies to all of them on top of their own (both must apply), and a `duration`, which applies to those without their own |
 
-- **Two timings**: the screen's `ttl` says when to render it again (the clock, departure times); the entry's `for` says when to move on. On each `/api/display`, the server moves to the next entry that applies if the current one's dwell has run out or its `when` has ended, and otherwise renders the same entry again. The device is told to sleep until the earliest of the screen's `ttl`, the end of the dwell, the next start or end of a `when` window, and `refreshRate`.
-- **Position**: kept in memory per device. After a restart, the device starts at the first entry that applies. It isn't derived from the clock, so the button and the browser can move it.
-- **Nothing applies**: the device shows `defaultScreen`.
-- **KEY3**: a short press arrives straight away as a normal `/api/display` with `Update-Source: EXT0` on the DIY kit (`EXT1` on an ESP32, `button` on the C3-based OG) and moves to the next entry, which then stays for its full dwell. A 1–5 s press arrives with a `special_function: true` header and runs whichever special function the server last sent in `special_function`: `restart_playlist`, back to the first entry that applies. Other keys on the board would need a firmware change (the S3 build wakes on one pin via `ext0`).
-- **Browser**: the screen page shows the device's current entry and has a "Next" button that moves the device's position. The device only picks this up when it next checks in, so the page shows when that is expected: the time of its last `/api/display` plus the `refresh_rate` it was sent. A check-in with an unchanged `filename` costs only the wake (no download, no redraw), so capping `refresh_rate` (e.g. at 5 minutes) shortens this delay for screens that rarely change, at the cost of more wakes.
+- **Shorthand**: a device's `screen: x` is a playlist of one entry, so existing configurations keep working.
+- **Includes** are expanded when `devices.yaml` is read, so a device's playlist is one flat list of entries; an include's `when` and `duration` are applied to its entries then. (A `duration` for the whole included playlist, rotating within it, would need a position inside it, and isn't planned.)
+- **Checked at startup**, like the rest of `devices.yaml`: screen and playlist names, input names and types, `duration` and `when` formats, and that includes don't form a cycle. A mistake stops the server rather than showing the wrong thing.
+- **Inputs in YAML**: lists are best written as block lists (`- …` per line). Routes and hide rules need no quotes there; on one line (`[…]`), the brackets in `-[…]>` confuse YAML. Quote anything starting with `!` (a YAML tag) or containing `: ` (a key), which is why hide exceptions are written `show BUS 54`.
+- **Current entry**: kept in memory per device, with the time it started. The playlist moves on when the entry's `duration` has run out, when its own `when` no longer applies, or on a button press (below), and only then works out which entry is next: the next one after the current that applies at that moment, wrapping around. A window that starts doesn't interrupt the current entry: it is only considered at the next move. With nothing applicable, the device shows `defaultScreen`. After a restart, it starts at the first entry that applies.
+- **Two timings**: the screen's `ttl` says when to render it again (the clock, departure times); the entry's `duration` and `when` say when to move on. The device is told to sleep until the earliest of the screen's `ttl`, the end of the entry's `duration`, the end of its `when` window, and `refreshRate` (minus the wake time, as now).
+- **Data**: sources and their caches are shared as before, so entries (or devices) with the same inputs share fetched data.
+- **KEY3**: a short press arrives straight away as a normal `/api/display` with `Update-Source: EXT0` on the DIY kit (`EXT1` on an ESP32, `button` on the C3-based OG) and moves to the next applicable entry, which then gets its full `duration`. A 1–5 s press arrives with a `special_function: true` header and runs whichever special function the server last sent in `special_function`: the server sends `restart_playlist`, back to the first entry that applies. Other keys on the board would need a firmware change (the S3 build wakes on one pin via `ext0`).
+- **Browser**: the screen page shows the device's current entry and has a "Next" button (`POST /next`) that moves the device's playlist on, like a short press. The device only picks this up when it next checks in, so the page shows when that is expected: the time of its last `/api/display` plus the `refresh_rate` it was sent. A check-in with an unchanged `filename` costs only the wake (no download, no redraw), so capping `refresh_rate` (e.g. at 5 minutes) shortens this delay for screens that rarely change, at the cost of more wakes.
+- **Out of scope for now**: the dev server (it still renders one screen with inputs from its form), and previewing every entry in the browser (an open question).
 - **Battery**: the cost is mostly in the wake itself (Wi-Fi and an HTTPS request, around 5–10 s at roughly 100 mA or more), much less in the download and e-ink refresh (a few seconds at tens of mA). At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months, so roughly 10,000 wakes per charge (the DIY kit's battery and sleep current may differ). Rough estimates:
 
   | Pattern | Wakes per day | Battery lasts |
@@ -288,6 +309,7 @@ Footprint: a `node:slim` image with sharp's prebuilt binaries. Measured on a Mac
 - Which `temperature_profile` (`default`, `a`, `b`) works best on our panel? With `default`, partial refreshes leave earlier clock digits visible; trying `a`.
 - `npm audit` reports 2 moderate issues: Satori 0.47.1 pins `fflate` to exactly 0.7.3 (directly and through `@shuding/opentype.js`), which has an infinite loop in `unzipSync` on malformed ZIP64 archives ([GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98)). Probably not reachable here: Satori only uses `fflate` to decompress font files, and we only load our own fonts. `npm audit fix --force` would downgrade Satori to 0.32.0, a breaking change. Better: an `overrides` entry forcing `fflate` 0.8.x, checking that rendering still works, or waiting for a Satori release that updates it.
 - Once there are playlists: preview every entry of a device's playlist in the browser, not just the one the device is showing.
+- Once there are playlists: let the dev server load a playlist entry's screen and inputs from `devices.yaml` into its form, to try changes to it.
 - Measure battery use instead of estimating it (see [Playlists](#playlists)): log the `Battery-Voltage` from every `/api/display` for a few days and compare wake patterns.
 - Partial refreshes leave traces of earlier screens on the DIY kit (e.g. superimposed clock digits), with `temperatureProfile` `default` and `a` alike; until then every device gets full refreshes (`fullRefresh`, default `true`), which flash every minute. Likely cause: the firmware assumes the panel controller still holds the previous image after deep sleep (`bCanDoPartial` survives in RTC memory), which may not be true on this board. To investigate: build the firmware with `-D DEV_FIRMWARE` for `TRMNL_7inch5_OG_DIY_Kit` (only development builds log over USB), flash it over USB, and read the serial log at 115200 baud for lines like "Have valid previous image in EPD memory, doing partial refresh". While full refreshes are used, black and white no longer avoids flashing, so `colors = 2` on the screens could be revisited.
 - Load data ahead for devices that wake rarely: `refreshAhead` only helps when requests come often (journeys screens every minute). For a screen whose device wakes, say, every 15 minutes, a scheduler could load what it depends on shortly before its next wake (its last `/api/display` plus the `refresh_rate` sent), which would also shorten the wake and save battery. Needs a record of which sources and params each screen used; fits with playlists.
