@@ -10,7 +10,7 @@ import { authenticateDevice, deviceToken, friendlyId } from "./device-auth.ts";
 import { renderPng } from "./render.ts";
 import { renderDeviceScreen } from "./screen.ts";
 import { Paired } from "./screens/paired.tsx";
-import { recordCheckIn } from "./device-state.ts";
+import { buttonStep, pressButton, recordCheckIn } from "./device-state.ts";
 import { recordTelemetry } from "./telemetry.ts";
 
 export const deviceApi = express.Router();
@@ -80,6 +80,12 @@ deviceApi.get("/setup.png", async (req, res) => {
   res.type("png").send(pairedPng);
 });
 
+// The button's special function (double click or 1–5 s hold) that the firmware is told to use, and
+// that the server treats as "back": the firmware runs whichever one the server last sent, and
+// guest_mode is the one that downloads image_url and takes refresh_rate like a normal check-in.
+// (rewind would fit by name, but only redraws the device's previous image from flash.)
+const BACK_FUNCTION = "guest_mode";
+
 // The shortest sleep we ask for, e.g. when a request arrives just before the screen changes
 const MIN_REFRESH_RATE = 5;
 
@@ -98,6 +104,9 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   const device = res.locals.device;
   // Before rendering, so the screen shows the readings from this very wake
   recordTelemetry(device, req);
+  // KEY3: a short press moves to the next playlist entry, the special function back to the previous
+  const step = buttonStep(req.get("Update-Source"), req.get("special_function"));
+  if (step) pressButton(device, step, req.get("Wake-Time"));
   const { png, ttl } = await renderDeviceScreen(device);
   // Named after its content: the firmware skips the download and the redraw if it's unchanged
   const filename = createHash("sha256").update(png).digest("hex").slice(0, 16);
@@ -114,6 +123,9 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
     update_firmware: false,
     firmware_url: null,
     reset_firmware: false,
+    // Saved by the firmware for the next special function; answering one, it needs its name here
+    special_function: BACK_FUNCTION,
+    ...(step < 0 && { action: BACK_FUNCTION }),
     // A full refresh on every update, rather than the partial refreshes the firmware uses for
     // black-and-white images (which flash less, but leave traces on the DIY kit)
     maximum_compatibility: device.fullRefresh,

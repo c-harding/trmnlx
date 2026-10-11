@@ -8,6 +8,8 @@ interface DeviceState {
   index: number;
   /** The device's last /api/display, and how long it was told to sleep (seconds) */
   checkIn?: { at: Date; refreshRate: number };
+  /** The last button press that moved the playlist: its wake (Wake-Time), and when */
+  press?: { wake: string; at: Date };
 }
 
 /** What this module needs of a device. */
@@ -37,6 +39,37 @@ export function currentEntry(device: PlaylistDevice) {
 export function moveOn(device: PlaylistDevice, step: number) {
   const state = stateOf(device);
   state.index = stepIndex(state.index, device.playlist.length, step);
+}
+
+// What woke the device when it was the button (KEY3 on the 7.5" DIY kit), by chip: Update-Source is the
+// ESP-IDF wake cause, "EXT0" on the S3 build, "EXT1" on an ESP32, "button" (GPIO) on the C3-based OG
+const BUTTON_WAKES = ["EXT0", "EXT1", "button"];
+
+/**
+ * How far a check-in moves the playlist, from its headers: back one for the button's special
+ * function (a double click or a 1–5 s hold, sent as special_function: true), on one for a short
+ * press (a wake by the button), otherwise not at all.
+ */
+export function buttonStep(updateSource: string | undefined, specialFunction: string | undefined) {
+  if (specialFunction === "true") return -1;
+  return updateSource !== undefined && BUTTON_WAKES.includes(updateSource) ? 1 : 0;
+}
+
+// The firmware retries a failed /api/display (an HTTP error or a 15 s timeout) up to 5 times, 2 s
+// apart: within this time, a request from the same wake is a retry
+const RETRY_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * Moves the playlist for a button press, once per wake: retries repeat the press's headers.
+ * `wake` is the Wake-Time header (how long the device's previous wake took, in ms), the same in a
+ * wake's retries but almost never in two wakes; without it, every request counts.
+ */
+export function pressButton(device: PlaylistDevice, step: number, wake: string | undefined, at = new Date()) {
+  const state = stateOf(device);
+  const last = state.press;
+  if (wake && last?.wake === wake && at.getTime() - last.at.getTime() < RETRY_WINDOW_MS) return;
+  if (wake) state.press = { wake, at };
+  moveOn(device, step);
 }
 
 /** Records a check-in (/api/display) and the refresh_rate the device was sent. */

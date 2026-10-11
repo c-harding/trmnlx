@@ -102,11 +102,11 @@ This is the main endpoint, called on every wake.
 | `RSSI`            | Wi-Fi signal strength, e.g. `-69`                      |
 | `Width`, `Height` | Screen size in pixels (`800` × `480` for the OG)       |
 | `Model`           | Device model                                           |
-| `Update-Source`   | What woke the device, e.g. the timer or the button     |
+| `Update-Source`   | What woke the device: `timer`, `powercycle` (also after a restart or update), or the button as `EXT0`, `EXT1` or `button` depending on the chip; `unknown` otherwise |
 | `Temperature-Profile` | `true`: the device understands the `temperature_profile` response field |
-| `special_function`| `true` if the user triggered the button's special function. Note the underscore: this is not `Special-Function` |
+| `special_function`| `true` if the user triggered the button's special function (a double click or a 1–5 s hold; 5–15 s resets the Wi-Fi, 15 s or more all settings). Note the underscore: this is not `Special-Function` |
 
-Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connected`, `Image-Cached`, `Wake-Time`, `WiFi-Band`, …). All of them are optional, and a server can ignore any it doesn't care about.
+Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connected`, `Image-Cached`, `Wake-Time`, `WiFi-Band`, …). All of them are optional, and a server can ignore any it doesn't care about. A failed `/api/display` (an HTTP error or a timeout) is retried up to 5 times, 2 s apart, with the same headers.
 
 ```json
 {
@@ -129,7 +129,7 @@ Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connect
 | `refresh_rate`     | Seconds to sleep before the next poll. **This is how the server controls the schedule.** Older examples send it as a string |
 | `update_firmware`, `firmware_url` | Tell the device to OTA-update from `firmware_url` |
 | `reset_firmware`   | Tell the device to clear **all** its settings, including Wi-Fi, and restart into the captive portal |
-| `special_function` | What the device should do when the button's special function is used (e.g. `identify`) |
+| `special_function` | What the device should do when the button's special function is used (e.g. `identify`), saved for its next press. In the response to a press, `action` must repeat it, or the firmware ignores the response. Each function behaves differently: `rewind` redraws the previous image from flash, while `identify`, `restart_playlist` and `guest_mode` download `image_url` (only `guest_mode` also takes `refresh_rate`) |
 | `temperature_profile` | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays) |
 
 ### `GET <image_url>`: the image download
