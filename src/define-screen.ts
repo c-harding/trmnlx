@@ -8,12 +8,13 @@
 import { inspect } from "node:util";
 import type { VNode } from "preact";
 import {
-  resolveDependencies,
+  resolveDependenciesWithExpiry,
   warmDependencies,
   type AnyDependencies,
   type CheckedDependencies,
   type ResolvedDependencies,
 } from "./define-source.ts";
+import { SAFETY_SECONDS } from "./time.ts";
 import type { Telemetry } from "./telemetry.ts";
 
 /** A screen setting, with the type of its value and the value used when none is given. */
@@ -154,6 +155,24 @@ export function resolveInputs<I extends InputDefinitions>(
   return inputs as InputValues<I>;
 }
 
+// Data shown stale is replaced in the background: the screen is asked for again this soon (s)
+const STALE_TTL = 15;
+// Otherwise data never makes a screen valid for less than this (s): a screen that changes every
+// minute anyway has data that lasts a little under a minute, and would otherwise be asked for twice
+// (with the same margin as untilNextMinute, so a minute screen keeps its whole ttl)
+const MIN_DATA_TTL = 60 + SAFETY_SECONDS;
+
+/**
+ * A screen's ttl (s), capped by its data: no longer than until the earliest of its sources'
+ * results expires (but at least MIN_DATA_TTL), and at most STALE_TTL if one was shown stale. So a
+ * screen with a long ttl still shows new data once its sources have it.
+ */
+export function dataTtl(ttl: number, expiresAt: number, stale: boolean, now: Date) {
+  if (stale) return Math.min(ttl, STALE_TTL);
+  if (expiresAt === Infinity) return ttl;
+  return Math.min(ttl, Math.max(Math.ceil((expiresAt - now.getTime()) / 1000), MIN_DATA_TTL));
+}
+
 // Every screen made by defineScreen, so screen.ts can tell a screen from any other default export
 const defined = new WeakSet<object>();
 
@@ -179,9 +198,9 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
         inputs: resolveInputs(definition.inputs, inputs),
       };
       if (definition.prepare) {
-        const dependencies = await resolveDependencies<Deps, ScreenProps<I>>(definition.dependencies, props);
+        const { dependencies, expiresAt, stale } = await resolveDependenciesWithExpiry<Deps, ScreenProps<I>>(definition.dependencies, props);
         const viewProps = { ...props, data: definition.prepare({ ...props, dependencies }) };
-        return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps) };
+        return { layout: definition.view(viewProps), ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now) };
       }
       const viewProps = { ...props, data: undefined };
       return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps) };

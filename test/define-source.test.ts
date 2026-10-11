@@ -169,3 +169,28 @@ test("warm does nothing for a source without staleUntil", async () => {
   await settle();
   assert.equal(loads(), 0);
 });
+
+test("withExpiry says when a result expires and whether it was shown stale", async () => {
+  let n = 0;
+  const start = clock;
+  const { source } = counting<{ n: number }>({ maxAge: 1000, staleUntil: () => start + 5000 }, () => ({ n: ++n }));
+  assert.deepEqual(await source.withExpiry({ n: 1 }), { value: { n: 1 }, expiresAt: start + 1000, stale: false });
+  clock += 2000;
+  assert.deepEqual(await source.withExpiry({ n: 1 }), { value: { n: 1 }, expiresAt: start + 1000, stale: true });
+  await settle();
+  assert.deepEqual(await source.withExpiry({ n: 1 }), { value: { n: 2 }, expiresAt: clock + 1000, stale: false });
+});
+
+test("withExpiry: fresh while refreshing ahead, and the new expiry for a request waiting on a load", async () => {
+  let n = 0;
+  const start = clock;
+  const { source } = counting<{ n: number }>({ maxAge: 1000, refreshAhead: () => 500 }, () => ({ n: ++n }));
+  await source({ n: 1 });
+  clock += 700; // in the refresh window: answered from the cache, not stale
+  assert.deepEqual(await source.withExpiry({ n: 1 }), { value: { n: 1 }, expiresAt: start + 1000, stale: false });
+  await settle();
+  clock += 2000; // expired, no staleUntil: waits, and gets the new result's expiry
+  const [a, b] = await Promise.all([source.withExpiry({ n: 1 }), source.withExpiry({ n: 1 })]);
+  assert.deepEqual(a, { value: { n: 3 }, expiresAt: clock + 1000, stale: false });
+  assert.deepEqual(b, a);
+});

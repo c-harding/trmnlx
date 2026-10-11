@@ -25,6 +25,20 @@ export interface Source<P, T> {
    * others are fast enough to load when needed.
    */
   warm(params: P): void;
+  /** Like calling the source, with when the result expires and whether it was shown stale. */
+  withExpiry(params: P): Promise<Fetched<T>>;
+}
+
+/** A source's result, with what a screen needs to know how long it stays valid. */
+export interface Fetched<T> {
+  value: T;
+  /**
+   * When it expires (ms since the epoch): Infinity if kept until restart. The source's own expiry:
+   * its dependencies' are part of its `maxAge` if they matter.
+   */
+  expiresAt: number;
+  /** Already expired, shown while the next one loads (see staleUntil) */
+  stale: boolean;
 }
 
 /**
@@ -74,6 +88,31 @@ export async function resolveDependencies<D extends AnyDependencies, C>(
   return Object.fromEntries(entries) as ResolvedDependencies<D>;
 }
 
+/**
+ * Like resolveDependencies, also giving when the earliest result expires and whether any was shown
+ * stale: so a screen knows how long what it shows stays valid.
+ */
+export async function resolveDependenciesWithExpiry<D extends AnyDependencies, C>(
+  dependencies: D | undefined,
+  context: C,
+): Promise<{ dependencies: ResolvedDependencies<D>; expiresAt: number; stale: boolean }> {
+  let expiresAt = Infinity;
+  let stale = false;
+  const entries = await Promise.all(
+    Object.entries(dependencies ?? {}).map(async ([name, [source, spec]]) => {
+      const fetch = async (params: unknown) => {
+        const fetched = await source.withExpiry(params);
+        expiresAt = Math.min(expiresAt, fetched.expiresAt);
+        stale ||= fetched.stale;
+        return fetched.value;
+      };
+      const params = paramsFor(spec, context);
+      return [name, Array.isArray(params) ? await Promise.all(params.map(fetch)) : await fetch(params)] as const;
+    }),
+  );
+  return { dependencies: Object.fromEntries(entries) as ResolvedDependencies<D>, expiresAt, stale };
+}
+
 /** Warms dependencies (see Source.warm) with the given context, without waiting for anything. */
 export function warmDependencies<C>(dependencies: AnyDependencies | undefined, context: C) {
   for (const [source, spec] of Object.values(dependencies ?? {})) {
@@ -110,8 +149,14 @@ interface CacheEntry<T> {
   result?: { value: T };
   /** When the result expires (ms since the epoch); Infinity keeps it until restart, 0 while loading */
   expiresAt: number;
-  /** A load in progress: requests arriving meanwhile wait for it */
-  pending?: Promise<T>;
+  /** A load in progress: requests arriving meanwhile wait for it, and get its result's expiry */
+  pending?: Promise<Loaded<T>>;
+}
+
+/** A loaded result, and when it expires (ms since the epoch). */
+interface Loaded<T> {
+  value: T;
+  expiresAt: number;
 }
 
 /**
@@ -170,12 +215,13 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
   const staleUntilOf = (value: T) => definition.staleUntil?.(value) ?? 0;
 
   /** Loads a result and caches it. On an error, the previous result (if any) stays until `previousExpiresAt`. */
-  async function refresh(key: string, params: P, previous: { value: T } | undefined, previousExpiresAt = 0): Promise<T> {
+  async function refresh(key: string, params: P, previous: { value: T } | undefined, previousExpiresAt = 0): Promise<Loaded<T>> {
     try {
       const dependencies = await resolveDependencies<D, { params: P }>(definition.dependencies, { params });
       const value = await definition.load(params, dependencies, previous?.value);
-      cache.set(key, { result: { value }, expiresAt: Date.now() + maxAgeOf(value) });
-      return value;
+      const expiresAt = Date.now() + maxAgeOf(value);
+      cache.set(key, { result: { value }, expiresAt });
+      return { value, expiresAt };
     } catch (error) {
       // Nothing new cached: the previous result stays as it was, and a later request tries again
       if (previous) cache.set(key, { result: previous, expiresAt: previousExpiresAt });
@@ -194,25 +240,30 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
 
   const keyOf = (params: P) => canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
 
-  const source = async (params: P): Promise<T> => {
+  /** A result once loaded: fresh, with its expiry. */
+  const loaded = async (pending: Promise<Loaded<T>>): Promise<Fetched<T>> => ({ ...(await pending), stale: false });
+
+  async function withExpiry(params: P): Promise<Fetched<T>> {
     const key = keyOf(params);
     const entry = cache.get(key);
     const now = Date.now();
     if (entry?.result && now < entry.expiresAt) {
       // About to expire: load the next result in the background, but answer from the cache
       if (!entry.pending && entry.expiresAt - now < refreshAheadOf(entry.result.value)) refreshInBackground(key, params, entry);
-      return entry.result.value;
+      return { value: entry.result.value, expiresAt: entry.expiresAt, stale: false };
     }
     // Expired, but can still be shown: the same, without waiting for the next one
     if (entry?.result && now < staleUntilOf(entry.result.value)) {
       if (!entry.pending) refreshInBackground(key, params, entry);
-      return entry.result.value;
+      return { value: entry.result.value, expiresAt: entry.expiresAt, stale: true };
     }
-    if (entry?.pending) return entry.pending;
+    if (entry?.pending) return loaded(entry.pending);
     const pending = refresh(key, params, entry?.result);
     cache.set(key, { result: entry?.result, expiresAt: 0, pending });
-    return pending;
-  };
+    return loaded(pending);
+  }
+
+  const source = async (params: P): Promise<T> => (await withExpiry(params)).value;
 
   function warm(params: P) {
     if (!definition.staleUntil) return;
@@ -223,5 +274,5 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     refreshInBackground(key, params, entry);
   }
 
-  return Object.assign(source, { sourceName: definition.name, warm });
+  return Object.assign(source, { sourceName: definition.name, warm, withExpiry });
 }

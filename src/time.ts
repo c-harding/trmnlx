@@ -1,6 +1,6 @@
 // Seconds added to a ttl, so a device or browser that wakes slightly early doesn't redraw the
 // minute that is just ending and then wake again straight away.
-const SAFETY_SECONDS = 2;
+export const SAFETY_SECONDS = 2;
 
 /** Seconds until the next minute starts (plus a margin): the ttl of anything showing minutes. */
 export function untilNextMinute(now: Date) {
