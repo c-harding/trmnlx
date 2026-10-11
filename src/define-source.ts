@@ -1,16 +1,17 @@
 // Data sources, and how screens and sources declare what they depend on.
 //
-// A source is defined with defineSource({ name, params, dependencies, load }) and called like a
-// function with one parameters object. Its dependencies are other sources, declared as
-// `name: [source, params]` and resolved before `load` runs, so `load` gets their results.
+// A source is defined with defineSource({ name, params, dependencies, load, maxAge, cacheKey })
+// and called like a function with one parameters object. Its dependencies are other sources,
+// declared as `name: [source, params]` and resolved before `load` runs, so `load` gets their
+// results.
 //
-// Sources cache for themselves for now (see sources/mvg.ts). The framework knows every source by
-// name and parameters, so it could take caching over later.
+// Results are cached per source and cache key for `maxAge`. The key is the params, or what the
+// source's `cacheKey` makes of them (e.g. a time rounded down to the minute), compared deeply.
 
 /** A data source: called with one parameters object. */
 export interface Source<P, T> {
   (params: P): Promise<T>;
-  /** e.g. "mvg.departures", for logs (and, later, cache keys) */
+  /** e.g. "mvg.departures", for logs */
   readonly sourceName: string;
 }
 
@@ -67,22 +68,89 @@ export async function resolveDependencies<D extends AnyDependencies, C>(
 }
 
 /**
+ * A canonical string for a cache key, equal for deeply equal keys: object keys sorted, undefined
+ * fields left out, Dates as ISO strings (like JSON). Keys must be plain JSON data (objects,
+ * arrays, strings, finite numbers, booleans, null) or Dates: NaN gives the same key as null, and a
+ * Map or Set the same as {}. A key of undefined gives "undefined", shared by all such params.
+ */
+export function canonicalKey(key: unknown): string {
+  const json = JSON.stringify(key, (_field, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : value,
+  );
+  // JSON.stringify gives undefined for undefined (and functions): one more key, not a missing one
+  return json ?? "undefined";
+}
+
+interface CacheEntry<T> {
+  /** The latest result, if there is one */
+  result?: { value: T };
+  /** When the result expires (ms since the epoch); Infinity keeps it until restart, 0 while loading */
+  expiresAt: number;
+  /** A load in progress: requests arriving meanwhile wait for it */
+  pending?: Promise<T>;
+}
+
+/**
  * Declares a source's params type, as `params: paramsOf<{ station: string }>()`. Only for the
  * types: the source's dependencies need it before anything else can be inferred.
  */
 export const paramsOf = <P>() => undefined as P;
 
 /**
- * Defines a source. `load` gets the params and the results of the dependencies, whose params are
- * computed from `{ params }`.
+ * Defines a source. `load` gets the params and the results of the dependencies (whose params are
+ * computed from `{ params }`). Its result is cached for `maxAge`; if it throws, nothing is cached
+ * and the error propagates.
  */
 export function defineSource<P, T, const D extends AnyDependencies = {}>(definition: {
   name: string;
   params: P;
+  /**
+   * How long a result stays valid in ms (Infinity or NaN: until restart), or a function of the result.
+   * Write a function after `load`: TypeScript takes the result type from `load`, top to bottom.
+   */
+  maxAge: number | ((result: NoInfer<T>) => number);
+  /**
+   * What the cache tells apart, made from the params; without it, the params themselves. E.g. a
+   * time rounded down to the minute, so all requests within a minute share one result.
+   */
+  cacheKey?: (params: P) => unknown;
   dependencies?: D & CheckedDependencies<D, { params: P }>;
   load: (params: P, dependencies: ResolvedDependencies<D>) => Promise<T>;
 }): Source<P, T> {
-  const source = async (params: P) =>
-    definition.load(params, await resolveDependencies<D, { params: P }>(definition.dependencies, { params }));
+  const cache = new Map<string, CacheEntry<T>>();
+  const maxAgeOf = (value: T) => {
+    const maxAge = typeof definition.maxAge === "function" ? definition.maxAge(value) : definition.maxAge;
+    // NaN means no limit, like Infinity
+    return Number.isNaN(maxAge) ? Infinity : maxAge;
+  };
+
+  async function refresh(key: string, params: P): Promise<T> {
+    try {
+      const dependencies = await resolveDependencies<D, { params: P }>(definition.dependencies, { params });
+      const value = await definition.load(params, dependencies);
+      const now = Date.now();
+      // Expired entries go when a new result arrives, so old keys don't pile up
+      for (const [other, { expiresAt, pending }] of cache) if (!pending && expiresAt <= now) cache.delete(other);
+      cache.set(key, { result: { value }, expiresAt: now + maxAgeOf(value) });
+      return value;
+    } catch (error) {
+      // Nothing cached: the next request tries again
+      cache.delete(key);
+      throw error;
+    }
+  }
+
+  const source = async (params: P): Promise<T> => {
+    const key = canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
+    const entry = cache.get(key);
+    if (entry?.pending) return entry.pending;
+    if (entry?.result && Date.now() < entry.expiresAt) return entry.result.value;
+    // An expired result is dropped: it would never be used again
+    const pending = refresh(key, params);
+    cache.set(key, { expiresAt: 0, pending });
+    return pending;
+  };
   return Object.assign(source, { sourceName: definition.name });
 }

@@ -12,8 +12,7 @@ const NOTE_ROW_HEIGHT = 64;
 const PADDING_Y = 12;
 const HEADER_HEIGHT = 55; // including its bottom border
 const HEADER_GAP = 4;
-const FOOTER_HEIGHT = 30; // the "As of" line, including the gap above it
-const rowsHeight = (footer: string) => HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP - (footer ? FOOTER_HEIGHT : 0);
+const ROWS_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP;
 // The thicker line above pinned departures
 const PINNED_RULE = 3;
 
@@ -250,8 +249,6 @@ export default defineScreen({
     const { timeZone } = device;
     // The list, without hidden departures and those that have left
     const departures = data.shown.filter((d) => d.time >= now.getTime() - 30_000);
-    // Only shown when the latest fetch failed and the list is older
-    const footer = data.error && data.fetchedAt ? `As of ${formatTime(new Date(data.fetchedAt), timeZone)}` : "";
 
     // The next two departures on the same line and direction (same lineId), among those shown;
     // `time` is the actual (real-time) departure
@@ -287,14 +284,14 @@ export default defineScreen({
       }
       return fitting;
     };
-    let rows = fit(rowsHeight(footer));
+    let rows = fit(ROWS_HEIGHT);
     let extra: Departure[] = [];
     for (let i = 0; i < pinned.length; i++) {
       const missing = pinned.filter((p) => !rows.some((d) => sameDeparture(d, p)));
       if (missing.length === extra.length) break;
       extra = missing;
       const extraHeight = PINNED_RULE + extra.reduce((sum, d) => sum + rowHeight(d), 0);
-      rows = fit(rowsHeight(footer) - extraHeight);
+      rows = fit(ROWS_HEIGHT - extraHeight);
     }
 
     return (
@@ -336,8 +333,7 @@ export default defineScreen({
 
         {rows.length === 0 && extra.length === 0 ? (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>
-            {/* "No departures" only on fresh data: an empty stale list just means it has run out */}
-            {data.departures && !data.error ? "No departures" : "Departures unavailable"}
+            {data.departures ? "No departures" : "Departures unavailable"}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
@@ -354,9 +350,6 @@ export default defineScreen({
           </div>
         )}
 
-        {footer && (
-          <div style={{ display: "flex", height: FOOTER_HEIGHT - 6, marginTop: 6, fontSize: 20, ...ellipsis }}>{footer}</div>
-        )}
       </div>
     );
   },
