@@ -68,6 +68,9 @@ interface TransitousPlace {
 interface TransitousLeg {
   mode: string;
   routeShortName?: string;
+  /** The train number, e.g. "000965" */
+  tripShortName?: string;
+  agencyName?: string;
   from: { name: string };
   to: { name: string };
   startTime: string;
@@ -146,6 +149,11 @@ export const lookupStop = defineSource({
 
 // "RB54 (79063)" → "RB54"; a bare number gets its kind ("Bus 54"), as the departures screen shows them
 function lineName(leg: TransitousLeg) {
+  // WESTbahn's trains are "DRF (965)" in DB's data, but "WB 965" in ÖBB's, on their trains and at stations
+  if (leg.agencyName === "WESTbahn") {
+    const number = /\((\d+)\)$/.exec(leg.routeShortName ?? "")?.[1] ?? leg.tripShortName?.replace(/^0+/, "");
+    return number ? `WB ${number}` : "WB";
+  }
   const name = (leg.routeShortName ?? "").replace(/\s*\(.*\)$/, "").trim();
   if (!/^\d+$/.test(name)) return name || leg.mode.toLowerCase();
   if (leg.mode === "BUS" || leg.mode === "COACH") return `Bus ${name}`;
