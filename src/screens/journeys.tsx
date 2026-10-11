@@ -115,8 +115,6 @@ export default defineScreen({
         from: ({ inputs }) => inputs.from,
         to: ({ inputs }) => inputs.to,
         via: ({ inputs }) => inputs.via,
-        time: ({ now }) => now,
-        count: ({ inputs }) => inputs.count,
       },
     ],
   },
@@ -171,7 +169,8 @@ export default defineScreen({
 
         {journeys.length === 0 ? (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>
-            {data.journeys ? "No connections" : "Connections unavailable"}
+            {/* "No connections" only on fresh data: older data that has run out says nothing about now */}
+            {data.journeys && !data.error ? "No connections" : "Connections unavailable"}
           </div>
         ) : (
           // A column that wraps: a connection that doesn't fit below the others moves to a second

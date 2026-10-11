@@ -9,8 +9,11 @@ import { defineSource, paramsOf } from "../define-source.ts";
 const BASE_URL = "https://api.transitous.org/api/v1";
 const TIMEOUT_MS = 15_000;
 
-// Journey searches are cached per five minutes of the requested time; delays shown can be that old
-const JOURNEY_BLOCK_MS = 5 * 60_000;
+// Journey searches are cached for five minutes; delays shown can be that old
+const JOURNEY_MAX_AGE_MS = 5 * 60_000;
+// Journeys asked for per search: more than a screen shows, since some leave before the next search.
+// The same for every screen, so screens showing the same route share one search.
+const JOURNEYS_PER_SEARCH = 8;
 // A failed stop lookup is tried again after this long (a found stop is kept until restart)
 const LOOKUP_RETRY_MS = 30_000;
 
@@ -82,12 +85,38 @@ interface TransitousItinerary {
 
 const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 
+// After a failed search: Transitous' Retry-After for a 429 (too many requests), otherwise a minute;
+// other errors (timeouts, server errors) are tried again sooner
+const RATE_LIMIT_RETRY_MS = 60_000;
+const ERROR_RETRY_MS = 30_000;
+
+/** An answer other than 200, with how long to wait before asking again if Transitous said. */
+class TransitousError extends Error {
+  constructor(
+    readonly status: number,
+    readonly retryAfterMs: number | undefined,
+  ) {
+    super(`Transitous answered ${status}`);
+  }
+}
+
+/** Retry-After in ms: a number of seconds, or a date. */
+function parseRetryAfter(header: string | null) {
+  if (!header) return undefined;
+  const ms = /^\d+$/.test(header.trim()) ? Number(header) * 1000 : Date.parse(header) - Date.now();
+  return Number.isFinite(ms) ? Math.max(ms, 0) : undefined;
+}
+
+/** How long a failed search is kept before the next request tries again. */
+const retryDelay = (error: Error) =>
+  error instanceof TransitousError && error.status === 429 ? (error.retryAfterMs ?? RATE_LIMIT_RETRY_MS) : ERROR_RETRY_MS;
+
 const getJson = async (url: string): Promise<unknown> => {
   const res = await fetch(url, {
     headers: { Accept: "application/json", "User-Agent": "trmnl-server (self-hosted e-ink display)" },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`Transitous answered ${res.status}`);
+  if (!res.ok) throw new TransitousError(res.status, parseRetryAfter(res.headers.get("Retry-After")));
   return res.json();
 };
 
@@ -114,9 +143,6 @@ export const lookupStop = defineSource({
   },
   maxAge: (stop) => (stop ? Infinity : LOOKUP_RETRY_MS),
 });
-
-/** The start of the five-minute block a time falls in. */
-const blockStart = (time: Date) => new Date(Math.floor(time.getTime() / JOURNEY_BLOCK_MS) * JOURNEY_BLOCK_MS);
 
 // "RB54 (79063)" → "RB54"; a bare number gets its kind ("Bus 54"), as the departures screen shows them
 function lineName(leg: TransitousLeg) {
@@ -151,30 +177,34 @@ function toJourney(itinerary: TransitousItinerary): Journey | undefined {
 
 /**
  * The next journeys from one stop to another, optionally via others in the given order (all given
- * by name), leaving from `time` on: at least `count` of them when Transitous finds that many,
- * earliest first.
- * Searches are cached per five minutes of `time`, and start at the beginning of that block, so
- * some of the journeys may already have left by the time they are shown.
+ * by name), from now on: JOURNEYS_PER_SEARCH of them when Transitous finds that many, earliest
+ * first. Searches are cached for five minutes, so some of the journeys may have left by the time
+ * they are shown.
  */
 export const loadJourneys = defineSource({
   name: "transitous.journeys",
-  params: paramsOf<{ from: string; to: string; via: string[]; time: Date; count: number }>(),
-  cacheKey: ({ time, ...rest }) => ({ ...rest, time: blockStart(time) }),
+  params: paramsOf<{ from: string; to: string; via: string[] }>(),
   dependencies: {
     from: [lookupStop, { name: ({ params }) => params.from }],
     to: [lookupStop, { name: ({ params }) => params.to }],
     // One lookup per via stop, in order
     via: [lookupStop, ({ params }) => params.via.map((name) => ({ name }))],
   },
-  async load({ from: fromName, to: toName, via: viaNames, time, count }, { from, to, via }): Promise<JourneysResult> {
+  // On an error, the previous journeys are kept (with `error` set)
+  async load({ from: fromName, to: toName, via: viaNames }, { from, to, via }, previous): Promise<JourneysResult> {
+    const fallBack = (error: Error): JourneysResult => ({
+      from: from?.name ?? previous?.from,
+      to: to?.name ?? previous?.to,
+      journeys: previous?.journeys,
+      error,
+    });
     const missing = !from ? fromName : !to ? toName : viaNames.find((_name, i) => !via[i]);
-    if (missing) return { from: from?.name, to: to?.name, error: new Error(`Stop ${missing} not found`) };
+    if (missing) return fallBack(new Error(`Stop ${missing} not found`));
     const query = new URLSearchParams({
       fromPlace: from!.id,
       toPlace: to!.id,
-      time: blockStart(time).toISOString(),
-      // Extra ones, since some may have left before the next search
-      numItineraries: String(count + 3),
+      time: new Date().toISOString(),
+      numItineraries: String(JOURNEYS_PER_SEARCH),
     });
     // In order, comma-separated
     if (via.length > 0) query.set("via", via.map((stop) => stop!.id).join(","));
@@ -188,9 +218,9 @@ export const loadJourneys = defineSource({
       return { from: from!.name, to: to!.name, journeys };
     } catch (error) {
       console.error(`Searching journeys from ${from!.name} to ${to!.name} failed: ${asError(error).message}`);
-      return { from: from!.name, to: to!.name, error: asError(error) };
+      return fallBack(asError(error));
     }
   },
-  // A failure isn't kept: the next request tries again
-  maxAge: (result) => (result.error ? 0 : JOURNEY_BLOCK_MS),
+  // A failure is kept briefly, so a rate limit isn't hit again by every request
+  maxAge: (result) => (result.error ? retryDelay(result.error) : JOURNEY_MAX_AGE_MS),
 });
