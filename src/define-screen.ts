@@ -110,7 +110,8 @@ export interface RenderProps {
 export interface Screen {
   inputs: InputDefinitions;
   colors: 2 | 4;
-  render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number }>;
+  /** The layout, how long it stays valid (s), and how long loading its data took (ms) */
+  render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number; loadMs: number }>;
   /**
    * Warms the sources a render with these props would use (see Source.warm), without rendering
    * or waiting: so it can be shown without waiting for slow data.
@@ -214,12 +215,14 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
         inputs: resolveInputs(definition.inputs, inputs),
       };
       if (definition.prepare) {
+        const start = performance.now();
         const { dependencies, expiresAt, stale } = await resolveDependenciesWithExpiry<Deps, ScreenProps<I>>(definition.dependencies, props);
+        const loadMs = performance.now() - start;
         const viewProps = { ...props, data: definition.prepare({ ...props, dependencies }) };
-        return { layout: definition.view(viewProps), ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now) };
+        return { layout: definition.view(viewProps), ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now), loadMs };
       }
       const viewProps = { ...props, data: undefined };
-      return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps) };
+      return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps), loadMs: 0 };
     },
     warm({ device, now, telemetry, inputs }) {
       warmDependencies(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });

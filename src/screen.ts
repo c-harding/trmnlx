@@ -40,13 +40,16 @@ interface RenderOptions {
 
 /**
  * Renders a screen for a device, at a given time and with given telemetry and inputs: the PNG,
- * how many seconds it stays valid, and how many colours it uses. Used by the server and the dev
+ * how many seconds it stays valid, how many colours it uses, and how long loading its data and
+ * rendering took (ms). Used by the server and the dev
  * server.
  */
 export async function renderScreen(screen: Screen, { device, now, telemetry, inputs }: RenderOptions) {
-  const { layout, ttl } = await screen.render({ device, now, telemetry, inputs });
+  const start = performance.now();
+  const { layout, ttl, loadMs } = await screen.render({ device, now, telemetry, inputs });
   const png = await renderPng(layout, { colors: screen.colors });
-  return { png, ttl, colors: screen.colors };
+  // Rendering: everything but loading the data (prepare, the view, Satori and sharp)
+  return { png, ttl, colors: screen.colors, loadMs, renderMs: performance.now() - start - loadMs };
 }
 
 /**

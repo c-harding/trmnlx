@@ -134,6 +134,7 @@ async function render() {
     "ttl " + (header === "Infinity" ? "∞ (never changes)" : header + " s"),
     res.headers.get("X-Colors") + " colours",
     blob.size + " bytes",
+    "data loaded in " + res.headers.get("X-Load-Ms") + " ms",
     "rendered in " + res.headers.get("X-Render-Ms") + " ms",
     again ? "again at " + new Date(Date.now() + ttl * 1000).toLocaleTimeString() : "not again by itself",
   ].join(" · ");
@@ -214,7 +215,6 @@ app.get("/render", async (req, res) => {
     throw error;
   }
 
-  const start = performance.now();
   const result = await renderScreen(screen, { device, now, telemetry, inputs });
   res
     .type("png")
@@ -222,7 +222,8 @@ app.get("/render", async (req, res) => {
       "Cache-Control": "no-store",
       "X-TTL": String(result.ttl),
       "X-Colors": String(result.colors),
-      "X-Render-Ms": (performance.now() - start).toFixed(0),
+      "X-Load-Ms": result.loadMs.toFixed(0),
+      "X-Render-Ms": result.renderMs.toFixed(0),
     })
     .send(result.png);
 });
