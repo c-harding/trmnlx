@@ -219,15 +219,15 @@ export default defineScreen({
   colors: 2,
 
   dependencies: {
-    departures: [loadDepartures, { station: ({ inputs }) => inputs.station, time: ({ now }) => now }],
+    departures: [loadDepartures, { station: ({ inputs }) => inputs.station }],
     // One route search per pinned connection
     pins: [
       loadConnections,
-      ({ inputs, now }) =>
+      ({ inputs }) =>
         inputs.pinned
           .map(parsePin)
           .filter((pin) => pin !== undefined)
-          .map((pin) => ({ station: inputs.station, target: pin.target, types: pin.types, time: now })),
+          .map((pin) => ({ station: inputs.station, target: pin.target, types: pin.types })),
     ],
   },
 
@@ -333,7 +333,8 @@ export default defineScreen({
 
         {rows.length === 0 && extra.length === 0 ? (
           <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", fontSize: 32 }}>
-            {data.departures ? "No departures" : "Departures unavailable"}
+            {/* "No departures" only on fresh data: older data that has run out says nothing about now */}
+            {data.departures && !data.error ? "No departures" : "Departures unavailable"}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>

@@ -6,7 +6,9 @@
 // results.
 //
 // Results are cached per source and cache key for `maxAge`. The key is the params, or what the
-// source's `cacheKey` makes of them (e.g. a time rounded down to the minute), compared deeply.
+// source's `cacheKey` makes of them (e.g. with a list sorted), compared deeply. An expired result
+// stays: the next load gets it as `previous`, e.g. to fall back to when a fetch fails. So params
+// should be few and stable (a station, a route), never e.g. the current time.
 
 /** A data source: called with one parameters object. */
 export interface Source<P, T> {
@@ -84,7 +86,7 @@ export function canonicalKey(key: unknown): string {
 }
 
 interface CacheEntry<T> {
-  /** The latest result, if there is one */
+  /** The latest result, if there is one; once expired, it's the next load's `previous` */
   result?: { value: T };
   /** When the result expires (ms since the epoch); Infinity keeps it until restart, 0 while loading */
   expiresAt: number;
@@ -99,9 +101,9 @@ interface CacheEntry<T> {
 export const paramsOf = <P>() => undefined as P;
 
 /**
- * Defines a source. `load` gets the params and the results of the dependencies (whose params are
- * computed from `{ params }`). Its result is cached for `maxAge`; if it throws, nothing is cached
- * and the error propagates.
+ * Defines a source. `load` gets the params, the results of the dependencies (whose params are
+ * computed from `{ params }`) and the previous result for the same params, if any. Its result is
+ * cached for `maxAge`; if it throws, nothing new is cached and the error propagates.
  */
 export function defineSource<P, T, const D extends AnyDependencies = {}>(definition: {
   name: string;
@@ -112,13 +114,14 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
    */
   maxAge: number | ((result: NoInfer<T>) => number);
   /**
-   * What the cache tells apart, made from the params; without it, the params themselves. E.g. a
-   * time rounded down to the minute, so all requests within a minute share one result.
+   * What the cache tells apart, made from the params; without it, the params themselves. E.g. with
+   * a list sorted, when its order doesn't matter.
    */
   cacheKey?: (params: P) => unknown;
   dependencies?: D & CheckedDependencies<D, { params: P }>;
-  load: (params: P, dependencies: ResolvedDependencies<D>) => Promise<T>;
+  load: (params: P, dependencies: ResolvedDependencies<D>, previous: T | undefined) => Promise<T>;
 }): Source<P, T> {
+  // One entry per cache key, kept until restart: there are only as many as stations or routes
   const cache = new Map<string, CacheEntry<T>>();
   const maxAgeOf = (value: T) => {
     const maxAge = typeof definition.maxAge === "function" ? definition.maxAge(value) : definition.maxAge;
@@ -126,18 +129,16 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     return Number.isNaN(maxAge) ? Infinity : maxAge;
   };
 
-  async function refresh(key: string, params: P): Promise<T> {
+  async function refresh(key: string, params: P, previous: { value: T } | undefined): Promise<T> {
     try {
       const dependencies = await resolveDependencies<D, { params: P }>(definition.dependencies, { params });
-      const value = await definition.load(params, dependencies);
-      const now = Date.now();
-      // Expired entries go when a new result arrives, so old keys don't pile up
-      for (const [other, { expiresAt, pending }] of cache) if (!pending && expiresAt <= now) cache.delete(other);
-      cache.set(key, { result: { value }, expiresAt: now + maxAgeOf(value) });
+      const value = await definition.load(params, dependencies, previous?.value);
+      cache.set(key, { result: { value }, expiresAt: Date.now() + maxAgeOf(value) });
       return value;
     } catch (error) {
-      // Nothing cached: the next request tries again
-      cache.delete(key);
+      // Nothing new cached: the next request tries again, still with the previous result
+      if (previous) cache.set(key, { result: previous, expiresAt: 0 });
+      else cache.delete(key);
       throw error;
     }
   }
@@ -147,9 +148,8 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     const entry = cache.get(key);
     if (entry?.pending) return entry.pending;
     if (entry?.result && Date.now() < entry.expiresAt) return entry.result.value;
-    // An expired result is dropped: it would never be used again
-    const pending = refresh(key, params);
-    cache.set(key, { expiresAt: 0, pending });
+    const pending = refresh(key, params, entry?.result);
+    cache.set(key, { result: entry?.result, expiresAt: 0, pending });
     return pending;
   };
   return Object.assign(source, { sourceName: definition.name });

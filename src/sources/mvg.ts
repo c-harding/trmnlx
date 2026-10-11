@@ -7,15 +7,15 @@
 //   since IDs practically never change;
 // - departures per station and route searches, kept for under a minute.
 //
-// Data is fetched for a given time (the screen's `now`: the current time, except with the dev
-// server's time setting), and cached per minute of that time.
+// Always for the current time: the dev server's time setting only changes what screens show.
 
 import { defineSource, paramsOf } from "../define-source.ts";
 
 const BASE_URL = "https://www.mvg.de/api/bgw-pt/v3";
 
-// Results are cached per minute (see startOfMinute); after this long they are removed from memory
-const MAX_AGE_MS = 60_000;
+// At most one request per station (or route) per minute, however many devices and browser tabs
+// show it
+const MAX_AGE_MS = 55_000;
 // A failed station lookup is tried again after this long (a found station is kept until restart)
 const LOOKUP_RETRY_MS = 30_000;
 const TIMEOUT_MS = 10_000;
@@ -88,12 +88,6 @@ interface MvgRoute {
   }[];
 }
 
-/** Rounds a time down to the minute, so all requests within a minute share one cached result. */
-const startOfMinute = (time: Date) => new Date(Math.floor(time.getTime() / 60_000) * 60_000);
-
-/** Whole minutes from the current time to `time`, e.g. 0 for now and 60 for an hour from now. */
-const minutesFromNow = (time: Date) => Math.round((time.getTime() - Date.now()) / 60_000);
-
 const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 
 const getJson = async (url: string): Promise<unknown> => {
@@ -135,11 +129,10 @@ export const lookupStation = defineSource({
 });
 
 // More than fit on the screen, so the next departure on the same line and direction is usually
-// among them, even for lines that run every 20 minutes. MVG answers from the current time plus
-// `offsetInMinutes`, and ignores negative offsets: the past isn't available.
-async function fetchDepartures(stationId: string, offsetMinutes: number): Promise<Departure[]> {
+// among them, even for lines that run every 20 minutes
+async function fetchDepartures(stationId: string): Promise<Departure[]> {
   const data = (await getJson(
-    `${BASE_URL}/departures?globalId=${encodeURIComponent(stationId)}&limit=100&transportTypes=${TRANSPORT_TYPES}&offsetInMinutes=${offsetMinutes}`,
+    `${BASE_URL}/departures?globalId=${encodeURIComponent(stationId)}&limit=100&transportTypes=${TRANSPORT_TYPES}`,
   )) as MvgDeparture[];
   if (!Array.isArray(data)) throw new Error(`Unexpected MVG response for ${stationId}`);
 
@@ -166,24 +159,29 @@ async function fetchDepartures(stationId: string, offsetMinutes: number): Promis
 }
 
 /**
- * The departures for a station, given by name, from `time` on (no earlier than the current time):
- * `{ station, departures, error }`. `station` is `{ id, name }`, or undefined if the name couldn't
- * be looked up; if the lookup or fetch failed, there are no departures and `error` is set.
+ * The next departures from a station, given by name: `{ station, departures, error }`. `station` is `{ id, name }`, or undefined if the name couldn't
+ * be looked up. If the lookup or fetch failed, `error` is set, and the departures are the latest
+ * ones fetched for the station, if any.
  */
 export const loadDepartures = defineSource({
   name: "mvg.departures",
-  params: paramsOf<{ station: string; time: Date }>(),
-  cacheKey: ({ station, time }) => ({ station, time: startOfMinute(time) }),
+  params: paramsOf<{ station: string }>(),
   dependencies: {
     station: [lookupStation, { name: ({ params }) => params.station }],
   },
-  async load({ station: stationName, time }, { station }): Promise<DeparturesResult> {
-    if (!station) return { error: new Error(`Station ${stationName} not found`) };
+  // On an error, the previous list is kept (with `error` set)
+  async load({ station: stationName }, { station }, previous): Promise<DeparturesResult> {
+    const fallBack = (error: Error): DeparturesResult => ({
+      station: station ?? previous?.station,
+      departures: previous?.departures,
+      error,
+    });
+    if (!station) return fallBack(new Error(`Station ${stationName} not found`));
     try {
-      return { station, departures: await fetchDepartures(station.id, Math.max(minutesFromNow(time), 0)) };
+      return { station, departures: await fetchDepartures(station.id) };
     } catch (error) {
       console.error(`Fetching departures for ${station.name} failed: ${asError(error).message}`);
-      return { station, error: asError(error) };
+      return fallBack(asError(error));
     }
   },
   // A failure isn't kept: the next request tries again
@@ -193,11 +191,11 @@ export const loadDepartures = defineSource({
 // MVG's route search returns its few best connections (5 at a time), possibly with changes. The
 // direct ones of the wanted transport type answer "the next S-Bahn to Ostbahnhof", including trains
 // that end there (which never appear in the target's own departures).
-async function fetchNextDirect(from: Station, to: Station, types: string[], time: Date): Promise<Departure[]> {
+async function fetchNextDirect(from: Station, to: Station, types: string[]): Promise<Departure[]> {
   const query = new URLSearchParams({
     originStationGlobalId: from.id,
     destinationStationGlobalId: to.id,
-    routingDateTime: time.toISOString(),
+    routingDateTime: new Date().toISOString(),
     routingDateTimeIsArrival: "false",
   });
   const routes = (await getJson(`${BASE_URL}/routes?${query}`)) as MvgRoute[];
@@ -227,26 +225,33 @@ async function fetchNextDirect(from: Station, to: Station, types: string[], time
 
 /**
  * The next direct connections of any of some transport types (e.g. ["SBAHN", "UBAHN"]) from one
- * station to another, both given by name, leaving from `time` on: `{ target, connections, error }`.
+ * station to another, both given by name: `{ target, connections, error }`.
  * `connections` are shaped like departures, earliest first (several, since the first may have left
- * by the time it's shown); if the lookup or fetch failed, there are none and `error` is set.
+ * by the time it's shown). If the lookup or fetch failed, `error` is set, and the connections are
+ * the latest ones for the same search, if any.
  */
 export const loadConnections = defineSource({
   name: "mvg.connections",
-  params: paramsOf<{ station: string; target: string; types: string[]; time: Date }>(),
+  params: paramsOf<{ station: string; target: string; types: string[] }>(),
   // Types sorted: "SBAHN|UBAHN" and "UBAHN|SBAHN" are the same search
-  cacheKey: ({ time, types, ...rest }) => ({ ...rest, types: types.toSorted(), time: startOfMinute(time) }),
+  cacheKey: ({ types, ...rest }) => ({ ...rest, types: types.toSorted() }),
   dependencies: {
     from: [lookupStation, { name: ({ params }) => params.station }],
     to: [lookupStation, { name: ({ params }) => params.target }],
   },
-  async load({ station, target, types, time }, { from, to }): Promise<ConnectionsResult> {
-    if (!from || !to) return { target, error: new Error(`Station ${from ? target : station} not found`) };
+  // On an error, the previous connections are kept (with `error` set)
+  async load({ station, target, types }, { from, to }, previous): Promise<ConnectionsResult> {
+    const fallBack = (error: Error): ConnectionsResult => ({
+      target: to?.name ?? previous?.target ?? target,
+      connections: previous?.connections,
+      error,
+    });
+    if (!from || !to) return fallBack(new Error(`Station ${from ? target : station} not found`));
     try {
-      return { target: to.name, connections: await fetchNextDirect(from, to, types, time) };
+      return { target: to.name, connections: await fetchNextDirect(from, to, types) };
     } catch (error) {
       console.error(`Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`);
-      return { target: to.name, error: asError(error) };
+      return fallBack(asError(error));
     }
   },
   // A failure isn't kept: the next request tries again
