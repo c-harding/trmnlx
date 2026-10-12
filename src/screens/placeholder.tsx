@@ -21,7 +21,7 @@ export default defineScreen({
           width: "100%",
           height: "100%",
           boxSizing: "border-box",
-          padding: 40,
+          padding: 20,
           background: "#fff",
           color: "#000",
           fontFamily: "Noto Sans",

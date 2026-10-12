@@ -6,8 +6,8 @@ import { formatTime } from "../time.ts";
 import { type LargeSize, textSize } from "./type.ts";
 
 // The space around the screens' content: above and below, and left and right
-export const PADDING_Y = 12;
-export const PADDING_X = 28;
+export const PADDING_Y = 6;
+export const PADDING_X = 14;
 
 export const HEADER_HEIGHT = 55; // including its rule
 // Between the rule and what's below it
