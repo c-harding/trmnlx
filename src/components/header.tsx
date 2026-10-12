@@ -23,6 +23,11 @@ export const ellipsis = { overflow: "hidden", whiteSpace: "nowrap", textOverflow
  * `rule` is false. Without it, the header ends where the rule would start, with no gap: the title
  * stays where it is, and what's below (e.g. a map) moves up.
  */
+// The title's line height: "normal" would take the tallest font in the line, e.g. Noto Sans Symbols'
+// for an arrow, and push the title onto the rule. 1.4, as Noto Sans reaches 1.36 em, which the
+// overflow (for the "…") would otherwise cut off
+const TITLE_LINE_HEIGHT = 1.4;
+
 export function Header(props: { title: string; titleSize?: LargeSize; rule?: boolean; children?: ComponentChildren }) {
   const { title, titleSize = 32, rule = true, children } = props;
   return (
@@ -37,13 +42,16 @@ export function Header(props: { title: string; titleSize?: LargeSize; rule?: boo
         ...(rule ? { borderBottom: `${RULE}px solid #000`, marginBottom: HEADER_GAP } : {}),
       }}
     >
-      {/* A fixed line height: "normal" would take the tallest font in the line, e.g. Noto Sans Symbols'
-          for an arrow, and push the title onto the rule. 1.4, as Noto Sans reaches 1.36 em, which
-          the overflow (for the "…") would otherwise cut off */}
-      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: children ? 16 : 0, ...textSize(titleSize), lineHeight: 1.4, fontWeight: 700, ...ellipsis }}>
+      <div style={{ display: "flex", flex: 1, minWidth: 0, marginRight: children ? 16 : 0, ...textSize(titleSize), lineHeight: TITLE_LINE_HEIGHT, fontWeight: 700, ...ellipsis }}>
         {title}
       </div>
-      {children}
+      {/* What's on the right, centred in a box as high as the title's line: the title's capitals sit
+          in its middle, so they line up */}
+      {children && (
+        <div style={{ display: "flex", alignSelf: "flex-start", alignItems: "center", flexShrink: 0, height: titleSize * TITLE_LINE_HEIGHT }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
