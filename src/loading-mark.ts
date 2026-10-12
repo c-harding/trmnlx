@@ -23,13 +23,14 @@ export const LOADING_MARK = `<svg class="loading-mark" viewBox="0 0 86 86" aria-
  * the device's loading screen, and the mark shows where that has it: 43 px, 25 px from the right
  * and 23 px from the bottom, scaled with the preview (margins in % are of the width). When the
  * preview is larger than what's visible of it (zoomed in) and that corner is scrolled out of view,
- * the mark sticks to the visible part's corner instead: sticky works for an element in the flow,
- * hence the grid rather than absolute positioning.
+ * the mark sticks to the visible part's corner instead, but no closer to the preview's top than its
+ * margin at the bottom (it can't leave the preview, and its margins count): sticky works for an
+ * element in the flow, hence the grid rather than absolute positioning.
  */
 export const loadingMarkCss = (preview: string) => `
 ${preview} img { grid-area: 1 / 1; }
 ${preview}.loading img { visibility: hidden; transition: visibility 0s 0.3s; }
-${preview} .loading-mark { grid-area: 1 / 1; align-self: end; justify-self: end; position: sticky; right: 8px; bottom: 8px; margin: 0 3.125% 2.875% 0; width: 5.375%; aspect-ratio: 1; opacity: 0; }
+${preview} .loading-mark { grid-area: 1 / 1; align-self: end; justify-self: end; position: sticky; right: 8px; bottom: 8px; margin: 2.875% 3.125% 2.875% 0; width: 5.375%; aspect-ratio: 1; opacity: 0; }
 ${preview} .loading-mark rect { fill: #aaa; }
 ${preview}.loading .loading-mark { opacity: 1; transition: opacity 0s 0.3s; }
 ${preview}.loading .loading-mark rect { animation: ${CYCLE_S}s step-end infinite going-round; }
