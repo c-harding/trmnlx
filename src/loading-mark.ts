@@ -8,8 +8,8 @@
 const BARS = 7;
 const CYCLE_S = 1.4;
 
-/** The mark, to put in the preview after the image. */
-export const LOADING_MARK = `<svg id="loading-mark" viewBox="0 0 86 86" aria-label="Loading"><g transform="translate(42.6 43)">${Array.from(
+/** The mark, to put in the preview after the image (a class, so a page can have several previews). */
+export const LOADING_MARK = `<svg class="loading-mark" viewBox="0 0 86 86" aria-label="Loading"><g transform="translate(42.6 43)">${Array.from(
   { length: BARS },
   (_bar, k) =>
     `<rect x="-12.3" y="-6.2" width="24.6" height="12.4" transform="rotate(${(-165.6 + (k * 360) / BARS).toFixed(2)}) translate(29.5 0) rotate(-45.3)"` +
@@ -29,9 +29,9 @@ export const LOADING_MARK = `<svg id="loading-mark" viewBox="0 0 86 86" aria-lab
 export const loadingMarkCss = (preview: string) => `
 ${preview} img { grid-area: 1 / 1; }
 ${preview}.loading img { visibility: hidden; transition: visibility 0s 0.3s; }
-#loading-mark { grid-area: 1 / 1; align-self: end; justify-self: end; position: sticky; right: 8px; bottom: 8px; margin: 0 3.125% 2.875% 0; width: 5.375%; aspect-ratio: 1; opacity: 0; }
-#loading-mark rect { fill: #aaa; }
-${preview}.loading #loading-mark { opacity: 1; transition: opacity 0s 0.3s; }
-${preview}.loading #loading-mark rect { animation: ${CYCLE_S}s step-end infinite going-round; }
+${preview} .loading-mark { grid-area: 1 / 1; align-self: end; justify-self: end; position: sticky; right: 8px; bottom: 8px; margin: 0 3.125% 2.875% 0; width: 5.375%; aspect-ratio: 1; opacity: 0; }
+${preview} .loading-mark rect { fill: #aaa; }
+${preview}.loading .loading-mark { opacity: 1; transition: opacity 0s 0.3s; }
+${preview}.loading .loading-mark rect { animation: ${CYCLE_S}s step-end infinite going-round; }
 @keyframes going-round { 0% { fill: #000; } ${(100 / BARS).toFixed(2)}% { fill: #aaa; } }
 `;

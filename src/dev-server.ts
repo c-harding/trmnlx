@@ -8,6 +8,7 @@ import express, { type ErrorRequestHandler } from "express";
 import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
 import { readDevConfig } from "./dev-config.ts";
 import { CREDITS_SCRIPT, creditsHtml } from "./credits.ts";
+import { DEVICE_DEFAULTS, playlistPage } from "./dev-playlist.ts";
 import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 import { renderScreen, screens } from "./screen.ts";
 
@@ -54,7 +55,7 @@ body { display: flex; flex-direction: column; }
 <div id="controls">
 <h1>TRMNLx screen development</h1>
 <form id="form">
-<p id="load" hidden><label>Load from playlist <select id="load-select"></select></label> <span id="load-error"></span></p>
+<p id="load" hidden><label>Load from <a href="/playlist" id="playlist-link">playlist</a> <select id="load-select"></select></label> <span id="load-error"></span></p>
 <p><label>Screen <select name="screen" id="screen-select">${Object.keys(screens).map((s) => `<option>${s}</option>`).join("")}</select></label></p>
 <details open>
 <summary>Screen settings</summary>
@@ -63,16 +64,16 @@ body { display: flex; flex-direction: column; }
 </details>
 <details>
 <summary>Device settings (devices.yaml)</summary>
-<p><label>Name <input name="name" value="kitchen"></label></p>
-<p><label>Time zone <input name="timeZone" value="Europe/Berlin"></label></p>
+<p><label>Name <input name="name" value="${DEVICE_DEFAULTS.name}"></label></p>
+<p><label>Time zone <input name="timeZone" value="${DEVICE_DEFAULTS.timeZone}"></label></p>
 </details>
 <details>
 <summary>Sent by the device (/api/display headers)</summary>
-<p><label>Battery-Voltage <input name="batteryVoltage" type="number" step="0.01" value="3.92"></label> (empty: unknown)</p>
+<p><label>Battery-Voltage <input name="batteryVoltage" type="number" step="0.01" value="${DEVICE_DEFAULTS.batteryVoltage}"></label> (empty: unknown)</p>
 <p><label><input type="checkbox" name="charging"> Battery-Charging</label>
 <label><input type="checkbox" name="usbConnected"> USB-Connected</label></p>
-<p><label>RSSI <input name="rssi" type="number" value="-60"></label></p>
-<p><label>FW-Version <input name="firmwareVersion" value="1.8.10"></label></p>
+<p><label>RSSI <input name="rssi" type="number" value="${DEVICE_DEFAULTS.rssi}"></label></p>
+<p><label>FW-Version <input name="firmwareVersion" value="${DEVICE_DEFAULTS.firmwareVersion}"></label></p>
 </details>
 </form>
 </div>
@@ -139,14 +140,14 @@ showScreenInputs();
 // the screen (and an "entry") is chosen; with any of them, it renders straight away. The form doesn't
 // write back to the URL, so choosing another screen or entry drops them.
 const queryFields = [...new URLSearchParams(location.search)].filter(([name]) => name !== "screen" && name !== "entry");
-function applyQuery() {
+function applyQuery(renderAnyway = false) {
   for (const [name, value] of queryFields) {
     const field = form.elements[name];
     if (!field) continue;
     if (field.type === "checkbox") field.checked = ["true", "on", "1"].includes(value);
     else field.value = value;
   }
-  if (queryFields.length > 0) render();
+  if (queryFields.length > 0 || renderAnyway) render();
   else markChanged();
 }
 function dropQuery() {
@@ -195,6 +196,9 @@ function loadEntry(key) {
   }
   setUrl("screen", entry.screen);
   setUrl("entry", key);
+  // "playlist" in "Load from playlist" leads to this entry's playlist page
+  document.getElementById("playlist-link").href =
+    "/playlist/" + (group.id.startsWith("playlist/") ? group.id.slice("playlist/".length) : group.id).split("/").map(encodeURIComponent).join("/");
   markChanged();
 }
 
@@ -236,10 +240,11 @@ loadSelect.addEventListener("change", () => {
   dropQuery();
   loadEntry(loadSelect.value);
 });
-// With an entry in the URL, a deep link's fields go on top of it, once it's loaded (or not found)
+// With an entry in the URL (e.g. from the playlist page), a deep link's fields go on top of it, once
+// it's loaded (or not found), and it renders straight away if it was found
 const entryInUrl = new URLSearchParams(location.search).has("entry");
 loadConfig().finally(() => {
-  if (entryInUrl) applyQuery();
+  if (entryInUrl) applyQuery(loadSelect.value !== "");
 });
 
 // The form's settings, as sent for a render
@@ -334,6 +339,8 @@ if (!entryInUrl) applyQuery();
 `;
 
 app.get("/", (req, res) => res.type("html").send(page));
+// A playlist's screens, all at once (see dev-playlist.ts); the page reads the name from its path
+app.get(["/playlist", "/playlist/*name"], (req, res) => res.type("html").send(playlistPage));
 
 // devices.yaml's entries for the form; 404 without the file, the message if it isn't valid
 app.get("/config", (req, res) => {
