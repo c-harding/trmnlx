@@ -369,8 +369,15 @@ export function devicePlaylists(
   } else {
     throw new ConfigError(`${at} must be a mapping of names to playlists, or a list of playlists' names`);
   }
-  for (const [name, raw] of Object.entries(alternatives)) {
+  for (const [name, given] of Object.entries(alternatives)) {
     if (name === DEFAULT_PLAYLIST) throw new ConfigError(`${at}: ${DEFAULT_PLAYLIST} is the name of the device's playlist (or screen), so it can't name another`);
+    // One include's fields (`duration: 10m`, `shuffle: true`) instead of a list: of the named
+    // playlist of the same name, unless they give another (`playlist: …`); nothing (`maps:`): that
+    // playlist as it is
+    const raw =
+      given === null ? [{ playlist: name }]
+      : isObject(given) && given.screen === undefined ? [{ playlist: name, ...given }]
+      : given;
     const entries =
       typeof nameOf(raw) === "string"
         ? namedPlaylist(nameOf(raw), `${at}.${name}`, named, screens, [], location)

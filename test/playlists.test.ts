@@ -284,6 +284,23 @@ test("a device's playlists: its own as default, then its alternatives in order",
     ["travel", ["journeys"], true],
   ]);
   assert.deepEqual(summary({ screen: "journeys" }), [["default", ["journeys"], true]]);
+  // An include's fields alone: of the named playlist of the same name, or the one it gives; nothing:
+  // that playlist as it is
+  const playlists = devicePlaylists(
+    { playlists: { maps: { duration: "10m", shuffle: true }, trips: { playlist: "travel" }, travel: null } },
+    "devices[0]",
+    named,
+    screens,
+    fallback,
+  );
+  assert.deepEqual(
+    playlists.slice(1).map(({ name, entries }) => [name, entries.map((e) => [e.screen, e.duration, e.shuffle])]),
+    [
+      ["maps", [["placeholder", 600, "devices[0].playlists.maps[0]"]]],
+      ["trips", [["journeys", undefined, undefined]]],
+      ["travel", [["journeys", undefined, undefined]]],
+    ],
+  );
 });
 
 test("a device's playlists are checked", () => {
