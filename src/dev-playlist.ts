@@ -45,7 +45,7 @@ ${loadingMarkCss("#screens a.screen")}
 <h1><a href="/">TRMNLx screen development</a> › <a href="/playlist">playlists</a><span id="crumb"></span></h1>
 <p id="bar">
 <span><label>Playlist <select id="playlist-select"></select></label> <span id="message"></span></span>
-<span><label>Zoom <input type="range" id="zoom" min="0.25" max="1" step="0.01"></label> <output id="zoom-value" for="zoom"></output> <button type="button" id="fit">Fit</button></span>
+<span id="zoom-bar" hidden><label>Zoom <input type="range" id="zoom" min="0.25" max="1" step="0.01"></label> <output id="zoom-value" for="zoom"></output> <button type="button" id="fit">Fit</button></span>
 </p>
 <div id="screens"></div>
 <script>
@@ -107,6 +107,8 @@ async function renderInto(link, caption, url, label) {
 }
 
 function showGroup(group) {
+  // The zoom only once there are screens to zoom
+  document.getElementById("zoom-bar").hidden = false;
   document.getElementById("crumb").textContent = " › " + current;
   document.title = current + " · TRMNLx screen development";
   const screens = group.entries.map((entry, i) => {
