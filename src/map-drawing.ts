@@ -3,6 +3,12 @@
 // black, railways and airports (runways, taxiways, aprons) in dark gray, water in light gray,
 // nothing else. Kept free of fetching, so it can be tested with made-up tiles (sources/map.ts
 // fetches the tiles and turns the SVG into a PNG).
+//
+// The tiles are in Web Mercator, but the map is drawn in a stereographic projection centred on the
+// view, with Web Mercator's scale at the centre: a city looks the same as on a web map (at the
+// corners within a seventh of a pixel at zoom 14 and about half a pixel at 12, less nearer the
+// equator), while a country or continent keeps its shapes without Mercator's stretching towards the
+// poles (Scandinavia its real size). North is up along the centre line.
 
 /** What a map shows: its centre, its zoom (fractional, as on web maps), and its size in pixels. */
 export interface MapView {
@@ -29,18 +35,15 @@ export interface TileFeature {
   geometry: TilePoint[][];
 }
 
-/** A tile to fetch, and where it goes on the map: its top left corner and its size in pixels. */
+/** A tile to fetch: its zoom, column and row. */
 export interface PlacedTile {
   z: number;
   x: number;
   y: number;
-  left: number;
-  top: number;
-  size: number;
 }
 
 // Changes when the drawing does: maps saved on disk with another version are drawn again
-export const STYLE_VERSION = 8;
+export const STYLE_VERSION = 9;
 
 // Web maps' tiles are 256 px at their zoom. OpenMapTiles' are made for 512, so their detail would
 // fit one zoom level further in, but it leaves out too much (e.g. most of a main station's tracks
@@ -69,21 +72,117 @@ export function worldPixel(lat: number, lon: number, zoom: number) {
   };
 }
 
-/** The tiles a view needs, each with where it goes. Tiles across the antimeridian wrap around. */
+const RADIANS = Math.PI / 180;
+// Web Mercator ends here: the tiles' top and bottom edges
+const MAX_LAT = 85.0511287798;
+
+/** Where places go on a view's map, in pixels from its top left, and back. */
+export interface Projection {
+  toPixel(lat: number, lon: number): { x: number; y: number };
+  toLatLon(x: number, y: number): { lat: number; lon: number };
+}
+
+/**
+ * A view's projection: stereographic, centred on the view, with as many pixels per radian at the
+ * centre as Web Mercator has there at the view's zoom, so a zoom means the same scale as on web
+ * maps. Conformal like Mercator (shapes kept), but without its growth towards the poles.
+ */
+export function projection(view: MapView): Projection {
+  const sin0 = Math.sin(view.lat * RADIANS);
+  const cos0 = Math.cos(view.lat * RADIANS);
+  const lon0 = view.lon * RADIANS;
+  const r = (TILE_SIZE * 2 ** view.zoom) / (2 * Math.PI) / cos0;
+  const cx = view.width / 2;
+  const cy = view.height / 2;
+  return {
+    toPixel(lat, lon) {
+      const sin = Math.sin(lat * RADIANS);
+      const cos = Math.cos(lat * RADIANS);
+      const dLon = lon * RADIANS - lon0;
+      const cosDLon = Math.cos(dLon);
+      // 1 at the centre, growing away from it; the far side of the Earth (where it's infinite) is
+      // never in a map's tiles, but kept finite anyway
+      const k = 2 / Math.max(1e-9, 1 + sin0 * sin + cos0 * cos * cosDLon);
+      return { x: cx + r * k * cos * Math.sin(dLon), y: cy - r * k * (cos0 * sin - sin0 * cos * cosDLon) };
+    },
+    toLatLon(x, y) {
+      const px = (x - cx) / r;
+      const py = (cy - y) / r;
+      const rho = Math.hypot(px, py);
+      if (rho === 0) return { lat: view.lat, lon: view.lon };
+      const c = 2 * Math.atan(rho / 2);
+      const sinC = Math.sin(c);
+      const cosC = Math.cos(c);
+      return {
+        lat: Math.asin(cosC * sin0 + (py * sinC * cos0) / rho) / RADIANS,
+        lon: (lon0 + Math.atan2(px * sinC, rho * cos0 * cosC - py * sin0 * sinC)) / RADIANS,
+      };
+    },
+  };
+}
+
+/** A point in a tile as latitude and longitude (Web Mercator's inverse). */
+function tileLatLon(tile: PlacedTile, point: TilePoint) {
+  const count = 2 ** tile.z;
+  return {
+    lat: Math.atan(Math.sinh(Math.PI * (1 - (2 * (tile.y + point.y)) / count))) / RADIANS,
+    lon: ((tile.x + point.x) / count) * 360 - 180,
+  };
+}
+
+// Lines reaching this far beyond the edge are still drawn, so thick ones don't stop short
+const MARGIN = 10;
+
+/**
+ * The tiles a view needs: those under its border's points (every 20 px, turned back into latitude
+ * and longitude: the border's image on the world encloses the rest), less those of that range that
+ * don't reach the map. Columns are counted from the view's longitude, so a map across the
+ * antimeridian wraps around; rows end at Web Mercator's edges, also when a pole is in the map.
+ */
 export function tilesFor(view: MapView): PlacedTile[] {
   const z = tileZoom(view.zoom);
   const count = 2 ** z;
-  const size = TILE_SIZE * 2 ** (view.zoom - z);
-  const centre = worldPixel(view.lat, view.lon, view.zoom);
-  const left = centre.x - view.width / 2;
-  const top = centre.y - view.height / 2;
-  const tiles: PlacedTile[] = [];
-  for (let ty = Math.max(0, Math.floor(top / size)); ty <= Math.min(count - 1, Math.floor((top + view.height) / size)); ty++) {
-    for (let tx = Math.floor(left / size); tx <= Math.floor((left + view.width) / size); tx++) {
-      tiles.push({ z, x: ((tx % count) + count) % count, y: ty, left: tx * size - left, top: ty * size - top, size });
+  const map = projection(view);
+  const border: { x: number; y: number }[] = [];
+  for (let x = 0; x < view.width; x += 20) border.push({ x, y: 0 }, { x, y: view.height });
+  for (let y = 0; y < view.height; y += 20) border.push({ x: 0, y }, { x: view.width, y });
+  border.push({ x: view.width, y: view.height });
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const point of border) {
+    const { lat, lon } = map.toLatLon(point.x, point.y);
+    // The longitude within 180° of the view's, so columns run on across the antimeridian
+    const unwrapped = lon - 360 * Math.round((lon - view.lon) / 360);
+    const world = worldPixel(Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)), unwrapped, z);
+    minX = Math.min(minX, world.x / TILE_SIZE);
+    maxX = Math.max(maxX, world.x / TILE_SIZE);
+    minY = Math.min(minY, world.y / TILE_SIZE);
+    maxY = Math.max(maxY, world.y / TILE_SIZE);
+  }
+  // A pole in the map: its whole cap, all the way round
+  const inMap = ({ x, y }: { x: number; y: number }) => x >= 0 && x <= view.width && y >= 0 && y <= view.height;
+  const north = inMap(map.toPixel(90, view.lon));
+  const south = inMap(map.toPixel(-90, view.lon));
+  if (north) minY = 0;
+  if (south) maxY = count;
+  if (north || south) [minX, maxX] = [Math.floor(minX) - count, Math.floor(minX) + count];
+
+  const tiles = new Map<string, PlacedTile>();
+  for (let ty = Math.max(0, Math.floor(minY)); ty <= Math.min(count - 1, Math.floor(maxY)); ty++) {
+    for (let tx = Math.floor(minX); tx <= Math.floor(maxX); tx++) {
+      const tile = { z, x: ((tx % count) + count) % count, y: ty };
+      const key = `${tile.x}/${tile.y}`;
+      if (tiles.has(key)) continue;
+      // Its corners and edges' middles on the map: kept if their extent reaches it
+      const points = [0, 0.5, 1].flatMap((u) => [0, 0.5, 1].map((v) => tileLatLon(tile, { x: u, y: v })));
+      const pixels = points.map(({ lat, lon }) => map.toPixel(lat, lon));
+      const xs = pixels.map((p) => p.x);
+      const ys = pixels.map((p) => p.y);
+      if (Math.max(...xs) < -MARGIN || Math.min(...xs) > view.width + MARGIN) continue;
+      if (Math.max(...ys) < -MARGIN || Math.min(...ys) > view.height + MARGIN) continue;
+      tiles.set(key, tile);
     }
   }
-  return tiles;
+  return [...tiles.values()];
 }
 
 // Runways and taxiways come as centre lines, without their width: drawn this wide in metres, as
@@ -157,6 +256,24 @@ function scaledLineStyle(layer: TileFeature["layer"], properties: TileFeature["p
 const widthScale = (zoom: number) =>
   zoom < 8 ? 0.7 * 2 ** ((zoom - 8) / 2) : Math.min(2, Math.max(0.7, 2 ** ((zoom - 14) / 2)));
 
+// A straight line in a tile is slightly curved on the map: segments longer than this (in tiles) get
+// points in between before they're projected, e.g. water cut off at a tile's edge, whose edges
+// would otherwise leave seams. Roads and coastlines have points far closer together anyway.
+const MAX_SEGMENT = 1 / 16;
+
+/** The points, with more in between where they're further apart than MAX_SEGMENT. */
+function densify(points: TilePoint[]): TilePoint[] {
+  const result = points.slice(0, 1);
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const parts = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / MAX_SEGMENT);
+    for (let j = 1; j < parts; j++) result.push({ x: a.x + ((b.x - a.x) * j) / parts, y: a.y + ((b.y - a.y) * j) / parts });
+    result.push(b);
+  }
+  return result;
+}
+
 /** A number for the SVG: one decimal is enough at this size, and keeps it short. */
 const short = (n: number) => String(Math.round(n * 10) / 10);
 
@@ -167,8 +284,7 @@ const short = (n: number) => String(Math.round(n * 10) / 10);
  * stays small however busy the map.
  */
 export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: TileFeature[] }[]) {
-  // Lines reaching this far beyond the edge are still drawn, so thick ones don't stop short
-  const margin = 10;
+  const map = projection(view);
   const water: string[] = [];
   // Airports' aprons, filled like their runways
   const aprons: string[] = [];
@@ -176,10 +292,15 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
 
   for (const { tile, features } of tiles) {
     const toPath = (points: TilePoint[], close: boolean) => {
-      const xs = points.map((p) => tile.left + p.x * tile.size);
-      const ys = points.map((p) => tile.top + p.y * tile.size);
-      if (Math.max(...xs) < -margin || Math.min(...xs) > view.width + margin) return undefined;
-      if (Math.max(...ys) < -margin || Math.min(...ys) > view.height + margin) return undefined;
+      const pixels = densify(close ? [...points, points[0]] : points).map((p) => {
+        const { lat, lon } = tileLatLon(tile, p);
+        return map.toPixel(lat, lon);
+      });
+      if (close) pixels.pop();
+      const xs = pixels.map((p) => p.x);
+      const ys = pixels.map((p) => p.y);
+      if (Math.max(...xs) < -MARGIN || Math.min(...xs) > view.width + MARGIN) return undefined;
+      if (Math.max(...ys) < -MARGIN || Math.min(...ys) > view.height + MARGIN) return undefined;
       return xs.map((x, i) => `${i === 0 ? "M" : "L"}${short(x)} ${short(ys[i])}`).join("") + (close ? "Z" : "");
     };
 
