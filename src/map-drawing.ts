@@ -40,7 +40,7 @@ export interface PlacedTile {
 }
 
 // Changes when the drawing does: maps saved on disk with another version are drawn again
-export const STYLE_VERSION = 7;
+export const STYLE_VERSION = 8;
 
 // Web maps' tiles are 256 px at their zoom. OpenMapTiles' are made for 512, so their detail would
 // fit one zoom level further in, but it leaves out too much (e.g. most of a main station's tracks
@@ -129,26 +129,33 @@ function scaledLineStyle(layer: TileFeature["layer"], properties: TileFeature["p
   if (properties.class === "rail" || properties.class === "transit") {
     return { color: RAIL, width: properties.service ? 0.75 : properties.class === "rail" ? 1.5 : 1 };
   }
+  // What the road is: further out, OpenMapTiles files some countries' main roads under a higher class,
+  // marking them with their network (e.g. Britain's trunk roads as "motorway" with "gb-trunk" at
+  // zoom 5), so a network's kind counts over the class
+  const network = String(properties.network ?? "");
+  const kind = network.endsWith("-trunk") ? "trunk" : network.endsWith("-primary") ? "primary" : String(properties.class);
   const width = (
     {
       motorway: 3,
-      trunk: 3,
-      primary: 2.5,
-      secondary: 2,
-      tertiary: 1.5,
-      minor: 1,
-      busway: 1,
+      // Further out (a country rather than a city), only the main roads: motorways below zoom 6, and
+      // trunk roads too below 8, as the tiles there hold far more (e.g. Scotland's trunk roads at 5,
+      // England's primary roads at 7)
+      ...(zoom >= 6 ? { trunk: 3 } : {}),
+      ...(zoom >= 8 ? { primary: 2.5, secondary: 2, tertiary: 1.5, minor: 1, busway: 1 } : {}),
       // Service roads and footpaths only closer in, where there's room for them: further out
       // they're mere specks, which turn black where they cross a railway's gray
       ...(zoom >= 13 ? { service: 0.75 } : {}),
       ...(zoom >= 15 ? { path: 0.5, track: 0.5 } : {}),
     } as Record<string, number>
-  )[String(properties.class)];
+  )[kind];
   return width ? { color: INK, width } : undefined;
 }
 
-// Lines get a little thicker closer in and thinner further out, but less than the map does
-const widthScale = (zoom: number) => Math.min(2, Math.max(0.7, 2 ** ((zoom - 14) / 2)));
+// Lines get a little thicker closer in and thinner further out, but less than the map does; from
+// 0.7 they stay that wide down to zoom 8, and below that (a country rather than a city) get thinner
+// again, halving every 2 zoom levels, so the main roads don't cover the land
+const widthScale = (zoom: number) =>
+  zoom < 8 ? 0.7 * 2 ** ((zoom - 8) / 2) : Math.min(2, Math.max(0.7, 2 ** ((zoom - 14) / 2)));
 
 /** A number for the SVG: one decimal is enough at this size, and keeps it short. */
 const short = (n: number) => String(Math.round(n * 10) / 10);
