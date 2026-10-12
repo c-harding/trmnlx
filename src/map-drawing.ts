@@ -17,6 +17,19 @@ export interface MapView {
   zoom: number;
   width: number;
   height: number;
+  /**
+   * "streets" (the default): roads, railways, airports and water; "contours": contour lines and
+   * water, from the same tiles plus elevation tiles (see sources/map.ts)
+   */
+  style?: "streets" | "contours";
+  /** For contours: metres between lines, instead of the zoom's (see contours.ts) */
+  contourInterval?: number;
+}
+
+/** A contours map's lines: each level's, in tiles at zoom `z` (unwrapped columns, so they can pass 180°). */
+export interface ContourLines {
+  z: number;
+  levels: { level: number; index: boolean; lines: TilePoint[][] }[];
 }
 
 /** A point in a tile: 0 to 1 across it, left to right and top to bottom. */
@@ -283,8 +296,10 @@ const short = (n: number) => String(Math.round(n * 10) / 10);
  * black. Lines of the same style are one path, and features outside the view are left out, so it
  * stays small however busy the map.
  */
-export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: TileFeature[] }[]) {
+export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: TileFeature[] }[], contourLines?: ContourLines) {
   const map = projection(view);
+  // A contours map has water only, from the tiles
+  const drawn = (feature: TileFeature) => view.style !== "contours" || feature.layer === "water" || feature.layer === "waterway";
   const water: string[] = [];
   // Airports' aprons, filled like their runways
   const aprons: string[] = [];
@@ -305,6 +320,7 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
     };
 
     for (const feature of features) {
+      if (!drawn(feature)) continue;
       const area =
         feature.type !== 3 ? undefined
         : feature.layer === "water" ? water
@@ -334,6 +350,30 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
     }
   }
 
+  // Contour lines, a pixel wide and without anti-aliasing, so they're unbroken in the display's four
+  // grays: dark gray, every fifth (the index contours) black; drawn first, under the water
+  const contours = { plain: [] as string[], index: [] as string[] };
+  for (const { index, lines } of contourLines?.levels ?? []) {
+    const origin = { z: contourLines!.z, x: 0, y: 0 };
+    for (const line of lines) {
+      const pixels = line.map((p) => {
+        const { lat, lon } = tileLatLon(origin, p);
+        return map.toPixel(lat, lon);
+      });
+      const xs = pixels.map((p) => p.x);
+      const ys = pixels.map((p) => p.y);
+      if (Math.max(...xs) < -MARGIN || Math.min(...xs) > view.width + MARGIN) continue;
+      if (Math.max(...ys) < -MARGIN || Math.min(...ys) > view.height + MARGIN) continue;
+      (index ? contours.index : contours.plain).push(xs.map((x, i) => `${i === 0 ? "M" : "L"}${short(x)} ${short(ys[i])}`).join(""));
+    }
+  }
+  const contourPaths = [
+    [contours.plain, RAIL],
+    [contours.index, INK],
+  ].flatMap(([d, color]) =>
+    d.length > 0 ? [`<path d="${(d as string[]).join("")}" fill="none" stroke="${color}" stroke-width="1" stroke-linejoin="round" shape-rendering="crispEdges"/>`] : [],
+  );
+
   // By colour (see COLOR_ORDER), then thin lines first, so major roads are drawn over the minor
   // ones they cross
   const strokes = [...lines.values()]
@@ -354,6 +394,8 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${view.width}" height="${view.height}" viewBox="0 0 ${view.width} ${view.height}">`,
     `<rect width="100%" height="100%" fill="#fff"/>`,
+    // Contour lines under the water, so a lake or the sea covers what runs into it
+    ...contourPaths,
     water.length > 0 ? `<path d="${water.join("")}" fill="${WATER}"/>` : "",
     aprons.length > 0 ? `<path d="${aprons.join("")}" fill="${RAIL}"/>` : "",
     ...strokes,

@@ -1,4 +1,5 @@
-// A street map as a PNG, drawn once per view from OpenFreeMap's tiles (see map-drawing.ts) and kept:
+// A map as a PNG, drawn once per view from OpenFreeMap's tiles (see map-drawing.ts), for contours
+// with Mapterhorn's elevation tiles too (see terrain-tiles.ts and contours.ts), and kept:
 // in memory until restart, and where state is saved (state/maps/), so restarts and deploys don't
 // fetch the tiles again. A map is never drawn again by itself; deleting its file (or a new
 // STYLE_VERSION) gets a fresh one at the next restart.
@@ -8,9 +9,11 @@ import { basename, join } from "node:path";
 import sharp from "sharp";
 import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
 import { fourGrayPng } from "../four-grays.ts";
-import { buildMapSvg, STYLE_VERSION, tilesFor, type MapView } from "../map-drawing.ts";
+import { contourInterval, contourLines } from "../contours.ts";
+import { buildMapSvg, STYLE_VERSION, tilesFor, type ContourLines, type MapView, type PlacedTile } from "../map-drawing.ts";
 import { stateDirectory } from "../state-file.ts";
 import { loadTiles, TOTAL_TIMEOUT_MS } from "./openfreemap.ts";
+import { loadElevations, TERRAIN_TILE_SIZE } from "./terrain-tiles.ts";
 
 // A map that couldn't be drawn is tried again after this long
 const RETRY_MS = 5 * 60_000;
@@ -101,8 +104,16 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
   try {
     const started = Date.now();
     const tiles = tilesFor(view);
-    const features = await loadTiles(tiles, deadline);
-    const svg = buildMapSvg(view, tiles.map((tile, i) => ({ tile, features: features[i] })));
+    const [features, elevations] = await Promise.all([
+      loadTiles(tiles, deadline),
+      view.style === "contours" ? loadElevations(tiles, deadline) : undefined,
+    ]);
+    const contours = elevations && traceContours(view, tiles, elevations);
+    const svg = buildMapSvg(
+      view,
+      tiles.map((tile, i) => ({ tile, features: features[i] })),
+      contours,
+    );
     // Reduced to 4 grays: a fifth of the size, and less to decode at every render
     const png = await fourGrayPng(sharp(Buffer.from(svg)));
     console.log(
@@ -115,6 +126,40 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
     console.error(`Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`);
     return { error: (error as Error).message };
   }
+}
+
+/**
+ * A contours map's lines: its tiles' elevations as one grid (columns counted on from the view's
+ * longitude, so it can span 180°; corners without a tile, as they don't reach the map, at sea level,
+ * so their edges' lines are off the map), traced every view.contourInterval metres, or by its zoom.
+ */
+function traceContours(view: MapView, tiles: PlacedTile[], elevations: Float32Array[]): ContourLines {
+  const z = tiles[0]?.z ?? 0;
+  const count = 2 ** z;
+  const centreColumn = ((view.lon + 180) / 360) * count;
+  const columns = tiles.map((tile) => tile.x + count * Math.round((centreColumn - tile.x - 0.5) / count));
+  const left = Math.min(...columns);
+  const top = Math.min(...tiles.map((tile) => tile.y));
+  const across = Math.max(...columns) - left + 1;
+  const down = Math.max(...tiles.map((tile) => tile.y)) - top + 1;
+  const width = across * TERRAIN_TILE_SIZE;
+  const grid = new Float32Array(width * down * TERRAIN_TILE_SIZE);
+  tiles.forEach((tile, i) => {
+    const x0 = (columns[i] - left) * TERRAIN_TILE_SIZE;
+    const y0 = (tile.y - top) * TERRAIN_TILE_SIZE;
+    for (let row = 0; row < TERRAIN_TILE_SIZE; row++) {
+      grid.set(elevations[i].subarray(row * TERRAIN_TILE_SIZE, (row + 1) * TERRAIN_TILE_SIZE), (y0 + row) * width + x0);
+    }
+  });
+  const levels = contourLines(grid, width, down * TERRAIN_TILE_SIZE, view.contourInterval ?? contourInterval(view.zoom));
+  return {
+    z,
+    levels: levels.map(({ level, index, lines }) => ({
+      level,
+      index,
+      lines: lines.map((line) => line.map((p) => ({ x: left + p.x / TERRAIN_TILE_SIZE, y: top + p.y / TERRAIN_TILE_SIZE }))),
+    })),
+  };
 }
 
 /**

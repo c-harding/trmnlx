@@ -218,3 +218,22 @@ test("buildMapSvg adds points to long straight edges, so they curve with the map
   const d = /<path d="([^"]+)" fill="#aaa"/.exec(svg)?.[1] ?? "";
   assert.equal(d.match(/[ML]/g)?.length, 64);
 });
+
+test("buildMapSvg draws a contours map's lines, without its roads and railways but with its water", () => {
+  const water: TileFeature = { layer: "water", type: 3, properties: { class: "lake" }, geometry: [[at(0, 0), at(0.2, 0), at(0.2, 0.2)]] };
+  const contours = {
+    z: 14,
+    levels: [
+      { level: 500, index: true, lines: [[{ x: tile.x + at(0, 0).x, y: tile.y + at(0, 0).y }, { x: tile.x + at(0.1, 0.1).x, y: tile.y + at(0.1, 0.1).y }]] },
+      { level: 520, index: false, lines: [[{ x: tile.x + at(0, 0.1).x, y: tile.y + at(0, 0.1).y }, { x: tile.x + at(0.1, 0.2).x, y: tile.y + at(0.1, 0.2).y }]] },
+    ],
+  };
+  const svg = buildMapSvg({ ...view, style: "contours" }, [{ tile, features: [water, line({ class: "primary" }), line({ class: "rail" })] }], contours);
+  assert.match(svg, /fill="#aaa"/);
+  assert.doesNotMatch(svg, /stroke-width="2.5"|stroke-width="1.5"/);
+  // The index contour black, the other dark gray, both a crisp pixel wide; lines start at the centre
+  assert.match(svg, /<path d="M400 208L[^"]+" fill="none" stroke="#000" stroke-width="1" stroke-linejoin="round" shape-rendering="crispEdges"\/>/);
+  assert.match(svg, /stroke="#555" stroke-width="1" stroke-linejoin="round" shape-rendering="crispEdges"/);
+  // A streets map ignores contour lines' absence, and still draws its roads
+  assert.match(buildMapSvg(view, [{ tile, features: [line({ class: "primary" })] }]), /stroke-width="2.5"/);
+});
