@@ -445,14 +445,15 @@ function Days({ forecast }: { forecast: Forecast }) {
     <div
       style={{ display: "flex", borderTop: `${RULE}px solid #000`, marginTop: 8, paddingTop: 8 }}
     >
-      {forecast.days.slice(1, 1 + DAYS).map((day) => (
+      {forecast.days.slice(1, 1 + DAYS).map((day, i) => (
         <div
           key={day.date}
           style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}
         >
-          {/* Noon, so a day starting at a time change is still that day */}
+          {/* The first "Tomorrow"; the others by name, from noon, so a day starting at a time
+              change is still that day */}
           <Text size={16} bold>
-            {weekday.format(day.date + 12 * HOUR_MS)}
+            {i === 0 ? "Tomorrow" : weekday.format(day.date + 12 * HOUR_MS)}
           </Text>
           <WeatherIcon code={day.code} size={44} />
           <div style={{ display: "flex", gap: 8 }}>
