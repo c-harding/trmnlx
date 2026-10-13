@@ -4,6 +4,7 @@
 import type { ComponentChildren } from "preact";
 import {
   Battery,
+  ellipsis,
   Header,
   HEADER_GAP,
   HEADER_HEIGHT,
@@ -33,18 +34,29 @@ const NOT_CONNECTED_TTL_SECONDS = 60;
 
 // Strava's "Powered by Strava" logo in the header, this high
 const LOGO_HEIGHT = 30;
-// Under the header: the sport and start, then the route map on the left and the stats on the right
-const DATE_ROW = 26;
-const BODY_GAP = 10;
+// Under the header: the route map on the left; on the right the sport, start and kudos, the stats
+// and the QR code
 const COLUMN_GAP = 20;
 const MAP_WIDTH = Math.round((WIDTH - 2 * PADDING_X - COLUMN_GAP) / 2);
-const MAP_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP - 8 - DATE_ROW - BODY_GAP;
+const MAP_HEIGHT = HEIGHT - 2 * PADDING_Y - HEADER_HEIGHT - HEADER_GAP - 8;
 
 // Shown as a pace per km (or per 100 m when swimming) rather than a speed
 const PACED = new Set(["Run", "TrailRun", "VirtualRun", "Walk", "Hike"]);
 
-/** A sport type as words: "TrailRun" → "Trail run". */
+// Sport types not named well by splitting their words: too long next to the kudos, or spelt
+// otherwise
+const SPORT_NAMES: Record<string, string> = {
+  HighIntensityIntervalTraining: "HIIT",
+  EMountainBikeRide: "E-MTB",
+  MountainBikeRide: "MTB",
+  EBikeRide: "E-bike ride",
+  StandUpPaddling: "Stand-up paddling",
+  Crossfit: "CrossFit",
+};
+
+/** A sport type as words: "TrailRun" → "Trail run", or its name in SPORT_NAMES. */
 const sportName = (type: string) =>
+  SPORT_NAMES[type] ??
   type.replace(/(?<=[a-z])(?=[A-Z])/g, " ").replace(/ \w/g, (s) => s.toLowerCase());
 
 /** A duration as "1:02:15" or "48:07". */
@@ -292,27 +304,7 @@ export default defineScreen({
                 : "No activities yet"}
           </Message>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: BODY_GAP, marginTop: 8 }}>
-            {/* The sport and start, and the kudos at the right */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                height: DATE_ROW,
-              }}
-            >
-              <span
-                style={{ ...textSize(21) }}
-              >{`${sportName(activity.sportType)} · ${when}`}</span>
-              {/* Only if there are any */}
-              {activity.kudos > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <ThumbsUp size={22} />
-                  <span style={{ ...textSize(21), fontWeight: 700 }}>{String(activity.kudos)}</span>
-                </div>
-              )}
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
             <div style={{ display: "flex", gap: COLUMN_GAP }}>
               {/* The route on a map, on the left */}
               <RouteMapView route={data.route} />
@@ -327,6 +319,42 @@ export default defineScreen({
                 }}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  {/* The sport, with the kudos at its right if there are any (only "High intensity
+                      interval training" is cut off with "…" next to them), then the start */}
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      {/* Shrinking to what the kudos leave, like the header's title */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flex: 1,
+                          minWidth: 0,
+                          ...textSize(32),
+                          ...ellipsis,
+                        }}
+                      >
+                        {sportName(activity.sportType)}
+                      </div>
+                      {activity.kudos > 0 && (
+                        <div
+                          style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}
+                        >
+                          <ThumbsUp size={22} />
+                          <span style={{ ...textSize(21), fontWeight: 700 }}>
+                            {String(activity.kudos)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ ...textSize(16) }}>{when}</span>
+                  </div>
                   <div style={{ display: "flex" }}>
                     <Stat
                       value={(activity.distance / 1000).toFixed(1)}
