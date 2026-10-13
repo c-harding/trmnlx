@@ -374,10 +374,7 @@ export function devicePlaylists(
     // One include's fields (`duration: 10m`, `shuffle: true`) instead of a list: of the named
     // playlist of the same name, unless they give another (`playlist: …`); nothing (`maps:`): that
     // playlist as it is
-    const raw =
-      given === null ? [{ playlist: name }]
-      : isObject(given) && given.screen === undefined ? [{ playlist: name, ...given }]
-      : given;
+    const raw = given === null || (isObject(given) && given.screen === undefined) ? [{ playlist: name, ...given }] : given;
     const entries =
       typeof nameOf(raw) === "string"
         ? namedPlaylist(nameOf(raw), `${at}.${name}`, named, screens, [], location)

@@ -101,8 +101,19 @@ test("inputs are checked against the screen's", () => {
 
 // What an entry's condition is, in words, to compare in tests
 function describeWhen(entry: { when?: Condition }): string {
-  const describe = (c: Condition): string =>
-    c.kind === "hours" ? c.text : c.kind === "not" ? `not(${describe(c.part)})` : c.kind === "all" || c.kind === "any" ? `${c.kind}(${c.parts.map(describe).join(", ")})` : c.kind;
+  const describe = (c: Condition): string => {
+    switch (c.kind) {
+      case "hours":
+        return c.text;
+      case "not":
+        return `not(${describe(c.part)})`;
+      case "all":
+      case "any":
+        return `${c.kind}(${c.parts.map(describe).join(", ")})`;
+      default:
+        return c.kind;
+    }
+  };
   return entry.when ? describe(entry.when) : "always";
 }
 

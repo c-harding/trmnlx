@@ -321,11 +321,9 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
 
     for (const feature of features) {
       if (!drawn(feature)) continue;
-      const area =
-        feature.type !== 3 ? undefined
-        : feature.layer === "water" ? water
-        : feature.layer === "aeroway" && feature.properties.class === "apron" ? aprons
-        : undefined;
+      let area: string[] | undefined;
+      if (feature.type === 3 && feature.layer === "water") area = water;
+      else if (feature.type === 3 && feature.layer === "aeroway" && feature.properties.class === "apron") area = aprons;
       if (area) {
         if (feature.properties.brunnel === "tunnel") continue;
         // One path for all water (and one for all aprons): holes (islands) are rings the other way
