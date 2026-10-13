@@ -24,6 +24,8 @@ export interface MapView {
   style?: "streets" | "contours";
   /** For contours: metres between lines, instead of the zoom's (see contours.ts) */
   contourInterval?: number;
+  /** Roads dark gray like railways rather than black: e.g. under a route drawn black on top */
+  grayRoads?: boolean;
 }
 
 /** A contours map's lines: each level's, in tiles at zoom `z` (unwrapped columns, so they can pass 180°). */
@@ -381,9 +383,10 @@ export function buildMapSvg(
       const style = lineStyle(feature, view);
       if (!style) continue;
       const { width } = style;
-      const key = `${style.color} ${width}`;
+      const color = view.grayRoads && style.color === INK ? RAIL : style.color;
+      const key = `${color} ${width}`;
       let group = lines.get(key);
-      if (!group) lines.set(key, (group = { color: style.color, width, d: [] }));
+      if (!group) lines.set(key, (group = { color, width, d: [] }));
       for (const line of feature.geometry) {
         const d = toPath(line, false);
         if (d) group.d.push(d);

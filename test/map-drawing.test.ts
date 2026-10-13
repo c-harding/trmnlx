@@ -380,3 +380,11 @@ test("buildMapSvg draws a contours map's lines, without its roads and railways b
     /stroke-width="2.5"/,
   );
 });
+
+test("buildMapSvg draws roads dark gray like railways with grayRoads", () => {
+  const features = [line({ class: "primary" })];
+  assert.match(buildMapSvg(view, [{ tile, features }]), /stroke="#000"/);
+  const gray = buildMapSvg({ ...view, grayRoads: true }, [{ tile, features }]);
+  assert.doesNotMatch(gray, /stroke="#000"/);
+  assert.match(gray, /stroke="#555"/);
+});
