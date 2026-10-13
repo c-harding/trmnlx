@@ -70,6 +70,8 @@ body { display: flex; flex-direction: column; }
 <summary>Device settings (devices.yaml)</summary>
 <p><label>Name <input name="name" value="${DEVICE_DEFAULTS.name}"></label></p>
 <p><label>Time zone <input name="timeZone" value="${DEVICE_DEFAULTS.timeZone}"></label></p>
+<p><label>Location <input name="lat" type="number" step="any" value="${DEVICE_DEFAULTS.lat}" aria-label="Latitude"></label>
+<input name="lon" type="number" step="any" value="${DEVICE_DEFAULTS.lon}" aria-label="Longitude"> (lat, lon; empty: none)</p>
 </details>
 <details>
 <summary>Sent by the device (/api/display headers)</summary>
@@ -197,6 +199,11 @@ function loadEntry(key) {
   if (group.device) {
     form.elements.name.value = group.device.name;
     form.elements.timeZone.value = group.device.timeZone;
+    // Its location's coordinates, if devices.yaml gives them
+    if (group.device.lat !== undefined) {
+      form.elements.lat.value = group.device.lat;
+      form.elements.lon.value = group.device.lon;
+    }
   }
   setUrl("screen", entry.screen);
   setUrl("entry", key);
@@ -421,7 +428,13 @@ app.get("/render", async (req, res) => {
   if (Number.isNaN(now.getTime()))
     return res.status(400).type("text").send(`Invalid time ${q.time}`);
 
-  const device = { username: q.name || "device", timeZone };
+  const lat = number(q.lat);
+  const lon = number(q.lon);
+  const device = {
+    username: q.name || "device",
+    timeZone,
+    location: lat !== undefined && lon !== undefined ? { lat, lon } : undefined,
+  };
   const telemetry = {
     batteryVoltage: number(q.batteryVoltage),
     rssi: number(q.rssi),

@@ -8,6 +8,9 @@ import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 export const DEVICE_DEFAULTS = {
   name: "kitchen",
   timeZone: "Europe/Berlin",
+  // Its location, e.g. for the weather: Munich, as in devices.yaml.sample
+  lat: "48.14",
+  lon: "11.58",
   batteryVoltage: "3.92",
   rssi: "-60",
   firmwareVersion: "1.8.10",

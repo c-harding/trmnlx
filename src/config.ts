@@ -35,6 +35,8 @@ export interface Device {
    * entry; the screen page switches between them (see playlists.ts)
    */
   playlists: DevicePlaylist[];
+  /** Where it is: its own location's coordinates, or the top-level one's (e.g. for the weather) */
+  location: { lat: number; lon: number } | undefined;
   /** What it shows when no entry of its playlist applies */
   defaultScreen: PlaylistEntry;
   temperatureProfile: TemperatureProfile | undefined;
@@ -129,6 +131,8 @@ function loadDevices(): Device[] {
     if (macs.has(mac)) fail(`${where}.mac ${mac} is used twice`);
     macs.add(mac);
 
+    // Its own location (for holidays, sunrise and the weather), or the top-level one
+    const own = orFail(() => readLocation(device.location, `${where}.location`)) ?? location;
     return {
       mac,
       username: device.username,
@@ -138,18 +142,10 @@ function loadDevices(): Device[] {
         ? checkTimeZone(device.timezone, `${where}.timezone`)
         : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
-      playlists: orFail(() => {
-        // Its own location for holidays, or the top-level one
-        const own = readLocation(device.location, `${where}.location`);
-        return devicePlaylists(
-          device,
-          where,
-          playlists,
-          screenInputs,
-          defaultScreen,
-          own ?? location,
-        );
-      }),
+      playlists: orFail(() =>
+        devicePlaylists(device, where, playlists, screenInputs, defaultScreen, own),
+      ),
+      location: own?.lat !== undefined ? { lat: own.lat, lon: own.lon! } : undefined,
       defaultScreen,
       temperatureProfile: device.temperatureProfile,
       // Partial refreshes leave traces of earlier screens on the DIY kit (see ARCHITECTURE.md), so

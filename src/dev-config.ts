@@ -1,7 +1,7 @@
 // The dev server's view of devices.yaml: each device's and each named playlist's entries, so one can
 // be loaded into its form. Read with the same functions as the server (includes expanded,
 // `otherwise` resolved), but only what the form needs leaves this module: screens, inputs, `when`
-// and `duration` as text, device names and time zones. Never passwords, tokens or MACs.
+// and `duration` as text, device names, time zones and coordinates. Never passwords, tokens or MACs.
 import { parse } from "yaml";
 import type { Condition } from "./conditions.ts";
 import {
@@ -28,7 +28,7 @@ export interface EntryGroup {
   id: string;
   label: string;
   /** For a device: what fills the form's device settings */
-  device?: { name: string; timeZone: string };
+  device?: { name: string; timeZone: string; lat?: number; lon?: number };
   entries: LoadableEntry[];
 }
 
@@ -106,18 +106,13 @@ export function readDevConfig(
     const where = `devices[${i}]`;
     const name = typeof device.username === "string" ? device.username : where;
     const timeZone = typeof device.timezone === "string" ? device.timezone : defaultTimeZone;
-    const playlist = devicePlaylist(
-      device,
-      where,
-      named,
-      screens,
-      defaultScreen,
-      readLocation(device.location, `${where}.location`) ?? location,
-    );
+    const own = readLocation(device.location, `${where}.location`) ?? location;
+    const playlist = devicePlaylist(device, where, named, screens, defaultScreen, own);
     return {
       id: `device/${name}`,
       label: `Device ${name}`,
-      device: { name, timeZone },
+      // With its location's coordinates, if any, e.g. for the weather
+      device: { name, timeZone, ...(own?.lat !== undefined && { lat: own.lat, lon: own.lon }) },
       entries: loadable(playlist, labelOf),
     };
   });

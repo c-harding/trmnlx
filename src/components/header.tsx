@@ -12,7 +12,7 @@ export const PADDING_X = 14;
 export const HEADER_HEIGHT = 55; // including its rule
 // Between the rule and what's below it
 export const HEADER_GAP = 4;
-const RULE = 3;
+export const RULE = 3;
 /** How much room a header without its rule takes: what's below can start where the rule would be */
 export const HEADER_HEIGHT_WITHOUT_RULE = HEADER_HEIGHT - RULE;
 
@@ -84,7 +84,26 @@ export function Header(props: {
   );
 }
 
-/** The battery, small with the voltage above the charge, and the time, for the right of the header. */
+/** The battery, small: the voltage above the charge. */
+export function Battery(props: { telemetry: Telemetry | undefined }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        ...textSize(16),
+        lineHeight: 1,
+      }}
+    >
+      {batteryLines(props.telemetry).map((line, i) => (
+        <span key={i}>{line}</span>
+      ))}
+    </div>
+  );
+}
+
+/** The battery and the time, for the right of the header. */
 export function BatteryAndClock(props: {
   telemetry: Telemetry | undefined;
   now: Date;
@@ -102,19 +121,8 @@ export function BatteryAndClock(props: {
         ...textSize(21),
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-end",
-          marginRight: 10,
-          ...textSize(16),
-          lineHeight: 1,
-        }}
-      >
-        {batteryLines(telemetry).map((line, i) => (
-          <span key={i}>{line}</span>
-        ))}
+      <div style={{ display: "flex", marginRight: 10 }}>
+        <Battery telemetry={telemetry} />
       </div>
       <span style={{ fontWeight: 700 }}>{formatTime(now, timeZone)}</span>
     </div>

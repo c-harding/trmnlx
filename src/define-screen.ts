@@ -47,6 +47,8 @@ export type InputValues<I extends InputDefinitions> = { [K in keyof I]: InputVal
 export interface ScreenDevice {
   username: string;
   timeZone: string;
+  /** Where it is, if devices.yaml gives coordinates (its own location, or the top-level one) */
+  location?: { lat: number; lon: number };
 }
 
 /** What every part of a screen gets, and the context for its dependencies' params */
