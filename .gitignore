@@ -20,3 +20,6 @@ devices.yaml
 
 # Test build (scripts/test)
 /.test/
+
+# The dev server's own state, e.g. its Strava tokens (scripts/dev)
+/.dev-state/

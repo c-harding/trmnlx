@@ -1,6 +1,10 @@
 # Copy to devices.yaml and fill in your devices. devices.yaml is gitignored.
 # defaultScreen: placeholder  # The screen for devices that don't name one, and while no playlist entry applies (default: placeholder, or the first screen found)
 # location: { country: de, state: Bayern, lat: 48.14, lon: 11.58 }  # For public and school holidays (PH, SH) in `when`, and with lat and lon for sunrise and sunset and the weather screen; a device can have its own
+# tokens:  # Other services' credentials, never sent to a browser
+#   strava:  # The app from strava.com/settings/api (its callback domain: this server's), for the strava screen
+#     client_id: "12345"
+#     client_secret: "…"
 # playlists:  # Named playlists, for devices (playlist: travel) and other playlists to use
 #   travel:
 #     - screen: journeys

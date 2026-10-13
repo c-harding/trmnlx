@@ -1,6 +1,14 @@
 import cookieParser from "cookie-parser";
 import express, { type ErrorRequestHandler } from "express";
-import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./config.ts";
+import {
+  checkOnly,
+  devices,
+  findDeviceByUsername,
+  serverDomain,
+  setupEnabled,
+  stravaApp,
+  type Device,
+} from "./config.ts";
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import {
@@ -14,8 +22,9 @@ import type { MapView } from "./map-drawing.ts";
 import type { PlaylistEntry } from "./playlists.ts";
 import { renderDeviceScreen, screens, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
 import { loadMap, removeUnusedMaps } from "./sources/map.ts";
+import { configureStrava, savedTokenStore, stravaRoutes } from "./sources/strava.ts";
 import { checkLogin, endSession, sessionDevice, startSession } from "./session.ts";
-import { flushState, persistTo } from "./state-file.ts";
+import { flushState, persistTo, savedState, stateChanged } from "./state-file.ts";
 
 const port = Number(process.env.SERVER_PORT ?? 7777);
 
@@ -27,6 +36,21 @@ if (checkOnly) {
 
 // Next to server.js: a Docker volume on the server (see docker-compose.yml)
 persistTo(new URL("./state/", import.meta.url));
+
+// Strava's tokens, per device, in its state file (see sources/strava.ts)
+configureStrava(
+  stravaApp,
+  savedTokenStore(
+    (account) => {
+      const device = findDeviceByUsername(account);
+      return device && savedState(device, "strava");
+    },
+    (account, tokens) => {
+      const device = findDeviceByUsername(account);
+      if (device) stateChanged(device, "strava", () => tokens);
+    },
+  ),
+);
 
 // Saved maps of views no longer in devices.yaml, or drawn in an older style, take up space for nothing.
 // The views in use: what every entry's of every playlist (and default screen's) render would ask the
@@ -140,6 +164,9 @@ app.get("/screen.png", async (req, res) => {
     })
     .send(png);
 });
+
+// Connecting Strava, for the logged-in user's device
+stravaRoutes(app, (req) => sessionDevice(req)?.username);
 
 app.get("/login", (req, res) => {
   if (sessionDevice(req)) return res.redirect(303, "/");

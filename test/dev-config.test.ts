@@ -9,6 +9,10 @@ const screens: ScreenInputs = {
 };
 
 const yaml = `
+tokens:
+  strava:
+    client_id: "12345"
+    client_secret: strava-client-secret
 playlists:
   travel:
     - screen: journeys
@@ -68,9 +72,16 @@ test("devices.yaml's entries, by device and named playlist, for the dev server's
   ]);
 });
 
-test("no password, token or MAC reaches the browser", () => {
+test("no password, token, MAC or other service's credentials reach the browser", () => {
   const json = JSON.stringify(readDevConfig(yaml, screens, "UTC"));
-  for (const secret of ["secret-password", "secret-token", "other-password", "AA:BB"])
+  for (const secret of [
+    "secret-password",
+    "secret-token",
+    "other-password",
+    "AA:BB",
+    "strava-client-secret",
+    "12345",
+  ])
     assert.ok(!json.includes(secret), secret);
 });
 

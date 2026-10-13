@@ -3,6 +3,7 @@
 // playlist can be loaded into the form (see dev-config.ts). Run with `npm run dev`, which rebuilds
 // and restarts it whenever the code changes.
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import express, { type ErrorRequestHandler } from "express";
 import { inputTypeName, matchesInput, type InputDefinitions } from "./define-screen.ts";
@@ -11,12 +12,52 @@ import { CREDITS_SCRIPT, creditsHtml } from "./credits.ts";
 import { DEVICE_DEFAULTS, playlistPage } from "./dev-playlist.ts";
 import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 import { renderScreen, screens } from "./screen.ts";
+import { configureStrava, readStravaApp, savedTokenStore, stravaRoutes } from "./sources/strava.ts";
+import { StateFile } from "./state-file.ts";
+import { parse } from "yaml";
 
 const port = Number(process.env.DEV_PORT ?? 7778);
 // The project's devices.yaml, next to .dev/ where the dev server is built
 const DEVICES_FILE = new URL("../devices.yaml", import.meta.url);
 
 const app = express();
+
+// Strava, with the app from devices.yaml (if it has one, read at startup) and the dev server's own
+// tokens in .dev-state/ (gitignored, and kept across restarts, unlike .dev/): never the server's, as
+// renewing one connection's tokens would spend the other's (see sources/strava.ts). One account for
+// every device the form shows
+const DEV_ACCOUNT = "dev";
+const stravaFile = new StateFile(
+  fileURLToPath(new URL("../.dev-state/strava.json", import.meta.url)),
+);
+configureStrava(
+  (() => {
+    try {
+      return readStravaApp(
+        (parse(readFileSync(DEVICES_FILE, "utf8")) as { tokens?: unknown })?.tokens,
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        console.error(`No Strava: ${(error as Error).message.split("\n")[0]}`);
+      return undefined;
+    }
+  })(),
+  (() => {
+    const tokens = savedTokenStore(
+      (account) => stravaFile.saved(account),
+      (account, saved) => {
+        stravaFile.changed(account, () => saved);
+        // At once: the dev server restarts with every change to the code
+        stravaFile.flush();
+      },
+    );
+    return {
+      get: () => tokens.get(DEV_ACCOUNT),
+      set: (_account, saved) => tokens.set(DEV_ACCOUNT, saved),
+    };
+  })(),
+);
+stravaRoutes(app, () => DEV_ACCOUNT);
 
 // Each screen's inputs, for generating its form fields in the browser
 const screenInputs = Object.fromEntries(
@@ -368,7 +409,9 @@ app.get("/config", (req, res) => {
       ),
     });
   } catch (error) {
-    res.json({ error: (error as Error).message });
+    // Only its first line: a YAML syntax error goes on to quote the file, which may have secrets
+    // (e.g. tokens.strava)
+    res.json({ error: (error as Error).message.split("\n")[0] });
   }
 });
 

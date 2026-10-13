@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
+import { readStravaApp, type StravaApp } from "./sources/strava.ts";
 import {
   ConfigError,
   devicePlaylists,
@@ -67,7 +68,7 @@ function orFail<T>(check: () => T): T {
   }
 }
 
-function loadDevices(): Device[] {
+function loadConfig(): { devices: Device[]; stravaApp: StravaApp | undefined } {
   let text;
   try {
     text = readFileSync(DEVICES_FILE, "utf8");
@@ -79,7 +80,13 @@ function loadDevices(): Device[] {
 
   // Checked field by field below
   let data:
-    | { devices?: unknown; defaultScreen?: unknown; playlists?: unknown; location?: unknown }
+    | {
+        devices?: unknown;
+        defaultScreen?: unknown;
+        playlists?: unknown;
+        location?: unknown;
+        tokens?: unknown;
+      }
     | undefined;
   try {
     data = parse(text);
@@ -97,10 +104,12 @@ function loadDevices(): Device[] {
   const defaultScreen = orFail(() => readDefaultScreen(data!.defaultScreen, screenInputs));
   const location = orFail(() => readLocation(data!.location, "location"));
   const playlists = orFail(() => readNamedPlaylists(data!.playlists, screenInputs, location));
+  // Other services' credentials, e.g. Strava's app
+  const stravaApp = orFail(() => readStravaApp(data!.tokens));
   const usernames = new Set<string>();
   const macs = new Set<string>();
 
-  return (data!.devices as Record<string, any>[]).map((device, i) => {
+  const devices = (data!.devices as Record<string, any>[]).map((device, i): Device => {
     const where = `devices[${i}]`;
     for (const field of ["mac", "username", "password"]) {
       if (typeof device?.[field] !== "string" || device[field] === "") {
@@ -153,6 +162,7 @@ function loadDevices(): Device[] {
       fullRefresh: device.fullRefresh ?? true,
     };
   });
+  return { devices, stravaApp };
 }
 
 function loadTokenSecret(): string {
@@ -170,7 +180,7 @@ function loadTokenSecret(): string {
  */
 export const checkOnly = process.argv.includes("--check-config");
 
-export const devices = loadDevices();
+export const { devices, stravaApp } = loadConfig();
 export const tokenSecret = loadTokenSecret();
 
 /** Whether /api/setup hands out tokens. Only while pairing a device: the MAC it checks isn't secret. */
