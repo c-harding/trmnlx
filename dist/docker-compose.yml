@@ -27,7 +27,7 @@ services:
     # Bound to localhost only: Caddy on the host provides HTTPS, and nothing should reach the
     # server over plain HTTP from outside.
     ports:
-      - '127.0.0.1:${SERVER_PORT:-7777}:7777'
+      - "127.0.0.1:${SERVER_PORT:-7777}:7777"
     # Devices' playlist positions, check-ins and telemetry (see src/state-file.ts), kept across
     # deploys and restarts
     volumes:

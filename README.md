@@ -67,11 +67,11 @@ If something goes wrong, the device may also `POST /api/log`.
 
 The device sends this once, when it has no stored API key. It is identified by its MAC address.
 
-| Request header | Meaning                                         |
-|----------------|-------------------------------------------------|
-| `ID`           | MAC address, e.g. `AA:BB:CC:DD:EE:FF`           |
-| `Model`        | Device model identifier from the firmware       |
-| `Panel-Rev`    | Optional: identifier of the e-paper panel       |
+| Request header | Meaning                                   |
+| -------------- | ----------------------------------------- |
+| `ID`           | MAC address, e.g. `AA:BB:CC:DD:EE:FF`     |
+| `Model`        | Device model identifier from the firmware |
+| `Panel-Rev`    | Optional: identifier of the e-paper panel |
 
 ```json
 {
@@ -92,19 +92,19 @@ The device sends this once, when it has no stored API key. It is identified by i
 
 This is the main endpoint, called on every wake.
 
-| Request header    | Meaning                                                |
-|-------------------|--------------------------------------------------------|
-| `Access-Token`    | **Required.** The `api_key` from setup                 |
-| `ID`              | MAC address                                            |
-| `Refresh-Rate`    | The sleep interval the device currently uses (seconds) |
-| `Battery-Voltage` | e.g. `4.1`                                             |
-| `FW-Version`      | e.g. `1.6.2`                                           |
-| `RSSI`            | Wi-Fi signal strength, e.g. `-69`                      |
-| `Width`, `Height` | Screen size in pixels (`800` × `480` for the OG)       |
-| `Model`           | Device model                                           |
-| `Update-Source`   | What woke the device: `timer`, `powercycle` (also after a restart or update), or the button as `EXT0`, `EXT1` or `button` depending on the chip; `unknown` otherwise |
-| `Temperature-Profile` | `true`: the device understands the `temperature_profile` response field |
-| `special_function`| `true` if the user triggered the button's special function (a double click or a 1–5 s hold; 5–15 s resets the Wi-Fi, 15 s or more all settings). Note the underscore: this is not `Special-Function` |
+| Request header        | Meaning                                                                                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Access-Token`        | **Required.** The `api_key` from setup                                                                                                                                                               |
+| `ID`                  | MAC address                                                                                                                                                                                          |
+| `Refresh-Rate`        | The sleep interval the device currently uses (seconds)                                                                                                                                               |
+| `Battery-Voltage`     | e.g. `4.1`                                                                                                                                                                                           |
+| `FW-Version`          | e.g. `1.6.2`                                                                                                                                                                                         |
+| `RSSI`                | Wi-Fi signal strength, e.g. `-69`                                                                                                                                                                    |
+| `Width`, `Height`     | Screen size in pixels (`800` × `480` for the OG)                                                                                                                                                     |
+| `Model`               | Device model                                                                                                                                                                                         |
+| `Update-Source`       | What woke the device: `timer`, `powercycle` (also after a restart or update), or the button as `EXT0`, `EXT1` or `button` depending on the chip; `unknown` otherwise                                 |
+| `Temperature-Profile` | `true`: the device understands the `temperature_profile` response field                                                                                                                              |
+| `special_function`    | `true` if the user triggered the button's special function (a double click or a 1–5 s hold; 5–15 s resets the Wi-Fi, 15 s or more all settings). Note the underscore: this is not `Special-Function` |
 
 Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connected`, `Image-Cached`, `Wake-Time`, `WiFi-Band`, …). All of them are optional, and a server can ignore any it doesn't care about. A failed `/api/display` (an HTTP error or a timeout) is retried up to 5 times, 2 s apart, with the same headers.
 
@@ -121,16 +121,16 @@ Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connect
 }
 ```
 
-| Response field     | Meaning |
-|--------------------|---------|
-| `status`           | `0` = OK. `202` ("device not yet linked to a user") makes the device poll again every 5 seconds. `500` (TRMNL's answer to an unknown token) makes it clear all its settings, including Wi-Fi, like `reset_firmware`. An HTTP error status (e.g. 401) only shows an error screen and keeps the settings |
-| `image_url`        | Absolute URL of the image to show. It can be hosted anywhere, but only images on this server receive the device's credentials (see below) |
-| `filename`         | Cache key. If it equals the last one, the device skips the download and the redraw |
-| `refresh_rate`     | Seconds to sleep before the next poll. **This is how the server controls the schedule.** Older examples send it as a string |
-| `update_firmware`, `firmware_url` | Tell the device to OTA-update from `firmware_url` |
-| `reset_firmware`   | Tell the device to clear **all** its settings, including Wi-Fi, and restart into the captive portal |
-| `special_function` | What the device should do when the button's special function is used (e.g. `identify`), saved for its next press. In the response to a press, `action` must repeat it, or the firmware ignores the response. Each function behaves differently: `rewind` redraws the previous image from flash, while `identify`, `restart_playlist` and `guest_mode` download `image_url` (only `guest_mode` also takes `refresh_rate`) |
-| `temperature_profile` | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays) |
+| Response field                    | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `status`                          | `0` = OK. `202` ("device not yet linked to a user") makes the device poll again every 5 seconds. `500` (TRMNL's answer to an unknown token) makes it clear all its settings, including Wi-Fi, like `reset_firmware`. An HTTP error status (e.g. 401) only shows an error screen and keeps the settings                                                                                                                   |
+| `image_url`                       | Absolute URL of the image to show. It can be hosted anywhere, but only images on this server receive the device's credentials (see below)                                                                                                                                                                                                                                                                                |
+| `filename`                        | Cache key. If it equals the last one, the device skips the download and the redraw                                                                                                                                                                                                                                                                                                                                       |
+| `refresh_rate`                    | Seconds to sleep before the next poll. **This is how the server controls the schedule.** Older examples send it as a string                                                                                                                                                                                                                                                                                              |
+| `update_firmware`, `firmware_url` | Tell the device to OTA-update from `firmware_url`                                                                                                                                                                                                                                                                                                                                                                        |
+| `reset_firmware`                  | Tell the device to clear **all** its settings, including Wi-Fi, and restart into the captive portal                                                                                                                                                                                                                                                                                                                      |
+| `special_function`                | What the device should do when the button's special function is used (e.g. `identify`), saved for its next press. In the response to a press, `action` must repeat it, or the firmware ignores the response. Each function behaves differently: `rewind` redraws the previous image from flash, while `identify`, `restart_playlist` and `guest_mode` download `image_url` (only `guest_mode` also takes `refresh_rate`) |
+| `temperature_profile`             | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays)                                                                                                                                                                                                                                                                                                        |
 
 ### `GET <image_url>`: the image download
 
@@ -208,11 +208,11 @@ On TRMNL's hosted service, everything a screen shows comes from a plugin: calend
 
 ### Data strategies
 
-| Strategy     | How the data arrives |
-|--------------|----------------------|
+| Strategy     | How the data arrives                                                                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Polling      | TRMNL fetches one or more URLs on each refresh (GET by default, POST possible, with custom headers). Responses can be JSON, RSS, XML, plain text or CSV. With several URLs, each response is available as `IDX_0`, `IDX_1`, … |
-| Webhook      | Your own code POSTs the data to TRMNL. The stored variables are limited to 5 KB (10 KB with TRMNL+) |
-| Plugin merge | The template gets the data of your other plugins |
+| Webhook      | Your own code POSTs the data to TRMNL. The stored variables are limited to 5 KB (10 KB with TRMNL+)                                                                                                                           |
+| Plugin merge | The template gets the data of your other plugins                                                                                                                                                                              |
 
 Form field values can be used in the markup and in polling URLs, headers and bodies, e.g. `{{ city }}`. TRMNL also provides globals such as `{{ trmnl.user.first_name }}`.
 
@@ -221,11 +221,11 @@ Form field values can be used in the markup and in polling URLs, headers and bod
 A plugin has one template per size, so it can share the screen with other plugins in a "mashup":
 
 | Template          | Space on the screen |
-|-------------------|---------------------|
-| `full`            | The whole screen |
-| `half_horizontal` | Top or bottom half |
-| `half_vertical`   | Left or right half |
-| `quadrant`        | One quarter |
+| ----------------- | ------------------- |
+| `full`            | The whole screen    |
+| `half_horizontal` | Top or bottom half  |
+| `half_vertical`   | Left or right half  |
+| `quadrant`        | One quarter         |
 
 The markup uses the framework's CSS classes (e.g. `view view--full`), which are designed for the e-ink panel's resolution and gray levels. A `shared` template holds markup used by all four.
 

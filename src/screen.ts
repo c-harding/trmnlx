@@ -18,7 +18,8 @@ const SCREENS_DIR = new URL("./screens/", import.meta.url);
 async function importScreen(file: string): Promise<[string, Screen]> {
   const name = file.slice(0, -".js".length);
   const module: { default?: unknown } = await import(new URL(file, SCREENS_DIR).href);
-  if (!isScreen(module.default)) throw new Error(`Screen ${name} must export default defineScreen({ ... })`);
+  if (!isScreen(module.default))
+    throw new Error(`Screen ${name} must export default defineScreen({ ... })`);
   return [name, module.default];
 }
 
@@ -44,12 +45,22 @@ interface RenderOptions {
  * data and rendering took (ms). Used by the server and the dev
  * server.
  */
-export async function renderScreen(screen: Screen, { device, now, telemetry, inputs }: RenderOptions) {
+export async function renderScreen(
+  screen: Screen,
+  { device, now, telemetry, inputs }: RenderOptions,
+) {
   const start = performance.now();
   const { layout, ttl, credits, loadMs } = await screen.render({ device, now, telemetry, inputs });
   const png = await renderPng(layout, { colors: screen.colors });
   // Rendering: everything but loading the data (prepare, the view, Satori and sharp)
-  return { png, ttl, colors: screen.colors, credits, loadMs, renderMs: performance.now() - start - loadMs };
+  return {
+    png,
+    ttl,
+    colors: screen.colors,
+    credits,
+    loadMs,
+    renderMs: performance.now() - start - loadMs,
+  };
 }
 
 /**
@@ -62,7 +73,12 @@ export async function renderScreen(screen: Screen, { device, now, telemetry, inp
 export async function renderDeviceScreen(device: Device) {
   const now = new Date();
   const { entry, index, untilMove } = currentEntry(device, now);
-  const rendered = await renderScreen(screens[entry.screen], { device, now, telemetry: telemetryFor(device), inputs: entry.inputs });
+  const rendered = await renderScreen(screens[entry.screen], {
+    device,
+    now,
+    telemetry: telemetryFor(device),
+    inputs: entry.inputs,
+  });
   return { ...rendered, ttl: Math.min(rendered.ttl, untilMove + SAFETY_SECONDS), index };
 }
 
@@ -77,7 +93,8 @@ export function warmDeviceScreens(device: Device) {
   // Only ahead of need: a mistake here mustn't break the startup, a check-in or a render
   try {
     const telemetry = telemetryFor(device);
-    for (const entry of entriesNearby(device, now)) screens[entry.screen].warm({ device, now, telemetry, inputs: entry.inputs });
+    for (const entry of entriesNearby(device, now))
+      screens[entry.screen].warm({ device, now, telemetry, inputs: entry.inputs });
   } catch (error) {
     console.error(`Warming the screens of ${device.username} failed:`, error);
   }
@@ -106,7 +123,10 @@ export function warmAtWindowChanges(device: Device) {
     } catch (error) {
       // Looked at again later rather than never, or crashing the server
       console.error(`Finding the next window change of ${device.username} failed:`, error);
-      windowTimers.set(device.mac, setTimeout(() => warmAtWindowChanges(device), RECHECK_MS).unref());
+      windowTimers.set(
+        device.mac,
+        setTimeout(() => warmAtWindowChanges(device), RECHECK_MS).unref(),
+      );
     }
   }, delay);
   // Not a reason to keep the process running

@@ -12,7 +12,8 @@ import { textSize } from "../components/type.ts";
 /** The routes that parse, at most MAX_ROUTES of them (the rest are logged and ignored). */
 function validRoutes(texts: string[]) {
   const routes = texts.map(parseRoute).filter((route) => route !== undefined);
-  if (routes.length > MAX_ROUTES) console.error(`Showing only the first ${MAX_ROUTES} of ${routes.length} routes`);
+  if (routes.length > MAX_ROUTES)
+    console.error(`Showing only the first ${MAX_ROUTES} of ${routes.length} routes`);
   return routes.slice(0, MAX_ROUTES);
 }
 
@@ -23,7 +24,10 @@ const RULE = "2px solid #000";
 const COLUMNS: Record<number, number[][]> = {
   2: [[0], [1]],
   3: [[0, 1], [2]],
-  4: [[0, 1], [2, 3]],
+  4: [
+    [0, 1],
+    [2, 3],
+  ],
 };
 const MAX_ROUTES = 4;
 
@@ -39,10 +43,27 @@ function Panel(props: {
   const { title, route, rules, result, now, count, timeZone } = props;
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ display: "flex", ...textSize(21), fontWeight: 700, paddingBottom: 4, borderBottom: "1px solid #000", ...ellipsis }}>
+      <div
+        style={{
+          display: "flex",
+          ...textSize(21),
+          fontWeight: 700,
+          paddingBottom: 4,
+          borderBottom: "1px solid #000",
+          ...ellipsis,
+        }}
+      >
         {title}
       </div>
-      <JourneyList route={route} rules={rules} result={result} now={now} count={count} timeZone={timeZone} size="small" />
+      <JourneyList
+        route={route}
+        rules={rules}
+        result={result}
+        now={now}
+        count={count}
+        timeZone={timeZone}
+        size="small"
+      />
     </div>
   );
 }
@@ -140,7 +161,17 @@ export default defineScreen({
             size="large"
           />
         ) : (
-          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", ...textSize(32) }}>No routes</div>
+          <div
+            style={{
+              display: "flex",
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              ...textSize(32),
+            }}
+          >
+            No routes
+          </div>
         ),
       );
     }
@@ -152,7 +183,15 @@ export default defineScreen({
       const { route, result } = routes[i];
       const title = sameStart ? `→ ${routeTitle(route.stops.slice(1))}` : routeTitle(route.stops);
       return (
-        <Panel title={title} route={route} rules={data.rules} result={result} now={now} count={inputs.count} timeZone={timeZone} />
+        <Panel
+          title={title}
+          route={route}
+          rules={data.rules}
+          result={result}
+          now={now}
+          count={inputs.count}
+          timeZone={timeZone}
+        />
       );
     };
     const column = (indexes: number[], last: boolean) => (
@@ -166,7 +205,9 @@ export default defineScreen({
         }}
       >
         {indexes.flatMap((index, i) => [
-          ...(i > 0 ? [<div style={{ display: "flex", borderTop: RULE, marginTop: 6, paddingTop: 6 }} />] : []),
+          ...(i > 0
+            ? [<div style={{ display: "flex", borderTop: RULE, marginTop: 6, paddingTop: 6 }} />]
+            : []),
           panel(index),
         ])}
       </div>
@@ -175,7 +216,9 @@ export default defineScreen({
     return page(
       sameStart ? start : "Connections",
       <div style={{ display: "flex", flex: 1, minHeight: 0, marginTop: 4 }}>
-        {COLUMNS[routes.length].map((indexes, i, columns) => column(indexes, i === columns.length - 1))}
+        {COLUMNS[routes.length].map((indexes, i, columns) =>
+          column(indexes, i === columns.length - 1),
+        )}
       </div>,
     );
   },

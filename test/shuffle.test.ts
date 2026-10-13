@@ -2,11 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fitsRound, inOrder, isShuffled, newRound } from "../src/shuffle.ts";
 
-const entry = (screen: string, shuffle?: string) => ({ screen, inputs: {}, ...(shuffle === undefined ? {} : { shuffle }) });
+const entry = (screen: string, shuffle?: string) => ({
+  screen,
+  inputs: {},
+  ...(shuffle === undefined ? {} : { shuffle }),
+});
 // A fixed entry, a shuffled run of four, another fixed entry
-const playlist = [entry("clock"), entry("a", "p[1]"), entry("b", "p[1]"), entry("c", "p[1]"), entry("d", "p[1]"), entry("journeys")];
+const playlist = [
+  entry("clock"),
+  entry("a", "p[1]"),
+  entry("b", "p[1]"),
+  entry("c", "p[1]"),
+  entry("d", "p[1]"),
+  entry("journeys"),
+];
 // Random numbers in turn, as Math.random gives them
-const sequence = (...values: number[]) => () => values.shift() ?? 0;
+const sequence =
+  (...values: number[]) =>
+  () =>
+    values.shift() ?? 0;
 
 test("only a shuffled run changes order; the other entries keep their places", () => {
   assert.equal(isShuffled(playlist), true);

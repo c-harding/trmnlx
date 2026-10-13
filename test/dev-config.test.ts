@@ -40,7 +40,11 @@ test("devices.yaml's entries, by device and named playlist, for the dev server's
       label: "Device kitchen",
       device: { name: "kitchen", timeZone: "Europe/Vienna" },
       entries: [
-        { label: "1. journeys (Sa,Su, 10m)", screen: "journeys", inputs: { routes: ["Marienplatz -> München Ost"] } },
+        {
+          label: "1. journeys (Sa,Su, 10m)",
+          screen: "journeys",
+          inputs: { routes: ["Marienplatz -> München Ost"] },
+        },
         { label: "2. placeholder (not Sa,Su)", screen: "placeholder", inputs: {} },
       ],
     },
@@ -53,18 +57,28 @@ test("devices.yaml's entries, by device and named playlist, for the dev server's
     {
       id: "playlist/travel",
       label: "Playlist travel",
-      entries: [{ label: "1. journeys (10m)", screen: "journeys", inputs: { routes: ["Marienplatz -> München Ost"] } }],
+      entries: [
+        {
+          label: "1. journeys (10m)",
+          screen: "journeys",
+          inputs: { routes: ["Marienplatz -> München Ost"] },
+        },
+      ],
     },
   ]);
 });
 
 test("no password, token or MAC reaches the browser", () => {
   const json = JSON.stringify(readDevConfig(yaml, screens, "UTC"));
-  for (const secret of ["secret-password", "secret-token", "other-password", "AA:BB"]) assert.ok(!json.includes(secret), secret);
+  for (const secret of ["secret-password", "secret-token", "other-password", "AA:BB"])
+    assert.ok(!json.includes(secret), secret);
 });
 
 test("an invalid devices.yaml gives the server's message", () => {
-  assert.throws(() => readDevConfig("devices:\n  - username: x\n    playlist: nope\n", screens, "UTC"), /devices\[0\]\.playlist must name a playlist/);
+  assert.throws(
+    () => readDevConfig("devices:\n  - username: x\n    playlist: nope\n", screens, "UTC"),
+    /devices\[0\]\.playlist must name a playlist/,
+  );
 });
 
 test("durations are written as in devices.yaml", () => {
@@ -74,9 +88,15 @@ test("durations are written as in devices.yaml", () => {
 });
 
 test("entries are labelled by their screen, e.g. a map by its title", () => {
-  const labels = readDevConfig(yaml, screens, "UTC", (screen, inputs) => (screen === "journeys" ? `${(inputs.routes as string[]).length} route(s)` : undefined));
+  const labels = readDevConfig(yaml, screens, "UTC", (screen, inputs) =>
+    screen === "journeys" ? `${(inputs.routes as string[]).length} route(s)` : undefined,
+  );
   assert.deepEqual(
     labels.map((group) => group.entries.map((entry) => entry.label)),
-    [["1. journeys: 1 route(s) (Sa,Su, 10m)", "2. placeholder (not Sa,Su)"], ["1. placeholder"], ["1. journeys: 1 route(s) (10m)"]],
+    [
+      ["1. journeys: 1 route(s) (Sa,Su, 10m)", "2. placeholder (not Sa,Su)"],
+      ["1. placeholder"],
+      ["1. journeys: 1 route(s) (10m)"],
+    ],
   );
 });

@@ -39,7 +39,14 @@ export function parseHours(text: string, location: Location | undefined): Condit
     lon: String(location.lon ?? 0),
     address: { country_code: location.country, state: location.state ?? "" },
   };
-  return { kind: "hours", text, hours: new opening_hours(text, place as unknown as ConstructorParameters<typeof opening_hours>[1]) };
+  return {
+    kind: "hours",
+    text,
+    hours: new opening_hours(
+      text,
+      place as unknown as ConstructorParameters<typeof opening_hours>[1],
+    ),
+  };
 }
 
 /** All of the conditions apply (always, if there are none). */

@@ -37,7 +37,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 /** A condition as text: its opening hours, combined in words. */
 export function whenText(condition: Condition): string {
-  const inner = (part: Condition) => (part.kind === "all" || part.kind === "any" ? `(${whenText(part)})` : whenText(part));
+  const inner = (part: Condition) =>
+    part.kind === "all" || part.kind === "any" ? `(${whenText(part)})` : whenText(part);
   switch (condition.kind) {
     case "always":
       return "always";
@@ -56,8 +57,15 @@ export function whenText(condition: Condition): string {
 
 /** A duration as written in devices.yaml, e.g. 90 → "1m30s". */
 export function durationText(seconds: number) {
-  const parts = [[Math.floor(seconds / 3600), "h"], [Math.floor(seconds / 60) % 60, "m"], [seconds % 60, "s"]] as const;
-  return parts.filter(([amount]) => amount > 0).map(([amount, unit]) => `${amount}${unit}`).join("");
+  const parts = [
+    [Math.floor(seconds / 3600), "h"],
+    [Math.floor(seconds / 60) % 60, "m"],
+    [seconds % 60, "s"],
+  ] as const;
+  return parts
+    .filter(([amount]) => amount > 0)
+    .map(([amount, unit]) => `${amount}${unit}`)
+    .join("");
 }
 
 /** An entry's label from its screen and inputs, e.g. "Graz" for a map (see `label` in defineScreen). */
@@ -66,15 +74,27 @@ export type LabelOf = (screen: string, inputs: Record<string, unknown>) => strin
 const loadable = (entries: PlaylistEntry[], labelOf: LabelOf): LoadableEntry[] =>
   entries.map(({ screen, inputs, when, duration }, i) => {
     const label = labelOf(screen, inputs);
-    const details = [when && whenText(when), duration !== undefined && durationText(duration)].filter(Boolean);
-    return { label: `${i + 1}. ${screen}${label ? `: ${label}` : ""}${details.length ? ` (${details.join(", ")})` : ""}`, screen, inputs };
+    const details = [
+      when && whenText(when),
+      duration !== undefined && durationText(duration),
+    ].filter(Boolean);
+    return {
+      label: `${i + 1}. ${screen}${label ? `: ${label}` : ""}${details.length ? ` (${details.join(", ")})` : ""}`,
+      screen,
+      inputs,
+    };
   });
 
 /**
  * The entries of devices.yaml's text, grouped by device and named playlist, labelled with `labelOf`.
  * Throws (a ConfigError or a YAML error) if the file isn't valid, as the server would.
  */
-export function readDevConfig(text: string, screens: ScreenInputs, defaultTimeZone: string, labelOf: LabelOf = () => undefined): EntryGroup[] {
+export function readDevConfig(
+  text: string,
+  screens: ScreenInputs,
+  defaultTimeZone: string,
+  labelOf: LabelOf = () => undefined,
+): EntryGroup[] {
   const data: unknown = parse(text);
   if (!isObject(data)) throw new Error("devices.yaml must be a mapping");
   const defaultScreen = readDefaultScreen(data.defaultScreen, screens);
@@ -86,15 +106,28 @@ export function readDevConfig(text: string, screens: ScreenInputs, defaultTimeZo
     const where = `devices[${i}]`;
     const name = typeof device.username === "string" ? device.username : where;
     const timeZone = typeof device.timezone === "string" ? device.timezone : defaultTimeZone;
-    const playlist = devicePlaylist(device, where, named, screens, defaultScreen, readLocation(device.location, `${where}.location`) ?? location);
-    return { id: `device/${name}`, label: `Device ${name}`, device: { name, timeZone }, entries: loadable(playlist, labelOf) };
+    const playlist = devicePlaylist(
+      device,
+      where,
+      named,
+      screens,
+      defaultScreen,
+      readLocation(device.location, `${where}.location`) ?? location,
+    );
+    return {
+      id: `device/${name}`,
+      label: `Device ${name}`,
+      device: { name, timeZone },
+      entries: loadable(playlist, labelOf),
+    };
   });
-  const playlistGroups = Object.keys(named).map(
-    (name): EntryGroup => ({
-      id: `playlist/${name}`,
-      label: `Playlist ${name}`,
-      entries: loadable(expandPlaylist(named[name], `playlists.${name}`, named, screens, [name], location), labelOf),
-    }),
-  );
+  const playlistGroups = Object.keys(named).map((name): EntryGroup => ({
+    id: `playlist/${name}`,
+    label: `Playlist ${name}`,
+    entries: loadable(
+      expandPlaylist(named[name], `playlists.${name}`, named, screens, [name], location),
+      labelOf,
+    ),
+  }));
   return [...deviceGroups, ...playlistGroups];
 }

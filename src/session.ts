@@ -22,7 +22,12 @@ const sign = (payload: string, device: Device) =>
     .update(sha256(device.password))
     .digest("base64url");
 
-const cookieOptions = (req: Request): CookieOptions => ({ httpOnly: true, sameSite: "lax", path: "/", secure: req.secure });
+const cookieOptions = (req: Request): CookieOptions => ({
+  httpOnly: true,
+  sameSite: "lax",
+  path: "/",
+  secure: req.secure,
+});
 
 export function startSession(req: Request, res: Response, device: Device) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 24 * 60 * 60;

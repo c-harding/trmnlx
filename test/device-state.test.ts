@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseHours } from "../src/conditions.ts";
-import { activePlaylist, buttonStep, choosePlaylist, currentEntry, entriesNearby, expectedCheckIn, lastCheckIn, moveOn, pressButton, recordCheckIn } from "../src/device-state.ts";
+import {
+  activePlaylist,
+  buttonStep,
+  choosePlaylist,
+  currentEntry,
+  entriesNearby,
+  expectedCheckIn,
+  lastCheckIn,
+  moveOn,
+  pressButton,
+  recordCheckIn,
+} from "../src/device-state.ts";
 
 const fallback = { screen: "placeholder", inputs: {} };
 // A device's playlists with only its own
@@ -18,7 +29,12 @@ test("a device starts at its first entry and moves on, wrapping around", () => {
   const kitchen = device("A1", ["departures", "journeys", "placeholder"]);
   assert.equal(currentEntry(kitchen).entry.screen, "departures");
   moveOn(kitchen, 1);
-  assert.deepEqual(currentEntry(kitchen), { entry: kitchen.playlists[0].entries[1], index: 1, applying: [0, 1, 2], untilMove: Infinity });
+  assert.deepEqual(currentEntry(kitchen), {
+    entry: kitchen.playlists[0].entries[1],
+    index: 1,
+    applying: [0, 1, 2],
+    untilMove: Infinity,
+  });
   moveOn(kitchen, 1);
   moveOn(kitchen, 1);
   assert.equal(currentEntry(kitchen).entry.screen, "departures");
@@ -111,7 +127,13 @@ test("a press: a retry after the page's choice stays put, back from the device's
 const timed = (mac: string, durations: (number | undefined)[]) => ({
   mac,
   username: mac,
-  playlists: only(durations.map((duration, i) => ({ screen: `s${i}`, inputs: {}, ...(duration === undefined ? {} : { duration }) }))),
+  playlists: only(
+    durations.map((duration, i) => ({
+      screen: `s${i}`,
+      inputs: {},
+      ...(duration === undefined ? {} : { duration }),
+    })),
+  ),
   defaultScreen: fallback,
   timeZone: "Europe/Berlin",
 });
@@ -154,11 +176,20 @@ test("a press after a duration ran out shows that entry, as after the screen pag
 test("a playlist of one entry with a duration doesn't move on", () => {
   const d = timed("AA:00:00:00:00:13", [60]);
   currentEntry(d, at(0));
-  assert.deepEqual(currentEntry(d, at(600)), { entry: d.playlists[0].entries[0], index: 0, applying: [0], untilMove: Infinity });
+  assert.deepEqual(currentEntry(d, at(600)), {
+    entry: d.playlists[0].entries[0],
+    index: 0,
+    applying: [0],
+    untilMove: Infinity,
+  });
 });
 
 // A playlist whose entries apply at times: `when` texts, or undefined for always
-const windows = (mac: string, whens: (string | undefined)[], durations: (number | undefined)[] = []) => ({
+const windows = (
+  mac: string,
+  whens: (string | undefined)[],
+  durations: (number | undefined)[] = [],
+) => ({
   mac,
   username: mac,
   playlists: only(
@@ -232,7 +263,15 @@ test("a short press after the default screen shows the entry that started applyi
 
 test("an entry whose condition can't be evaluated is left out for now, not an error", () => {
   const d = windows("AA:00:00:00:00:25", [undefined, undefined]);
-  const broken = { kind: "hours", text: "SH", hours: { getState: () => { throw new Error("no data"); } } };
+  const broken = {
+    kind: "hours",
+    text: "SH",
+    hours: {
+      getState: () => {
+        throw new Error("no data");
+      },
+    },
+  };
   (d.playlists[0].entries[0] as { when?: unknown }).when = broken;
   const result = currentEntry(d, thu("07:00"));
   assert.deepEqual([result.index, result.applying], [1, [1]]);
@@ -243,9 +282,27 @@ const switching = (mac: string, offered = true) => ({
   mac,
   username: mac,
   playlists: [
-    { name: "default", entries: [{ screen: "departures", inputs: {} }, { screen: "journeys", inputs: {} }], offered },
-    { name: "travel", entries: [{ screen: "map", inputs: {} }, { screen: "journeys", inputs: {} }], offered: true },
-    { name: "night", entries: [{ screen: "clock", inputs: {}, when: parseHours("22:00-06:00", undefined) }], offered: true },
+    {
+      name: "default",
+      entries: [
+        { screen: "departures", inputs: {} },
+        { screen: "journeys", inputs: {} },
+      ],
+      offered,
+    },
+    {
+      name: "travel",
+      entries: [
+        { screen: "map", inputs: {} },
+        { screen: "journeys", inputs: {} },
+      ],
+      offered: true,
+    },
+    {
+      name: "night",
+      entries: [{ screen: "clock", inputs: {}, when: parseHours("22:00-06:00", undefined) }],
+      offered: true,
+    },
   ],
   defaultScreen: fallback,
   timeZone: "Europe/Berlin",
@@ -256,7 +313,12 @@ test("choosing a playlist starts at its first entry that applies, with its full 
   moveOn(d, 1, thu("07:00"));
   choosePlaylist(d, "travel", thu("07:00"));
   assert.equal(activePlaylist(d).name, "travel");
-  assert.deepEqual(currentEntry(d, thu("07:00")), { entry: d.playlists[1].entries[0], index: 0, applying: [0, 1], untilMove: Infinity });
+  assert.deepEqual(currentEntry(d, thu("07:00")), {
+    entry: d.playlists[1].entries[0],
+    index: 0,
+    applying: [0, 1],
+    untilMove: Infinity,
+  });
   // Back: from its first entry again
   choosePlaylist(d, "default", thu("07:00"));
   assert.equal(currentEntry(d, thu("07:00")).entry.screen, "departures");

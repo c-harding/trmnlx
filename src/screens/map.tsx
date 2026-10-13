@@ -55,13 +55,38 @@ export default defineScreen({
 
   view({ inputs, data }) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", width: WIDTH, height: HEIGHT, background: "#fff", fontFamily: "Noto Sans" }}>
-        <div style={{ display: "flex", flexDirection: "column", padding: `${PADDING_Y}px ${PADDING_X}px 0` }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          width: WIDTH,
+          height: HEIGHT,
+          background: "#fff",
+          fontFamily: "Noto Sans",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            padding: `${PADDING_Y}px ${PADDING_X}px 0`,
+          }}
+        >
           <Header title={inputs.title} rule={false}>
             {/* Asked for wherever the map is shown: by OpenStreetMap's data licence (ODbL), by
                 OpenMapTiles' design licence (CC-BY 4.0), whose tile schema the data comes in, and
                 by OpenFreeMap, which serves the tiles (its TileJSON's attribution) */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", alignSelf: "center", flexShrink: 0, ...textSize(12), lineHeight: 1.25 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                alignSelf: "center",
+                flexShrink: 0,
+                ...textSize(12),
+                lineHeight: 1.25,
+              }}
+            >
               <span>© OpenFreeMap</span>
               <span>© OpenMapTiles</span>
               <span>© OpenStreetMap</span>
@@ -69,9 +94,23 @@ export default defineScreen({
           </Header>
         </div>
         {data.png ? (
-          <img src={`data:image/png;base64,${data.png.toString("base64")}`} width={WIDTH} height={MAP_HEIGHT} />
+          <img
+            src={`data:image/png;base64,${data.png.toString("base64")}`}
+            width={WIDTH}
+            height={MAP_HEIGHT}
+          />
         ) : (
-          <div style={{ display: "flex", flexGrow: 1, alignItems: "center", justifyContent: "center", ...textSize(21), padding: 40, textAlign: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              flexGrow: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              ...textSize(21),
+              padding: 40,
+              textAlign: "center",
+            }}
+          >
             {`Map unavailable: ${data.error}`}
           </div>
         )}

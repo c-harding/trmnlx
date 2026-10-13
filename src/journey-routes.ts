@@ -32,9 +32,25 @@ export interface Route {
 
 // Transitous' modes (MOTIS), as rides have them (see correctedMode in sources/transitous.ts)
 const MODES = [
-  "AIRPLANE", "AREAL_LIFT", "BUS", "CABLE_CAR", "COACH", "FERRY", "FUNICULAR", "HIGHSPEED_RAIL",
-  "LONG_DISTANCE", "METRO", "NIGHT_RAIL", "ODM", "OTHER", "RAIL", "REGIONAL_FAST_RAIL",
-  "REGIONAL_RAIL", "SUBURBAN", "SUBWAY", "TRAM",
+  "AIRPLANE",
+  "AREAL_LIFT",
+  "BUS",
+  "CABLE_CAR",
+  "COACH",
+  "FERRY",
+  "FUNICULAR",
+  "HIGHSPEED_RAIL",
+  "LONG_DISTANCE",
+  "METRO",
+  "NIGHT_RAIL",
+  "ODM",
+  "OTHER",
+  "RAIL",
+  "REGIONAL_FAST_RAIL",
+  "REGIONAL_RAIL",
+  "SUBURBAN",
+  "SUBWAY",
+  "TRAM",
 ];
 const GROUPS: Record<string, string[]> = {
   // Not covered by a Deutschlandticket (WESTbahn and Flix included, see correctedMode)
@@ -50,7 +66,9 @@ export function parseRules(text: string, where: string): Rule[] {
   for (const token of text.split(/[\s,]+/).filter(Boolean)) {
     const match = /^(allow|deny):(\w+)$/i.exec(token);
     const name = match?.[2].toLowerCase();
-    const modes = name && (GROUPS[name] ?? (MODES.includes(name.toUpperCase()) ? [name.toUpperCase()] : undefined));
+    const modes =
+      name &&
+      (GROUPS[name] ?? (MODES.includes(name.toUpperCase()) ? [name.toUpperCase()] : undefined));
     if (!match || !modes) {
       console.error(
         `Ignoring ${JSON.stringify(token)} in ${where}: expected allow:<mode> or deny:<mode>, with a group (${Object.keys(GROUPS).join(", ")}) or a mode (${MODES.join(", ").toLowerCase()})`,
@@ -63,7 +81,8 @@ export function parseRules(text: string, where: string): Rule[] {
 }
 
 /** Whether rules allow a mode: the last rule mentioning it decides; without one, it's allowed. */
-const allows = (rules: Rule[], mode: string) => rules.findLast((rule) => rule.modes.has(mode))?.allow ?? true;
+const allows = (rules: Rule[], mode: string) =>
+  rules.findLast((rule) => rule.modes.has(mode))?.allow ?? true;
 
 // "->", or "-[rules]>" / "-[rules]->"
 const STRETCH = /-(?:\[([^\]]*)\])?-?>/;
@@ -82,7 +101,9 @@ export function parseRoute(text: string): Route | undefined {
     const stop = (part ?? "").trim();
     // Only a stop wholly in brackets: "Hauptbahnhof (U-Bahn/Tram)" is a name
     const bracketed = /^\((.*)\)$/.exec(stop);
-    stops.push(bracketed ? { name: bracketed[1].trim(), hidden: true } : { name: stop, hidden: false });
+    stops.push(
+      bracketed ? { name: bracketed[1].trim(), hidden: true } : { name: stop, hidden: false },
+    );
   });
   if (stops.length >= 2 && stops.every((stop) => stop.name)) return { stops, rules };
   console.error(`Ignoring route ${JSON.stringify(text)}: expected "<from> -> [<via> -> …] <to>"`);
@@ -113,9 +134,18 @@ function metresBetween(a: Point, b: Point) {
  * looked up (with coordinates); rides are placed on the stretches by where they pass the via
  * stops. Without them (a lookup failed), a ride must be allowed on every stretch.
  */
-export function allowedOnRoute(journey: Journey, route: Route, routeStops: Point[] | undefined, screenRules: Rule[]) {
-  const allowedOn = (stretch: number, mode: string) => allows([...screenRules, ...route.rules[stretch]], mode);
-  if (!routeStops) return journey.legs.every((leg) => route.rules.every((_rules, stretch) => allowedOn(stretch, leg.mode)));
+export function allowedOnRoute(
+  journey: Journey,
+  route: Route,
+  routeStops: Point[] | undefined,
+  screenRules: Rule[],
+) {
+  const allowedOn = (stretch: number, mode: string) =>
+    allows([...screenRules, ...route.rules[stretch]], mode);
+  if (!routeStops)
+    return journey.legs.every((leg) =>
+      route.rules.every((_rules, stretch) => allowedOn(stretch, leg.mode)),
+    );
 
   const lastStretch = route.rules.length - 1;
   // The stretch the journey is on: it moves on at each via stop the rides pass

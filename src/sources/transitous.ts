@@ -152,14 +152,17 @@ function parseRetryAfter(header: string | null) {
 
 /** How long a failed search is kept before the next request tries again. */
 const retryDelay = (error: Error) =>
-  error instanceof TransitousError && error.status === 429 ? (error.retryAfterMs ?? RATE_LIMIT_RETRY_MS) : ERROR_RETRY_MS;
+  error instanceof TransitousError && error.status === 429
+    ? (error.retryAfterMs ?? RATE_LIMIT_RETRY_MS)
+    : ERROR_RETRY_MS;
 
 const getJson = async (url: string): Promise<unknown> => {
   const res = await fetch(url, {
     headers: { Accept: "application/json", "User-Agent": USER_AGENT },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!res.ok) throw new TransitousError(res.status, parseRetryAfter(res.headers.get("Retry-After")));
+  if (!res.ok)
+    throw new TransitousError(res.status, parseRetryAfter(res.headers.get("Retry-After")));
   return res.json();
 };
 
@@ -175,12 +178,20 @@ export const lookupStop = defineSource({
   params: paramsOf<{ name: string }>(),
   async load({ name }): Promise<Stop | null> {
     try {
-      const results = (await getJson(`${BASE_URL}/geocode?text=${encodeURIComponent(name)}`)) as TransitousPlace[];
-      if (!Array.isArray(results)) throw new Error(`Unexpected Transitous response when looking up ${name}`);
+      const results = (await getJson(
+        `${BASE_URL}/geocode?text=${encodeURIComponent(name)}`,
+      )) as TransitousPlace[];
+      if (!Array.isArray(results))
+        throw new Error(`Unexpected Transitous response when looking up ${name}`);
       const stop = results.find((r) => r.type === "STOP" && r.id);
       if (!stop) throw new Error(`Transitous knows no stop called ${name}`);
       console.log(`Transitous stop ${JSON.stringify(name)} is ${stop.name} (${stop.id})`);
-      return { id: stop.id!, name: stop.name ?? name, lat: Number(stop.lat), lon: Number(stop.lon) };
+      return {
+        id: stop.id!,
+        name: stop.name ?? name,
+        lat: Number(stop.lat),
+        lon: Number(stop.lon),
+      };
     } catch (error) {
       console.error(`Looking up Transitous stop ${name} failed: ${asError(error).message}`);
       return null;
@@ -199,7 +210,8 @@ function correctedMode(leg: LineFields) {
   if (leg.mode === "METRO" && leg.routeType === 106) return "REGIONAL_RAIL";
   const operator = leg.agencyName ?? "";
   if (operator === "WESTbahn" || /flixtrain/i.test(operator)) return "LONG_DISTANCE";
-  if (/flix/i.test(operator)) return leg.mode === "BUS" || leg.mode === "COACH" ? "COACH" : "LONG_DISTANCE";
+  if (/flix/i.test(operator))
+    return leg.mode === "BUS" || leg.mode === "COACH" ? "COACH" : "LONG_DISTANCE";
   return leg.mode;
 }
 
@@ -218,7 +230,8 @@ interface LineFields {
 function shortLineName(leg: LineFields) {
   // WESTbahn's trains are "DRF (965)" in DB's data, but "WB 965" in ÖBB's, on their trains and at stations
   if (leg.agencyName === "WESTbahn") {
-    const number = /\((\d+)\)$/.exec(leg.routeShortName ?? "")?.[1] ?? leg.tripShortName?.replace(/^0+/, "");
+    const number =
+      /\((\d+)\)$/.exec(leg.routeShortName ?? "")?.[1] ?? leg.tripShortName?.replace(/^0+/, "");
     return number ? `WB ${number}` : "WB";
   }
   return (leg.routeShortName ?? "").replace(/\s*\(.*\)$/, "").trim() || leg.mode.toLowerCase();
@@ -236,25 +249,32 @@ function lineName(leg: LineFields) {
 function toJourney(itinerary: TransitousItinerary): Journey | undefined {
   const legs = itinerary.legs
     .filter((leg) => leg.mode !== "WALK")
-    .map(
-      (leg): JourneyLeg => ({
-        line: lineName(leg),
-        mode: correctedMode(leg),
-        from: leg.from.name,
-        to: leg.to.name,
-        departure: Date.parse(leg.startTime),
-        plannedDeparture: Date.parse(leg.scheduledStartTime ?? leg.startTime),
-        arrival: Date.parse(leg.endTime),
-        plannedArrival: Date.parse(leg.scheduledEndTime ?? leg.endTime),
-        realTime: Boolean(leg.realTime),
-        cancelled: Boolean(leg.cancelled),
-        operator: leg.agencyName ?? "",
-        stops: [leg.from, ...(leg.intermediateStops ?? []), leg.to].map(({ name, lat, lon }) => ({ name, lat, lon })),
-      }),
-    );
+    .map((leg): JourneyLeg => ({
+      line: lineName(leg),
+      mode: correctedMode(leg),
+      from: leg.from.name,
+      to: leg.to.name,
+      departure: Date.parse(leg.startTime),
+      plannedDeparture: Date.parse(leg.scheduledStartTime ?? leg.startTime),
+      arrival: Date.parse(leg.endTime),
+      plannedArrival: Date.parse(leg.scheduledEndTime ?? leg.endTime),
+      realTime: Boolean(leg.realTime),
+      cancelled: Boolean(leg.cancelled),
+      operator: leg.agencyName ?? "",
+      stops: [leg.from, ...(leg.intermediateStops ?? []), leg.to].map(({ name, lat, lon }) => ({
+        name,
+        lat,
+        lon,
+      })),
+    }));
   // A journey that is only walking isn't a connection
   if (legs.length === 0) return undefined;
-  return { departure: legs[0].departure, arrival: legs.at(-1)!.arrival, changes: itinerary.transfers, legs };
+  return {
+    departure: legs[0].departure,
+    arrival: legs.at(-1)!.arrival,
+    changes: itinerary.transfers,
+    legs,
+  };
 }
 
 /**
@@ -273,7 +293,11 @@ export const loadJourneys = defineSource({
     via: [lookupStop, ({ params }) => params.via.map((name) => ({ name }))],
   },
   // On an error, the previous journeys are kept (with `error` set)
-  async load({ from: fromName, to: toName, via: viaNames }, { from, to, via }, previous): Promise<JourneysResult> {
+  async load(
+    { from: fromName, to: toName, via: viaNames },
+    { from, to, via },
+    previous,
+  ): Promise<JourneysResult> {
     const fallBack = (error: Error): JourneysResult => ({
       from: from?.name ?? previous?.from,
       to: to?.name ?? previous?.to,
@@ -292,16 +316,29 @@ export const loadJourneys = defineSource({
     // In order, comma-separated
     if (via.length > 0) query.set("via", via.map((stop) => stop!.id).join(","));
     try {
-      const data = (await getJson(`${BASE_URL}/plan?${query}`)) as { itineraries?: TransitousItinerary[] };
-      if (!Array.isArray(data.itineraries)) throw new Error("Unexpected Transitous response for a journey search");
+      const data = (await getJson(`${BASE_URL}/plan?${query}`)) as {
+        itineraries?: TransitousItinerary[];
+      };
+      if (!Array.isArray(data.itineraries))
+        throw new Error("Unexpected Transitous response for a journey search");
       const journeys = data.itineraries
         .map(toJourney)
         .filter((journey) => journey !== undefined)
         .sort((a, b) => a.departure - b.departure);
-      return { from: from!.name, to: to!.name, stops: [from!, ...via.map((stop) => stop!), to!], journeys };
+      return {
+        from: from!.name,
+        to: to!.name,
+        stops: [from!, ...via.map((stop) => stop!), to!],
+        journeys,
+      };
     } catch (error) {
-      console.error(`Searching journeys from ${from!.name} to ${to!.name} failed: ${asError(error).message}`);
-      return { ...fallBack(asError(error)), stops: previous?.stops ?? [from!, ...via.map((stop) => stop!), to!] };
+      console.error(
+        `Searching journeys from ${from!.name} to ${to!.name} failed: ${asError(error).message}`,
+      );
+      return {
+        ...fallBack(asError(error)),
+        stops: previous?.stops ?? [from!, ...via.map((stop) => stop!), to!],
+      };
     }
   },
   // A failure is kept briefly, so a rate limit isn't hit again by every request
@@ -312,7 +349,8 @@ export const loadJourneys = defineSource({
   refreshAhead: (result) => (result.error ? 0 : JOURNEY_REFRESH_AHEAD_MS),
   // Once expired, still shown (while the next search runs) until half its journeys have left:
   // departed ones are hidden anyway. Without journeys, never: an empty list says nothing about now.
-  staleUntil: ({ journeys }) => (journeys?.length ? journeys[Math.floor((journeys.length - 1) / 2)].departure : 0),
+  staleUntil: ({ journeys }) =>
+    journeys?.length ? journeys[Math.floor((journeys.length - 1) / 2)].departure : 0,
 });
 
 // Departures: up to this many per request, so the next ones on each line are usually among them
@@ -361,7 +399,9 @@ function isRailReplacement(st: TransitousStopTime) {
   const bus = st.mode === "BUS" || st.mode === "COACH";
   if (bus && RAIL_OPERATOR.test(st.agencyName ?? "")) return true;
   if (RAIL_REPLACEMENT_LINE.test(st.routeShortName ?? "")) return true;
-  return [st.routeShortName, st.routeLongName, st.headsign].some((text) => RAIL_REPLACEMENT_WORDS.test(text ?? ""));
+  return [st.routeShortName, st.routeLongName, st.headsign].some((text) =>
+    RAIL_REPLACEMENT_WORDS.test(text ?? ""),
+  );
 }
 
 /**
@@ -393,7 +433,8 @@ const TYPE_ONLY_MODES = new Set(["REGIONAL_RAIL", "REGIONAL_FAST_RAIL"]);
  * one, and the one with the more telling name ("RJ 83" rather than a bare number) is kept.
  */
 function withoutDuplicates(stopTimes: TransitousStopTime[]) {
-  const trainNumber = (st: TransitousStopTime) => /(\d+)\s*$/.exec(st.tripShortName ?? "")?.[1]?.replace(/^0+/, "");
+  const trainNumber = (st: TransitousStopTime) =>
+    /(\d+)\s*$/.exec(st.tripShortName ?? "")?.[1]?.replace(/^0+/, "");
   const kept = new Map<string, TransitousStopTime>();
   const result: TransitousStopTime[] = [];
   for (const st of stopTimes) {
@@ -438,8 +479,11 @@ export const loadDepartures = defineSource({
     if (!stop) return fallBack(new Error(`Stop ${station} not found`));
     const query = new URLSearchParams({ stopId: stop.id, n: String(DEPARTURES_PER_REQUEST) });
     try {
-      const data = (await getJson(`${BASE_URL}/stoptimes?${query}`)) as { stopTimes?: TransitousStopTime[] };
-      if (!Array.isArray(data.stopTimes)) throw new Error("Unexpected Transitous response for departures");
+      const data = (await getJson(`${BASE_URL}/stoptimes?${query}`)) as {
+        stopTimes?: TransitousStopTime[];
+      };
+      if (!Array.isArray(data.stopTimes))
+        throw new Error("Unexpected Transitous response for departures");
       const departures = withoutDuplicates(
         // Only departures: a trip ending here can't be boarded
         data.stopTimes.filter((st) => st.place.departure && st.place.pickupType !== "NOT_ALLOWED"),
@@ -449,7 +493,8 @@ export const loadDepartures = defineSource({
           const replacement = isRailReplacement(st);
           const type = replacement ? "RAIL_REPLACEMENT" : correctedMode(st);
           const name = shortLineName(st);
-          const line = replacement && (!st.routeShortName || name === st.mode.toLowerCase()) ? "SEV" : name;
+          const line =
+            replacement && (!st.routeShortName || name === st.mode.toLowerCase()) ? "SEV" : name;
           return {
             line: TYPE_ONLY_MODES.has(type) ? trainType(line) : line,
             type,

@@ -41,11 +41,20 @@ test("a screen's credits can depend on what it shows", async () => {
   const screen = defineScreen({
     inputs: { drawn: { type: "boolean", default: true } },
     ttl: () => 60,
-    credits: ({ inputs }) => (inputs.drawn ? [{ text: "© Example", url: "https://example.org/" }] : []),
+    credits: ({ inputs }) =>
+      inputs.drawn ? [{ text: "© Example", url: "https://example.org/" }] : [],
     view: () => h("div", null),
   });
-  const render = (drawn: boolean) => screen.render({ device: { username: "x", timeZone: "UTC" }, now, telemetry: undefined, inputs: { drawn } });
-  assert.deepEqual((await render(true)).credits, [{ text: "© Example", url: "https://example.org/" }]);
+  const render = (drawn: boolean) =>
+    screen.render({
+      device: { username: "x", timeZone: "UTC" },
+      now,
+      telemetry: undefined,
+      inputs: { drawn },
+    });
+  assert.deepEqual((await render(true)).credits, [
+    { text: "© Example", url: "https://example.org/" },
+  ]);
   assert.deepEqual((await render(false)).credits, []);
 });
 

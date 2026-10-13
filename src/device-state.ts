@@ -61,7 +61,8 @@ const stateOf = (device: PlaylistDevice) => {
 };
 
 /** The playlist the device shows: `default` until the screen page chooses another. */
-export const activePlaylist = (device: PlaylistDevice) => device.playlists[stateOf(device).playlist];
+export const activePlaylist = (device: PlaylistDevice) =>
+  device.playlists[stateOf(device).playlist];
 
 // The entries of the playlist the device shows
 const entriesOf = (device: PlaylistDevice) => activePlaylist(device).entries;
@@ -70,7 +71,11 @@ const entriesOf = (device: PlaylistDevice) => activePlaylist(device).entries;
 function startRounds(playlist: PlaylistEntry[]): Rounds | undefined {
   if (!isShuffled(playlist)) return undefined;
   const current = newRound(playlist);
-  return { previous: newRound(playlist, { before: current }), current, next: newRound(playlist, { after: current }) };
+  return {
+    previous: newRound(playlist, { before: current }),
+    current,
+    next: newRound(playlist, { after: current }),
+  };
 }
 
 /** The rounds the device plays: of a fixed order, the playlist's order each time. */
@@ -87,9 +92,14 @@ function roundsOf(device: PlaylistDevice): Rounds {
 // to `default`. Saved rounds that no longer fit the playlist start afresh.
 const SECTION = "playlist";
 
-const isObject = (value: unknown): value is Record<string, any> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isObject = (value: unknown): value is Record<string, any> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
-const saveEntry = (playlist: PlaylistEntry[], index: number) => ({ index, screen: playlist[index].screen, inputs: playlist[index].inputs });
+const saveEntry = (playlist: PlaylistEntry[], index: number) => ({
+  index,
+  screen: playlist[index].screen,
+  inputs: playlist[index].inputs,
+});
 
 /** A saved entry's index in the playlist: where it was if it's still there, else where it is now. */
 export function findEntry(playlist: PlaylistEntry[], saved: unknown): number | undefined {
@@ -107,17 +117,25 @@ export function findEntry(playlist: PlaylistEntry[], saved: unknown): number | u
 function restoreDevice(device: PlaylistDevice): DeviceState {
   const saved = savedState(device, SECTION);
   const name = isObject(saved) ? saved.playlist : undefined;
-  const playlist = Math.max(0, device.playlists.findIndex((p) => p.name === name));
+  const playlist = Math.max(
+    0,
+    device.playlists.findIndex((p) => p.name === name),
+  );
   return { playlist, ...restoreState(device.playlists[playlist].entries, saved) };
 }
 
 /** The place in a playlist from what was saved (anything missing or broken is left out). */
-export function restoreState(playlist: PlaylistEntry[], saved: unknown): Omit<DeviceState, "playlist"> {
+export function restoreState(
+  playlist: PlaylistEntry[],
+  saved: unknown,
+): Omit<DeviceState, "playlist"> {
   const record = isObject(saved) ? saved : {};
   const index = findEntry(playlist, record.entry);
   const old = isObject(record.rounds) ? record.rounds : {};
   const rounds = isShuffled(playlist)
-    ? fitsRound(playlist, old.previous) && fitsRound(playlist, old.current) && fitsRound(playlist, old.next)
+    ? fitsRound(playlist, old.previous) &&
+      fitsRound(playlist, old.current) &&
+      fitsRound(playlist, old.next)
       ? { previous: old.previous, current: old.current, next: old.next }
       : startRounds(playlist)
     : undefined;
@@ -130,7 +148,11 @@ export function restoreState(playlist: PlaylistEntry[], saved: unknown): Omit<De
   const checkIn = record.checkIn;
   const at = isObject(checkIn) && typeof checkIn.at === "string" ? new Date(checkIn.at) : undefined;
   if (at && !Number.isNaN(at.getTime()) && typeof checkIn?.refreshRate === "number") {
-    state.checkIn = { at, refreshRate: checkIn.refreshRate, shown: findEntry(playlist, checkIn.shown) };
+    state.checkIn = {
+      at,
+      refreshRate: checkIn.refreshRate,
+      shown: findEntry(playlist, checkIn.shown),
+    };
   }
   return state;
 }
@@ -149,7 +171,10 @@ function changed(device: PlaylistDevice) {
         at: checkIn.at,
         refreshRate: checkIn.refreshRate,
         // The default screen isn't saved: unknown after a restart
-        shown: checkIn.shown === undefined || checkIn.shown < 0 ? undefined : saveEntry(playlist, checkIn.shown),
+        shown:
+          checkIn.shown === undefined || checkIn.shown < 0
+            ? undefined
+            : saveEntry(playlist, checkIn.shown),
       },
     };
   });
@@ -166,9 +191,13 @@ const RETRY_EVALUATION_MS = 5 * 60 * 1000;
  * Which of the device's entries apply at a time, and when that may next change for each
  * (undefined: not within a day). Without any `when`, all apply, without switching time zones.
  */
-export function evaluate(device: PlaylistDevice, now: Date): { applying: boolean[]; changes: (Date | undefined)[] } {
+export function evaluate(
+  device: PlaylistDevice,
+  now: Date,
+): { applying: boolean[]; changes: (Date | undefined)[] } {
   const playlist = entriesOf(device);
-  if (!playlist.some((entry) => entry.when)) return { applying: playlist.map(() => true), changes: playlist.map(() => undefined) };
+  if (!playlist.some((entry) => entry.when))
+    return { applying: playlist.map(() => true), changes: playlist.map(() => undefined) };
   const until = new Date(now.getTime() + HORIZON_MS);
   return inTimeZone(device.timeZone, () => {
     const results = playlist.map(({ when, screen }) => {
@@ -176,11 +205,17 @@ export function evaluate(device: PlaylistDevice, now: Date): { applying: boolean
       try {
         return { applies: applies(when, now), change: nextChange(when, now, until) };
       } catch (error) {
-        console.error(`Can't tell when ${screen} applies for ${device.username}, leaving it out for now:`, error);
+        console.error(
+          `Can't tell when ${screen} applies for ${device.username}, leaving it out for now:`,
+          error,
+        );
         return { applies: false, change: new Date(now.getTime() + RETRY_EVALUATION_MS) };
       }
     });
-    return { applying: results.map((result) => result.applies), changes: results.map((result) => result.change) };
+    return {
+      applying: results.map((result) => result.applies),
+      changes: results.map((result) => result.change),
+    };
   });
 }
 
@@ -196,7 +231,8 @@ function stepApplying(device: PlaylistDevice, index: number, step: number, apply
   const at = length + current.indexOf(index);
   for (let k = 1; k <= length; k++) {
     const i = at + step * k;
-    if (applying[order[i]]) return { index: order[i], shift: i < length ? -1 : i >= 2 * length ? 1 : 0 };
+    if (applying[order[i]])
+      return { index: order[i], shift: i < length ? -1 : i >= 2 * length ? 1 : 0 };
   }
   return undefined;
 }
@@ -221,17 +257,30 @@ export function currentEntry(device: PlaylistDevice, now = new Date()) {
   const applyingIndices = roundsOf(device).current.filter((i) => applying[i]);
   if (!applying[index]) {
     const check = earliest(changes) ?? new Date(now.getTime() + HORIZON_MS);
-    return { entry: device.defaultScreen, index: -1, applying: applyingIndices, untilMove: secondsUntil(check, now) };
+    return {
+      entry: device.defaultScreen,
+      index: -1,
+      applying: applyingIndices,
+      untilMove: secondsUntil(check, now),
+    };
   }
   const entry = playlist[index];
   // Worked out together with the entry, so a move by another request later can't mix the two up
-  let durationEnd = entry.duration !== undefined && state.since ? new Date(state.since.getTime() + entry.duration * 1000) : undefined;
+  let durationEnd =
+    entry.duration !== undefined && state.since
+      ? new Date(state.since.getTime() + entry.duration * 1000)
+      : undefined;
   if (durationEnd && applyingIndices.length === 1) {
     // Alone, its duration only counts once another entry applies too
     const others = earliest(changes.filter((_change, i) => i !== index));
     durationEnd = others && (others > durationEnd ? others : durationEnd);
   }
-  return { entry, index, applying: applyingIndices, untilMove: secondsUntil(earliest([durationEnd, changes[index]]), now) };
+  return {
+    entry,
+    index,
+    applying: applyingIndices,
+    untilMove: secondsUntil(earliest([durationEnd, changes[index]]), now),
+  };
 }
 
 /**
@@ -262,15 +311,27 @@ function moveOnIfDue(device: PlaylistDevice, now: Date, applying: boolean[]) {
 }
 
 /** Shows an entry from now on, with its full duration, in the round `shift` from this one. */
-function moveTo(device: PlaylistDevice, { index, shift = 0 }: { index: number; shift?: number }, now: Date) {
+function moveTo(
+  device: PlaylistDevice,
+  { index, shift = 0 }: { index: number; shift?: number },
+  now: Date,
+) {
   const state = stateOf(device);
   const { rounds } = state;
   if (rounds && shift !== 0) {
     const playlist = entriesOf(device);
     state.rounds =
       shift > 0
-        ? { previous: rounds.current, current: rounds.next, next: newRound(playlist, { after: rounds.next }) }
-        : { previous: newRound(playlist, { before: rounds.previous }), current: rounds.previous, next: rounds.current };
+        ? {
+            previous: rounds.current,
+            current: rounds.next,
+            next: newRound(playlist, { after: rounds.next }),
+          }
+        : {
+            previous: newRound(playlist, { before: rounds.previous }),
+            current: rounds.previous,
+            next: rounds.current,
+          };
   }
   state.index = index;
   state.since = now;
@@ -286,7 +347,11 @@ export function entriesNearby(device: PlaylistDevice, now = new Date()): Playlis
   if (index < 0) return [entry];
   // The ones either side of it, in the order it plays
   const { applying } = evaluate(device, now);
-  const near = new Set([index, stepApplying(device, index, 1, applying)?.index ?? index, stepApplying(device, index, -1, applying)?.index ?? index]);
+  const near = new Set([
+    index,
+    stepApplying(device, index, 1, applying)?.index ?? index,
+    stepApplying(device, index, -1, applying)?.index ?? index,
+  ]);
   const playlist = entriesOf(device);
   return [...near].map((i) => playlist[i]);
 }
@@ -310,11 +375,16 @@ export function moveOn(device: PlaylistDevice, step: number, now = new Date()) {
  */
 export function choosePlaylist(device: PlaylistDevice, name: string, now = new Date()) {
   const state = stateOf(device);
-  const chosen = device.playlists.findIndex((playlist) => playlist.name === name && playlist.offered);
+  const chosen = device.playlists.findIndex(
+    (playlist) => playlist.name === name && playlist.offered,
+  );
   if (chosen < 0 || chosen === state.playlist) return;
   const { checkIn } = state;
   if (checkIn?.shown !== undefined && checkIn.shown >= 0) {
-    checkIn.shown = findEntry(device.playlists[chosen].entries, saveEntry(entriesOf(device), checkIn.shown));
+    checkIn.shown = findEntry(
+      device.playlists[chosen].entries,
+      saveEntry(entriesOf(device), checkIn.shown),
+    );
   }
   state.playlist = chosen;
   state.rounds = startRounds(entriesOf(device));
@@ -347,24 +417,36 @@ const RETRY_WINDOW_MS = 2 * 60 * 1000;
  * is the Wake-Time header (how long the device's previous wake took, in ms), the same in a wake's
  * retries but almost never in two wakes; without it, every request counts.
  */
-export function pressButton(device: PlaylistDevice, step: number, wake: string | undefined, at = new Date()) {
+export function pressButton(
+  device: PlaylistDevice,
+  step: number,
+  wake: string | undefined,
+  at = new Date(),
+) {
   const state = stateOf(device);
   const last = state.press;
   if (wake && last?.wake === wake && at.getTime() - last.at.getTime() < RETRY_WINDOW_MS) return;
   if (wake) state.press = { wake, at };
   const shown = state.checkIn?.shown;
   const chosen = currentEntry(device, at).index;
-  if (shown === undefined || chosen < 0 || shown === chosen || (shown < 0 && step < 0)) return moveOn(device, step, at);
+  if (shown === undefined || chosen < 0 || shown === chosen || (shown < 0 && step < 0))
+    return moveOn(device, step, at);
   // A change the device hasn't picked up yet (from the screen page, or a duration or window that
   // ended): a short press shows that entry, going back is from the device's; either gets its full
   // duration
   // (From the default screen, a short press shows the entry that started applying since)
-  const back = step < 0 ? stepApplying(device, shown, -1, evaluate(device, at).applying) : undefined;
+  const back =
+    step < 0 ? stepApplying(device, shown, -1, evaluate(device, at).applying) : undefined;
   moveTo(device, back ?? { index: chosen }, at);
 }
 
 /** Records a check-in (/api/display): the refresh_rate the device was sent, and the index of its entry. */
-export function recordCheckIn(device: PlaylistDevice, refreshRate: number, shown: number, at = new Date()) {
+export function recordCheckIn(
+  device: PlaylistDevice,
+  refreshRate: number,
+  shown: number,
+  at = new Date(),
+) {
   stateOf(device).checkIn = { at, refreshRate, shown };
   changed(device);
 }

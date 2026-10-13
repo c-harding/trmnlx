@@ -29,7 +29,9 @@ export default defineScreen({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ display: "flex", fontSize: 72, fontWeight: 700 }}>{device.username}</div>
-          <div style={{ display: "flex", ...textSize(21), color: "#555", marginTop: 12 }}>{batteryText(telemetry)}</div>
+          <div style={{ display: "flex", ...textSize(21), color: "#555", marginTop: 12 }}>
+            {batteryText(telemetry)}
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", fontSize: 120, fontWeight: 700 }}>{time}</div>

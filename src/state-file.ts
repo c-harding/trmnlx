@@ -72,7 +72,8 @@ export class StateFile {
     }
     try {
       const parsed: unknown = JSON.parse(text);
-      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not a JSON object");
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+        throw new Error("not a JSON object");
       this.data = parsed as Record<string, unknown>;
     } catch (error) {
       // A broken file is replaced at the next write
@@ -115,7 +116,11 @@ export function flushState() {
 function fileFor({ username }: StateDevice) {
   if (!stateDir) return undefined;
   let file = files.get(username);
-  if (!file) files.set(username, (file = new StateFile(join(stateDir, `${encodeURIComponent(username)}.json`))));
+  if (!file)
+    files.set(
+      username,
+      (file = new StateFile(join(stateDir, `${encodeURIComponent(username)}.json`))),
+    );
   return file;
 }
 

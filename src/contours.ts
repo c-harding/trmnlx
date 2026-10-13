@@ -30,34 +30,41 @@ export function contourInterval(zoom: number) {
  * gives each level's areas as polygons, closed along the grid's edge; those edges aren't contours,
  * so the rings are cut there into lines.
  */
-export function contourLines(grid: ArrayLike<number>, width: number, height: number, interval: number): ContourLevel[] {
+export function contourLines(
+  grid: ArrayLike<number>,
+  width: number,
+  height: number,
+  interval: number,
+): ContourLevel[] {
   let max = -Infinity;
   for (let i = 0; i < grid.length; i++) if (grid[i] > max) max = grid[i];
   const levels: number[] = [];
   for (let level = interval; level <= max; level += interval) levels.push(level);
   if (levels.length === 0) return [];
   const onEdge = ([x, y]: number[]) => x <= 0 || y <= 0 || x >= width || y >= height;
-  return contours()
-    .size([width, height])
-    // d3-contour only reads the values by index, so a typed array does without a copy
-    .thresholds(levels)(grid as number[])
-    .map((multi) => {
-      const lines: { x: number; y: number }[][] = [];
-      for (const polygon of multi.coordinates) {
-        for (const ring of polygon) {
-          let line: { x: number; y: number }[] = [];
-          for (let k = 0; k < ring.length; k++) {
-            // A step along the grid's edge ends the line there
-            if (k > 0 && onEdge(ring[k - 1]) && onEdge(ring[k])) {
-              if (line.length > 1) lines.push(line);
-              line = [];
+  return (
+    contours()
+      .size([width, height])
+      // d3-contour only reads the values by index, so a typed array does without a copy
+      .thresholds(levels)(grid as number[])
+      .map((multi) => {
+        const lines: { x: number; y: number }[][] = [];
+        for (const polygon of multi.coordinates) {
+          for (const ring of polygon) {
+            let line: { x: number; y: number }[] = [];
+            for (let k = 0; k < ring.length; k++) {
+              // A step along the grid's edge ends the line there
+              if (k > 0 && onEdge(ring[k - 1]) && onEdge(ring[k])) {
+                if (line.length > 1) lines.push(line);
+                line = [];
+              }
+              line.push({ x: ring[k][0], y: ring[k][1] });
             }
-            line.push({ x: ring[k][0], y: ring[k][1] });
+            if (line.length > 1) lines.push(line);
           }
-          if (line.length > 1) lines.push(line);
         }
-      }
-      return { level: multi.value, index: multi.value % (interval * 5) === 0, lines };
-    })
-    .filter((level) => level.lines.length > 0);
+        return { level: multi.value, index: multi.value % (interval * 5) === 0, lines };
+      })
+      .filter((level) => level.lines.length > 0)
+  );
 }

@@ -35,7 +35,13 @@ export type { Departure } from "../departure.ts";
 
 /** How MVG's transport types are drawn (see DepartureKind). */
 const kindOf = (type: string): DepartureKind =>
-  type === "BUS" || type === "REGIONAL_BUS" ? "bus" : type === "TRAM" ? "tram" : type === "SBAHN" ? "s-bahn" : "other";
+  type === "BUS" || type === "REGIONAL_BUS"
+    ? "bus"
+    : type === "TRAM"
+      ? "tram"
+      : type === "SBAHN"
+        ? "s-bahn"
+        : "other";
 
 export interface DeparturesResult {
   /** Undefined if the name couldn't be looked up */
@@ -83,7 +89,10 @@ interface MvgRoute {
 const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 
 const getJson = async (url: string): Promise<unknown> => {
-  const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await fetch(url, {
+    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`MVG answered ${res.status}`);
   return res.json();
 };
@@ -91,7 +100,9 @@ const getJson = async (url: string): Promise<unknown> => {
 async function fetchStation(name: string): Promise<Station> {
   // Not `locationTypes=STATION`: since October 2026, MVG answers that with a redirect to its home
   // page. Without it, the results include places and addresses, so stations are picked out here.
-  const results = (await getJson(`${BASE_URL}/locations?query=${encodeURIComponent(name)}`)) as MvgLocation[];
+  const results = (await getJson(
+    `${BASE_URL}/locations?query=${encodeURIComponent(name)}`,
+  )) as MvgLocation[];
   if (!Array.isArray(results)) throw new Error(`Unexpected MVG response when looking up ${name}`);
   const stations = results.filter((r) => r.type === "STATION" && r.globalId);
   // Prefer an exact match: "Silberhornstraße" also finds "Silberhorn-/Ichostraße"
@@ -143,7 +154,9 @@ async function fetchDepartures(stationId: string): Promise<Departure[]> {
       cancelled: Boolean(d.cancelled),
       // "Fährt nur bis …" first: it matters more than general incidents on the line
       messages: (d.infos ?? [])
-        .toSorted((a, b) => Number(b.type === "EARLY_TERMINATION") - Number(a.type === "EARLY_TERMINATION"))
+        .toSorted(
+          (a, b) => Number(b.type === "EARLY_TERMINATION") - Number(a.type === "EARLY_TERMINATION"),
+        )
         .map((info) => info.message)
         .filter((message): message is string => Boolean(message)),
     }))
@@ -196,7 +209,12 @@ async function fetchNextDirect(from: Station, to: Station, types: string[]): Pro
 
   const direct = routes
     .map((route) => route.parts ?? [])
-    .filter((parts) => parts.length === 1 && types.includes(parts[0].line?.transportType ?? "") && !parts[0].isCancelled)
+    .filter(
+      (parts) =>
+        parts.length === 1 &&
+        types.includes(parts[0].line?.transportType ?? "") &&
+        !parts[0].isCancelled,
+    )
     .map(([part]): Departure => {
       const planned = Date.parse(part.from.plannedDeparture);
       return {
@@ -244,7 +262,9 @@ export const loadConnections = defineSource({
     try {
       return { target: to.name, connections: await fetchNextDirect(from, to, types) };
     } catch (error) {
-      console.error(`Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`);
+      console.error(
+        `Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`,
+      );
       return fallBack(asError(error));
     }
   },

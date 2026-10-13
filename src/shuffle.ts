@@ -4,15 +4,17 @@
 import type { PlaylistEntry } from "./playlists.ts";
 
 /** Whether any of a playlist's entries are shuffled. */
-export const isShuffled = (playlist: PlaylistEntry[]) => playlist.some((entry) => entry.shuffle !== undefined);
+export const isShuffled = (playlist: PlaylistEntry[]) =>
+  playlist.some((entry) => entry.shuffle !== undefined);
 
 /** The positions each shuffled run covers: [start, end) */
 function shuffledRuns(playlist: PlaylistEntry[]): [number, number][] {
   const runs: [number, number][] = [];
-  for (let i = 0; i < playlist.length; ) {
+  for (let i = 0; i < playlist.length;) {
     const { shuffle } = playlist[i];
     let end = i + 1;
-    while (end < playlist.length && shuffle !== undefined && playlist[end].shuffle === shuffle) end++;
+    while (end < playlist.length && shuffle !== undefined && playlist[end].shuffle === shuffle)
+      end++;
     if (shuffle !== undefined && end - i > 1) runs.push([i, end]);
     i = end;
   }
@@ -42,7 +44,8 @@ export function newRound(
   }
   const last = round.length - 1;
   if (after && last > 0 && round[0] === after.at(-1)) [round[0], round[1]] = [round[1], round[0]];
-  if (before && last > 0 && round[last] === before[0]) [round[last], round[last - 1]] = [round[last - 1], round[last]];
+  if (before && last > 0 && round[last] === before[0])
+    [round[last], round[last - 1]] = [round[last - 1], round[last]];
   return round;
 }
 

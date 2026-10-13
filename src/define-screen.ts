@@ -100,15 +100,21 @@ interface CommonDefinition<I extends InputDefinitions, D> {
  * first, then `prepare` turns their results into `data` for `view` and `ttl`, which don't see the
  * dependencies themselves.
  */
-export interface DefinitionWithData<I extends InputDefinitions, Deps extends AnyDependencies, D>
-  extends CommonDefinition<I, D> {
+export interface DefinitionWithData<
+  I extends InputDefinitions,
+  Deps extends AnyDependencies,
+  D,
+> extends CommonDefinition<I, D> {
   dependencies?: Deps & CheckedDependencies<Deps, ScreenProps<I>>;
   /** Synchronous: anything that waits belongs in a source */
   prepare: (props: PrepareProps<I, Deps>) => D;
 }
 
 /** A screen without data: props.data is undefined. */
-export interface DefinitionWithoutData<I extends InputDefinitions> extends CommonDefinition<I, undefined> {
+export interface DefinitionWithoutData<I extends InputDefinitions> extends CommonDefinition<
+  I,
+  undefined
+> {
   dependencies?: undefined;
   prepare?: undefined;
 }
@@ -130,7 +136,9 @@ export interface Screen {
   inputs: InputDefinitions;
   colors: 2 | 4;
   /** The layout, how long it stays valid (s), its credits, and how long loading its data took (ms) */
-  render: (props: RenderProps) => Promise<{ layout: VNode; ttl: number; credits: Credit[]; loadMs: number }>;
+  render: (
+    props: RenderProps,
+  ) => Promise<{ layout: VNode; ttl: number; credits: Credit[]; loadMs: number }>;
   /**
    * Warms the sources a render with these props would use (see Source.warm), without rendering
    * or waiting: so it can be shown without waiting for slow data.
@@ -184,7 +192,9 @@ export function resolveInputs<I extends InputDefinitions>(
     const value = given[name];
     const valid = value !== undefined && matchesInput(definition, value);
     if (value !== undefined && !valid) {
-      console.error(`Input ${name} should be ${inputTypeName(definition)}, not ${inspect(value)}: using its default`);
+      console.error(
+        `Input ${name} should be ${inputTypeName(definition)}, not ${inspect(value)}: using its default`,
+      );
     }
     const resolved = valid ? value : definition.default;
     // A copy, so a screen changing its list can't change the default
@@ -220,10 +230,14 @@ const defined = new WeakSet<object>();
  * Defines a screen. Infers the types of its inputs from `inputs`, of its dependencies' results from
  * their sources and of `data` from `prepare`, and checks everything that uses them.
  */
-export function defineScreen<const I extends InputDefinitions = {}, const Deps extends AnyDependencies = {}, D = undefined>(
-  definition: DefinitionWithData<I, Deps, D>,
+export function defineScreen<
+  const I extends InputDefinitions = {},
+  const Deps extends AnyDependencies = {},
+  D = undefined,
+>(definition: DefinitionWithData<I, Deps, D>): Screen;
+export function defineScreen<const I extends InputDefinitions = {}>(
+  definition: DefinitionWithoutData<I>,
 ): Screen;
-export function defineScreen<const I extends InputDefinitions = {}>(definition: DefinitionWithoutData<I>): Screen;
 export function defineScreen<I extends InputDefinitions, Deps extends AnyDependencies, D>(
   definition: DefinitionWithData<I, Deps, D> | DefinitionWithoutData<I>,
 ): Screen {
@@ -239,21 +253,50 @@ export function defineScreen<I extends InputDefinitions, Deps extends AnyDepende
       };
       if (definition.prepare) {
         const start = performance.now();
-        const { dependencies, expiresAt, stale } = await resolveDependenciesWithExpiry<Deps, ScreenProps<I>>(definition.dependencies, props);
+        const { dependencies, expiresAt, stale } = await resolveDependenciesWithExpiry<
+          Deps,
+          ScreenProps<I>
+        >(definition.dependencies, props);
         const loadMs = performance.now() - start;
         const viewProps = { ...props, data: definition.prepare({ ...props, dependencies }) };
-        const credits = typeof definition.credits === "function" ? definition.credits(viewProps) : (definition.credits ?? []);
-        return { layout: definition.view(viewProps), ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now), credits, loadMs };
+        const credits =
+          typeof definition.credits === "function"
+            ? definition.credits(viewProps)
+            : (definition.credits ?? []);
+        return {
+          layout: definition.view(viewProps),
+          ttl: dataTtl(definition.ttl(viewProps), expiresAt, stale, now),
+          credits,
+          loadMs,
+        };
       }
       const viewProps = { ...props, data: undefined };
-      const credits = typeof definition.credits === "function" ? definition.credits(viewProps) : (definition.credits ?? []);
-      return { layout: definition.view(viewProps), ttl: definition.ttl(viewProps), credits, loadMs: 0 };
+      const credits =
+        typeof definition.credits === "function"
+          ? definition.credits(viewProps)
+          : (definition.credits ?? []);
+      return {
+        layout: definition.view(viewProps),
+        ttl: definition.ttl(viewProps),
+        credits,
+        loadMs: 0,
+      };
     },
     warm({ device, now, telemetry, inputs }) {
-      warmDependencies(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });
+      warmDependencies(definition.dependencies, {
+        device,
+        now,
+        telemetry,
+        inputs: resolveInputs(definition.inputs, inputs),
+      });
     },
     calls({ device, now, telemetry, inputs }) {
-      return dependencyCalls(definition.dependencies, { device, now, telemetry, inputs: resolveInputs(definition.inputs, inputs) });
+      return dependencyCalls(definition.dependencies, {
+        device,
+        now,
+        telemetry,
+        inputs: resolveInputs(definition.inputs, inputs),
+      });
     },
     label(inputs) {
       return definition.label?.({ inputs: resolveInputs(definition.inputs, inputs) }) || undefined;

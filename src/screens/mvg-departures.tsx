@@ -7,7 +7,9 @@ import { untilNextMinute } from "../time.ts";
 
 const parsePin = (text: string) => {
   const [types, ...target] = text.trim().split(/\s+/);
-  return target.length > 0 ? { types: types.toUpperCase().split("|").filter(Boolean), target: target.join(" ") } : undefined;
+  return target.length > 0
+    ? { types: types.toUpperCase().split("|").filter(Boolean), target: target.join(" ") }
+    : undefined;
 };
 
 export default defineScreen({
@@ -22,7 +24,10 @@ export default defineScreen({
     // Departures left out, one rule per line, with MVG's transport types (see HideRule in
     // components/departures.tsx); later rules win. They don't take up rows, and apply to pinned
     // connections too.
-    hide: { type: "list", default: ["BUS|REGIONAL_BUS", "show BUS 54", "TRAM -> Amalienburgstraße"] },
+    hide: {
+      type: "list",
+      default: ["BUS|REGIONAL_BUS", "show BUS 54", "TRAM -> Amalienburgstraße"],
+    },
   },
 
   // Only black and white: the firmware then uses its fast partial refresh, without the flashing of
@@ -55,7 +60,10 @@ export default defineScreen({
       ...departures,
       shown: (departures.departures ?? []).filter((d) => isShown(rules, d)),
       // Hidden connections are skipped, so a pin shows its next connection that isn't hidden
-      pins: pins.map((pin) => ({ ...pin, connections: pin.connections?.filter((c) => isShown(rules, c)) })),
+      pins: pins.map((pin) => ({
+        ...pin,
+        connections: pin.connections?.filter((c) => isShown(rules, c)),
+      })),
     };
   },
 

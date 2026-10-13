@@ -70,11 +70,15 @@ function loadDevices(): Device[] {
   try {
     text = readFileSync(DEVICES_FILE, "utf8");
   } catch {
-    fail(`Could not read ${DEVICES_FILE.pathname}: copy devices.yaml.sample to devices.yaml and run the build`);
+    fail(
+      `Could not read ${DEVICES_FILE.pathname}: copy devices.yaml.sample to devices.yaml and run the build`,
+    );
   }
 
   // Checked field by field below
-  let data: { devices?: unknown; defaultScreen?: unknown; playlists?: unknown; location?: unknown } | undefined;
+  let data:
+    | { devices?: unknown; defaultScreen?: unknown; playlists?: unknown; location?: unknown }
+    | undefined;
   try {
     data = parse(text);
   } catch (error) {
@@ -85,7 +89,9 @@ function loadDevices(): Device[] {
   }
 
   const defaultTimeZone = checkTimeZone(process.env.TZ || "UTC", "TZ");
-  const screenInputs: ScreenInputs = Object.fromEntries(Object.entries(screens).map(([name, screen]) => [name, screen.inputs]));
+  const screenInputs: ScreenInputs = Object.fromEntries(
+    Object.entries(screens).map(([name, screen]) => [name, screen.inputs]),
+  );
   const defaultScreen = orFail(() => readDefaultScreen(data!.defaultScreen, screenInputs));
   const location = orFail(() => readLocation(data!.location, "location"));
   const playlists = orFail(() => readNamedPlaylists(data!.playlists, screenInputs, location));
@@ -108,7 +114,10 @@ function loadDevices(): Device[] {
     ) {
       fail(`${where}.refreshRate must be a whole number of seconds, at least 60`);
     }
-    if (device.temperatureProfile !== undefined && !TEMPERATURE_PROFILES.includes(device.temperatureProfile)) {
+    if (
+      device.temperatureProfile !== undefined &&
+      !TEMPERATURE_PROFILES.includes(device.temperatureProfile)
+    ) {
       fail(`${where}.temperatureProfile must be one of ${TEMPERATURE_PROFILES.join(", ")}`);
     }
     if (device.fullRefresh !== undefined && typeof device.fullRefresh !== "boolean") {
@@ -125,12 +134,21 @@ function loadDevices(): Device[] {
       username: device.username,
       password: device.password,
       token: device.token,
-      timeZone: device.timezone ? checkTimeZone(device.timezone, `${where}.timezone`) : defaultTimeZone,
+      timeZone: device.timezone
+        ? checkTimeZone(device.timezone, `${where}.timezone`)
+        : defaultTimeZone,
       refreshRate: device.refreshRate ?? DEFAULT_REFRESH_RATE,
       playlists: orFail(() => {
         // Its own location for holidays, or the top-level one
         const own = readLocation(device.location, `${where}.location`);
-        return devicePlaylists(device, where, playlists, screenInputs, defaultScreen, own ?? location);
+        return devicePlaylists(
+          device,
+          where,
+          playlists,
+          screenInputs,
+          defaultScreen,
+          own ?? location,
+        );
       }),
       defaultScreen,
       temperatureProfile: device.temperatureProfile,
@@ -168,5 +186,7 @@ export const setupEnabled = process.env.SETUP_ENABLED === "1";
  */
 export const serverDomain = process.env.SERVER_DOMAIN?.replace(/\/+$/, "") || undefined;
 
-export const findDeviceByUsername = (username: string) => devices.find((device) => device.username === username);
-export const findDeviceByMac = (mac: string) => devices.find((device) => device.mac === mac.toUpperCase());
+export const findDeviceByUsername = (username: string) =>
+  devices.find((device) => device.username === username);
+export const findDeviceByMac = (mac: string) =>
+  devices.find((device) => device.mac === mac.toUpperCase());

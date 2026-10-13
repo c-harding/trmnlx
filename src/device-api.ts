@@ -20,10 +20,16 @@ export const deviceApi = express.Router();
 const baseUrl = (req: Request) => serverDomain ?? `${req.protocol}://${req.get("host")}`;
 
 // Sets res.locals.device for the routes after it
-function requireDevice(req: Request, res: Response<unknown, { device: Device }>, next: NextFunction) {
+function requireDevice(
+  req: Request,
+  res: Response<unknown, { device: Device }>,
+  next: NextFunction,
+) {
   const device = authenticateDevice(req);
   if (!device) {
-    console.log(`Rejected ${req.method} ${req.path} from ${req.get("ID") ?? "a device without ID"}`);
+    console.log(
+      `Rejected ${req.method} ${req.path} from ${req.get("ID") ?? "a device without ID"}`,
+    );
     return res.status(401).type("text").send("Unknown device or wrong token\n");
   }
   res.locals.device = device;
@@ -51,13 +57,17 @@ deviceApi.get("/api/setup", (req, res) => {
   // HTTP 200 with a body status of 404 makes the firmware show "MAC not registered" with this
   // message, and try again in 15 minutes. It keeps its Wi-Fi.
   if (!setupEnabled || !device) {
-    console.log(`Refused setup for ${mac || "a device without ID"}: ${setupEnabled ? "unknown MAC" : "setup is disabled"}`);
+    console.log(
+      `Refused setup for ${mac || "a device without ID"}: ${setupEnabled ? "unknown MAC" : "setup is disabled"}`,
+    );
     return res.json({
       status: 404,
       api_key: null,
       friendly_id: null,
       image_url: null,
-      message: setupEnabled ? `Device ${mac} is not registered` : "Setup is not enabled on this server",
+      message: setupEnabled
+        ? `Device ${mac} is not registered`
+        : "Setup is not enabled on this server",
     });
   }
   console.log(`Paired ${device.username} (${device.mac})`);
@@ -137,12 +147,16 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   });
 });
 
-deviceApi.get("/images/:name", requireDevice, (req: Request<{ name: string }>, res: DeviceResponse) => {
-  const png = images.get(res.locals.device.mac)?.get(req.params.name.replace(/\.png$/, ""));
-  if (!png) return res.status(404).type("text").send("No such image\n");
-  // The firmware needs exactly "image/png" to decode it as a PNG, and a Content-Length to stream it
-  res.type("png").set("Cache-Control", "no-store").send(png);
-});
+deviceApi.get(
+  "/images/:name",
+  requireDevice,
+  (req: Request<{ name: string }>, res: DeviceResponse) => {
+    const png = images.get(res.locals.device.mac)?.get(req.params.name.replace(/\.png$/, ""));
+    if (!png) return res.status(404).type("text").send("No such image\n");
+    // The firmware needs exactly "image/png" to decode it as a PNG, and a Content-Length to stream it
+    res.type("png").set("Cache-Control", "no-store").send(png);
+  },
+);
 
 // Sent by the firmware after a failure. Accepted and dropped for now; a live log stream comes later.
 deviceApi.post("/api/log", requireDevice, express.json({ limit: "256kb" }), (req, res) => {

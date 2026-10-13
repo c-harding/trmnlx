@@ -37,9 +37,15 @@ const MIN_DURATION = 10;
 
 /** Seconds from a duration such as `90s`, `10m`, `1h` or `1h30m`, at least MIN_DURATION. */
 export function parseDuration(value: unknown, where: string): number {
-  const match = typeof value === "string" ? /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(value.replaceAll(" ", "")) : null;
-  const seconds = match ? (Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) : 0;
-  if (!match || seconds === 0) throw new ConfigError(`${where} must be a duration such as 90s, 10m, 1h or 1h30m`);
+  const match =
+    typeof value === "string"
+      ? /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(value.replaceAll(" ", ""))
+      : null;
+  const seconds = match
+    ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)
+    : 0;
+  if (!match || seconds === 0)
+    throw new ConfigError(`${where} must be a duration such as 90s, 10m, 1h or 1h30m`);
   if (seconds < MIN_DURATION) throw new ConfigError(`${where} must be at least ${MIN_DURATION}s`);
   return seconds;
 }
@@ -73,7 +79,8 @@ function warn(message: string) {
 
 function checkFields(entry: Record<string, unknown>, allowed: string[], where: string) {
   for (const field of Object.keys(entry)) {
-    if (!allowed.includes(field)) throw new ConfigError(`${where}.${field}: unknown field (expected ${allowed.join(", ")})`);
+    if (!allowed.includes(field))
+      throw new ConfigError(`${where}.${field}: unknown field (expected ${allowed.join(", ")})`);
   }
 }
 
@@ -81,43 +88,65 @@ function checkFields(entry: Record<string, unknown>, allowed: string[], where: s
 const OTHERWISE = "otherwise";
 
 /** An entry's or include's `when`: a condition, or `otherwise`. */
-function parseWhen(value: unknown, where: string, location: Location | undefined): Condition | typeof OTHERWISE {
+function parseWhen(
+  value: unknown,
+  where: string,
+  location: Location | undefined,
+): Condition | typeof OTHERWISE {
   if (value === OTHERWISE) return OTHERWISE;
   if (typeof value !== "string" || value.trim() === "") {
-    throw new ConfigError(`${where} must be opening hours such as Mo-Fr 06:30-09:00 (OpenStreetMap's opening_hours syntax), or otherwise`);
+    throw new ConfigError(
+      `${where} must be opening hours such as Mo-Fr 06:30-09:00 (OpenStreetMap's opening_hours syntax), or otherwise`,
+    );
   }
   // Without coordinates, the library would silently use fixed times for these
   if (/sunrise|sunset|dawn|dusk/i.test(value) && location?.lat === undefined) {
-    throw new ConfigError(`${where}: sunrise, sunset, dawn and dusk need lat and lon in the location, e.g. location: { country: de, lat: 48.14, lon: 11.58 }`);
+    throw new ConfigError(
+      `${where}: sunrise, sunset, dawn and dusk need lat and lon in the location, e.g. location: { country: de, lat: 48.14, lon: 11.58 }`,
+    );
   }
   try {
     return parseHours(value, location);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.startsWith("Country code missing")) {
-      throw new ConfigError(`${where}: holidays (PH, SH) need a location, e.g. location: { country: de, state: Bayern }`);
+      throw new ConfigError(
+        `${where}: holidays (PH, SH) need a location, e.g. location: { country: de, state: Bayern }`,
+      );
     }
     if (/no holidays .* defined for country/.test(message)) {
-      throw new ConfigError(`${where}: no holidays known for this location (school holidays, SH, need its state, e.g. state: Bayern)`);
+      throw new ConfigError(
+        `${where}: no holidays known for this location (school holidays, SH, need its state, e.g. state: Bayern)`,
+      );
     }
     throw new ConfigError(`${where} isn't valid opening hours: ${message.trim()}`);
   }
 }
 
 /** A screen's inputs, checked against its definitions: known names, values of the right type. */
-function checkInputs(screen: string, inputs: unknown, where: string, screens: ScreenInputs): Record<string, unknown> {
+function checkInputs(
+  screen: string,
+  inputs: unknown,
+  where: string,
+  screens: ScreenInputs,
+): Record<string, unknown> {
   if (inputs === undefined || inputs === null) return {};
-  if (!isObject(inputs)) throw new ConfigError(`${where}.inputs must be a mapping of input names to values`);
+  if (!isObject(inputs))
+    throw new ConfigError(`${where}.inputs must be a mapping of input names to values`);
   const definitions = screens[screen];
   for (const [name, value] of Object.entries(inputs)) {
     // Own definitions only: not "constructor" and the like from the prototype
     const definition = Object.hasOwn(definitions, name) ? definitions[name] : undefined;
     if (!definition) {
       const known = Object.keys(definitions);
-      throw new ConfigError(`${where}.inputs.${name}: ${screen} has no such input (${known.length ? `it has ${known.join(", ")}` : "it has none"})`);
+      throw new ConfigError(
+        `${where}.inputs.${name}: ${screen} has no such input (${known.length ? `it has ${known.join(", ")}` : "it has none"})`,
+      );
     }
     if (!matchesInput(definition, value)) {
-      throw new ConfigError(`${where}.inputs.${name} must be ${inputTypeName(definition)}, not ${describe(value)}`);
+      throw new ConfigError(
+        `${where}.inputs.${name} must be ${inputTypeName(definition)}, not ${describe(value)}`,
+      );
     }
   }
   return inputs;
@@ -133,11 +162,17 @@ function screenEntry(
   entry: Record<string, unknown>,
   where: string,
   screens: ScreenInputs,
-  { screenAt = `${where}.screen`, fields = ["screen", "inputs", "duration", "when"], required = false } = {},
+  {
+    screenAt = `${where}.screen`,
+    fields = ["screen", "inputs", "duration", "when"],
+    required = false,
+  } = {},
 ): PlaylistEntry | undefined {
-  if (entry.playlist !== undefined) throw new ConfigError(`${where}: give either screen or playlist, not both`);
+  if (entry.playlist !== undefined)
+    throw new ConfigError(`${where}: give either screen or playlist, not both`);
   checkFields(entry, fields, where);
-  const duration = entry.duration === undefined ? undefined : parseDuration(entry.duration, `${where}.duration`);
+  const duration =
+    entry.duration === undefined ? undefined : parseDuration(entry.duration, `${where}.duration`);
   const known = Object.keys(screens).join(", ");
   if (typeof entry.screen !== "string" || (required && !Object.hasOwn(screens, entry.screen))) {
     throw new ConfigError(`${screenAt} must be one of ${known}`);
@@ -146,7 +181,10 @@ function screenEntry(
     warn(`${screenAt}: there's no screen ${entry.screen} (there are ${known}), so it's left out`);
     return undefined;
   }
-  const result: PlaylistEntry = { screen: entry.screen, inputs: checkInputs(entry.screen, entry.inputs, where, screens) };
+  const result: PlaylistEntry = {
+    screen: entry.screen,
+    inputs: checkInputs(entry.screen, entry.inputs, where, screens),
+  };
   if (duration !== undefined) result.duration = duration;
   return result;
 }
@@ -166,36 +204,62 @@ export function expandPlaylist(
   including: string[] = [],
   location?: Location,
 ): PlaylistEntry[] {
-  if (!Array.isArray(raw) || raw.length === 0) throw new ConfigError(`${where} must be a non-empty list of entries`);
+  if (!Array.isArray(raw) || raw.length === 0)
+    throw new ConfigError(`${where} must be a non-empty list of entries`);
   // Each item of the list: its entries, and its own `when`
-  const items = raw.map((entry, i): { entries: PlaylistEntry[]; when: Condition | typeof OTHERWISE } => {
-    const at = `${where}[${i}]`;
-    // A name alone includes that playlist
-    if (typeof entry === "string" || typeof entry === "number") {
-      return { entries: namedPlaylist(nameOf(entry), at, named, screens, including, location), when: ALWAYS };
-    }
-    if (!isObject(entry)) throw new ConfigError(`${at} must be a playlist's name or an entry (screen: …, or playlist: …)`);
-    const when = entry.when === undefined ? ALWAYS : parseWhen(entry.when, `${at}.when`, location);
-    if (entry.playlist === undefined || entry.screen !== undefined) {
-      const screen = screenEntry(entry, at, screens);
-      return { entries: screen ? [screen] : [], when };
-    }
-    checkFields(entry, ["playlist", "duration", "when", "shuffle"], at);
-    if (entry.shuffle !== undefined && typeof entry.shuffle !== "boolean") throw new ConfigError(`${at}.shuffle must be true or false`);
-    let entries = namedPlaylist(nameOf(entry.playlist), `${at}.playlist`, named, screens, including, location);
-    // The include's duration, for its entries without their own
-    const duration = entry.duration === undefined ? undefined : parseDuration(entry.duration, `${at}.duration`);
-    if (duration !== undefined) entries = entries.map((included) => (included.duration === undefined ? { ...included, duration } : included));
-    // Shuffled as one, also any shuffled includes inside it
-    if (entry.shuffle) entries = entries.map((included) => ({ ...included, shuffle: at }));
-    return { entries, when };
-  });
+  const items = raw.map(
+    (entry, i): { entries: PlaylistEntry[]; when: Condition | typeof OTHERWISE } => {
+      const at = `${where}[${i}]`;
+      // A name alone includes that playlist
+      if (typeof entry === "string" || typeof entry === "number") {
+        return {
+          entries: namedPlaylist(nameOf(entry), at, named, screens, including, location),
+          when: ALWAYS,
+        };
+      }
+      if (!isObject(entry))
+        throw new ConfigError(
+          `${at} must be a playlist's name or an entry (screen: …, or playlist: …)`,
+        );
+      const when =
+        entry.when === undefined ? ALWAYS : parseWhen(entry.when, `${at}.when`, location);
+      if (entry.playlist === undefined || entry.screen !== undefined) {
+        const screen = screenEntry(entry, at, screens);
+        return { entries: screen ? [screen] : [], when };
+      }
+      checkFields(entry, ["playlist", "duration", "when", "shuffle"], at);
+      if (entry.shuffle !== undefined && typeof entry.shuffle !== "boolean")
+        throw new ConfigError(`${at}.shuffle must be true or false`);
+      let entries = namedPlaylist(
+        nameOf(entry.playlist),
+        `${at}.playlist`,
+        named,
+        screens,
+        including,
+        location,
+      );
+      // The include's duration, for its entries without their own
+      const duration =
+        entry.duration === undefined ? undefined : parseDuration(entry.duration, `${at}.duration`);
+      if (duration !== undefined)
+        entries = entries.map((included) =>
+          included.duration === undefined ? { ...included, duration } : included,
+        );
+      // Shuffled as one, also any shuffled includes inside it
+      if (entry.shuffle) entries = entries.map((included) => ({ ...included, shuffle: at }));
+      return { entries, when };
+    },
+  );
   // When each item applies: its own `when`, and for an include any of its entries' conditions
   const appliesWhen = (item: (typeof items)[number]) =>
-    item.when === OTHERWISE ? undefined : all([item.when, any(item.entries.map((entry) => entry.when ?? ALWAYS))]);
+    item.when === OTHERWISE
+      ? undefined
+      : all([item.when, any(item.entries.map((entry) => entry.when ?? ALWAYS))]);
   const otherwise = not(any(items.map(appliesWhen).filter((condition) => condition !== undefined)));
   return items.flatMap(({ entries, when }) =>
-    entries.map((entry) => withWhen(entry, all([when === OTHERWISE ? otherwise : when, entry.when ?? ALWAYS]))),
+    entries.map((entry) =>
+      withWhen(entry, all([when === OTHERWISE ? otherwise : when, entry.when ?? ALWAYS])),
+    ),
   );
 }
 
@@ -219,11 +283,24 @@ function namedPlaylist(
   if (typeof name !== "string" || !Object.hasOwn(named, name)) {
     const known = Object.keys(named);
     // A screen's name where a playlist's is expected: say how to show the screen
-    const screen = typeof name === "string" && Object.hasOwn(screens, name) ? `; for the screen ${name}, write screen: ${name}` : "";
-    throw new ConfigError(`${where} must name a playlist (${known.length ? `there are ${known.join(", ")}` : "there are none under playlists"}${screen})`);
+    const screen =
+      typeof name === "string" && Object.hasOwn(screens, name)
+        ? `; for the screen ${name}, write screen: ${name}`
+        : "";
+    throw new ConfigError(
+      `${where} must name a playlist (${known.length ? `there are ${known.join(", ")}` : "there are none under playlists"}${screen})`,
+    );
   }
-  if (including.includes(name)) throw new ConfigError(`Playlists include each other: ${[...including, name].join(" → ")}`);
-  return expandPlaylist(named[name], `playlists.${name}`, named, screens, [...including, name], location);
+  if (including.includes(name))
+    throw new ConfigError(`Playlists include each other: ${[...including, name].join(" → ")}`);
+  return expandPlaylist(
+    named[name],
+    `playlists.${name}`,
+    named,
+    screens,
+    [...including, name],
+    location,
+  );
 }
 
 // For checking named playlists before knowing which devices use them, and so which location they
@@ -234,10 +311,16 @@ const CHECKING_LOCATION: Location = { country: "de", state: "Bayern", lat: 48.14
  * The top-level `playlists`: checked as a whole, so mistakes in unused ones are found too. A
  * missing location for holidays is only found with the devices using them (they may have one).
  */
-export function readNamedPlaylists(raw: unknown, screens: ScreenInputs, location?: Location): Record<string, unknown> {
+export function readNamedPlaylists(
+  raw: unknown,
+  screens: ScreenInputs,
+  location?: Location,
+): Record<string, unknown> {
   if (raw === undefined) return {};
-  if (!isObject(raw)) throw new ConfigError("playlists must be a mapping of names to lists of entries");
-  for (const name of Object.keys(raw)) namedPlaylist(name, "playlists", raw, screens, [], location ?? CHECKING_LOCATION);
+  if (!isObject(raw))
+    throw new ConfigError("playlists must be a mapping of names to lists of entries");
+  for (const name of Object.keys(raw))
+    namedPlaylist(name, "playlists", raw, screens, [], location ?? CHECKING_LOCATION);
   return raw;
 }
 
@@ -247,19 +330,30 @@ export function readNamedPlaylists(raw: unknown, screens: ScreenInputs, location
  */
 export function readLocation(raw: unknown, where: string): Location | undefined {
   if (raw === undefined) return undefined;
-  if (!isObject(raw)) throw new ConfigError(`${where} must be a country and optionally a state, e.g. { country: de, state: Bayern }`);
+  if (!isObject(raw))
+    throw new ConfigError(
+      `${where} must be a country and optionally a state, e.g. { country: de, state: Bayern }`,
+    );
   checkFields(raw, ["country", "state", "lat", "lon"], where);
   if (typeof raw.country !== "string" || !/^[a-z]{2}$/i.test(raw.country)) {
     throw new ConfigError(`${where}.country must be a two-letter country code, e.g. de or at`);
   }
   if (raw.state !== undefined && (typeof raw.state !== "string" || raw.state === "")) {
-    throw new ConfigError(`${where}.state must be a state's name as OpenStreetMap writes it, e.g. Bayern or Tirol`);
+    throw new ConfigError(
+      `${where}.state must be a state's name as OpenStreetMap writes it, e.g. Bayern or Tirol`,
+    );
   }
-  if ((raw.lat === undefined) !== (raw.lon === undefined)) throw new ConfigError(`${where}: give both lat and lon, or neither`);
-  for (const [field, limit] of [["lat", 90], ["lon", 180]] as const) {
+  if ((raw.lat === undefined) !== (raw.lon === undefined))
+    throw new ConfigError(`${where}: give both lat and lon, or neither`);
+  for (const [field, limit] of [
+    ["lat", 90],
+    ["lon", 180],
+  ] as const) {
     const value = raw[field];
     if (value !== undefined && (typeof value !== "number" || !(Math.abs(value) <= limit))) {
-      throw new ConfigError(`${where}.${field} must be a number of degrees, from -${limit} to ${limit}`);
+      throw new ConfigError(
+        `${where}.${field} must be a number of degrees, from -${limit} to ${limit}`,
+      );
     }
   }
   return {
@@ -272,15 +366,25 @@ export function readLocation(raw: unknown, where: string): Location | undefined 
 /** The top-level `defaultScreen`: a screen's name, or `screen` and `inputs` like an entry. */
 export function readDefaultScreen(raw: unknown, screens: ScreenInputs): PlaylistEntry {
   const available = Object.keys(screens);
-  if (available.length === 0) throw new ConfigError("No screens found next to the server (screens/*.js)");
+  if (available.length === 0)
+    throw new ConfigError("No screens found next to the server (screens/*.js)");
   // Without one: the placeholder if there is one, otherwise the first screen found
-  if (raw === undefined) return { screen: available.includes("placeholder") ? "placeholder" : available[0], inputs: {} };
+  if (raw === undefined)
+    return { screen: available.includes("placeholder") ? "placeholder" : available[0], inputs: {} };
   // Not planned to get `when` or `duration`: it's what shows when no entry applies
   const fields = ["screen", "inputs"];
   // It must exist: it's what shows when nothing else can
   const options = { fields, required: true };
-  if (typeof raw === "string") return screenEntry({ screen: raw }, "defaultScreen", screens, { ...options, screenAt: "defaultScreen" })!;
-  if (isObject(raw)) return screenEntry(raw, "defaultScreen", screens, { ...options, screenAt: "defaultScreen.screen" })!;
+  if (typeof raw === "string")
+    return screenEntry({ screen: raw }, "defaultScreen", screens, {
+      ...options,
+      screenAt: "defaultScreen",
+    })!;
+  if (isObject(raw))
+    return screenEntry(raw, "defaultScreen", screens, {
+      ...options,
+      screenAt: "defaultScreen.screen",
+    })!;
   throw new ConfigError(`defaultScreen must be a screen's name, or screen and inputs`);
 }
 
@@ -316,7 +420,9 @@ export function devicePlaylist(
 /** A playlist, or the default screen if every screen in it was left out. */
 function orDefault(playlist: PlaylistEntry[], where: string, defaultScreen: PlaylistEntry) {
   if (playlist.length > 0) return playlist;
-  warn(`${where}: none of its playlist's screens exist, so it shows defaultScreen (${defaultScreen.screen})`);
+  warn(
+    `${where}: none of its playlist's screens exist, so it shows defaultScreen (${defaultScreen.screen})`,
+  );
   return [defaultScreen];
 }
 
@@ -359,27 +465,42 @@ export function devicePlaylists(
     alternatives = {};
     device.playlists.forEach((name, i) => {
       if (typeof name !== "string" && typeof name !== "number") {
-        throw new ConfigError(`${at}[${i}] must be a playlist's name; for entries of its own, give playlists as a mapping of names to entries`);
+        throw new ConfigError(
+          `${at}[${i}] must be a playlist's name; for entries of its own, give playlists as a mapping of names to entries`,
+        );
       }
-      if (Object.hasOwn(alternatives, String(name))) throw new ConfigError(`${at}[${i}]: ${name} is given twice`);
+      if (Object.hasOwn(alternatives, String(name)))
+        throw new ConfigError(`${at}[${i}]: ${name} is given twice`);
       alternatives[String(name)] = String(name);
     });
   } else if (isObject(device.playlists)) {
     alternatives = device.playlists;
   } else {
-    throw new ConfigError(`${at} must be a mapping of names to playlists, or a list of playlists' names`);
+    throw new ConfigError(
+      `${at} must be a mapping of names to playlists, or a list of playlists' names`,
+    );
   }
   for (const [name, given] of Object.entries(alternatives)) {
-    if (name === DEFAULT_PLAYLIST) throw new ConfigError(`${at}: ${DEFAULT_PLAYLIST} is the name of the device's playlist (or screen), so it can't name another`);
+    if (name === DEFAULT_PLAYLIST)
+      throw new ConfigError(
+        `${at}: ${DEFAULT_PLAYLIST} is the name of the device's playlist (or screen), so it can't name another`,
+      );
     // One include's fields (`duration: 10m`, `shuffle: true`) instead of a list: of the named
     // playlist of the same name, unless they give another (`playlist: …`); nothing (`maps:`): that
     // playlist as it is
-    const raw = given === null || (isObject(given) && given.screen === undefined) ? [{ playlist: name, ...given }] : given;
+    const raw =
+      given === null || (isObject(given) && given.screen === undefined)
+        ? [{ playlist: name, ...given }]
+        : given;
     const entries =
       typeof nameOf(raw) === "string"
         ? namedPlaylist(nameOf(raw), `${at}.${name}`, named, screens, [], location)
         : expandPlaylist(raw, `${at}.${name}`, named, screens, [], location);
-    result.push({ name, entries: orDefault(entries, `${at}.${name}`, defaultScreen), offered: true });
+    result.push({
+      name,
+      entries: orDefault(entries, `${at}.${name}`, defaultScreen),
+      offered: true,
+    });
   }
   return result;
 }

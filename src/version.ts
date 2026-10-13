@@ -3,7 +3,8 @@
 // The commit the server was built from, with a * for changes not committed: set by scripts/build
 // (empty outside a git checkout), missing in tests and the dev server
 declare const BUILD_VERSION: string | undefined;
-export const version = typeof BUILD_VERSION === "string" && BUILD_VERSION !== "" ? BUILD_VERSION : undefined;
+export const version =
+  typeof BUILD_VERSION === "string" && BUILD_VERSION !== "" ? BUILD_VERSION : undefined;
 
 /**
  * Sent with every request to other services (Transitous, OpenFreeMap, MVG): the application's name,

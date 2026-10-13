@@ -2,7 +2,6 @@ import { CREDITS_SCRIPT, creditsHtml } from "./credits.ts";
 import { LOADING_MARK, loadingMarkCss } from "./loading-mark.ts";
 import { version } from "./version.ts";
 
-
 const escapeHtml = (value: unknown) =>
   String(value).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -29,7 +28,11 @@ ${error ? "<p>Wrong username or password.</p>\n" : ""}<form method="post" action
 /** The time, with the date if it isn't today (a device can be offline for days). */
 function formatTime(date: Date, now: Date, timeZone: string) {
   const day = (d: Date) => d.toLocaleDateString("en-GB", { timeZone });
-  return new Intl.DateTimeFormat("en-GB", { timeStyle: "short", ...(day(date) !== day(now) && { dateStyle: "medium" }), timeZone }).format(date);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeStyle: "short",
+    ...(day(date) !== day(now) && { dateStyle: "medium" }),
+    timeZone,
+  }).format(date);
 }
 
 /** Which playlist the device shows, where it is in it, and what it got at its last check-in. */
@@ -63,18 +66,31 @@ export interface PlaylistStatus {
  * says whether the preview is live: whether the device got this entry at its last check-in (by
  * entry, not image: the preview is rendered fresh, so its data can be newer), or when it will.
  */
-export function statusText({ playlist, screen, index, position, count, otherTimes, checkIn, now, timeZone }: PlaylistStatus) {
+export function statusText({
+  playlist,
+  screen,
+  index,
+  position,
+  count,
+  otherTimes,
+  checkIn,
+  now,
+  timeZone,
+}: PlaylistStatus) {
   const showing =
     index < 0
       ? `Showing ${screen}, the default: nothing in the playlist applies now`
       : count > 1
         ? `Showing ${screen} (${position}/${count})`
         : `Showing ${screen}`;
-  const title = otherTimes.length ? `Also in the playlist, at other times: ${otherTimes.join(", ")}` : "";
+  const title = otherTimes.length
+    ? `Also in the playlist, at other times: ${otherTimes.join(", ")}`
+    : "";
   let caption = "Preview (will be applied when device comes online):";
   if (checkIn?.shown === index) caption = "Live preview:";
   // An overdue device: it's offline, or its battery is flat
-  else if (checkIn && checkIn.next >= now) caption = `Preview (will be applied at ${formatTime(checkIn.next, now, timeZone)}):`;
+  else if (checkIn && checkIn.next >= now)
+    caption = `Preview (will be applied at ${formatTime(checkIn.next, now, timeZone)}):`;
   // Prev and Next only with something to move to
   return { playlist, showing, title, caption, canMove: index >= 0 && count > 1 };
 }
@@ -83,11 +99,17 @@ export function statusText({ playlist, screen, index, position, count, otherTime
  * The choice of playlist: when there's another to switch to. Before one is chosen, a device
  * without its own `playlist` shows the default screen, which isn't a choice of its own.
  */
-export function playlistChoice({ playlist, choices }: Pick<PlaylistStatus, "playlist" | "choices">) {
+export function playlistChoice({
+  playlist,
+  choices,
+}: Pick<PlaylistStatus, "playlist" | "choices">) {
   const offered = choices.includes(playlist);
   if (choices.length < (offered ? 2 : 1)) return "";
   const none = offered ? "" : `<option value="" selected disabled>none (default screen)</option>`;
-  const options = choices.map((choice) => `<option value="${escapeHtml(choice)}"${choice === playlist ? " selected" : ""}>${escapeHtml(choice)}</option>`);
+  const options = choices.map(
+    (choice) =>
+      `<option value="${escapeHtml(choice)}"${choice === playlist ? " selected" : ""}>${escapeHtml(choice)}</option>`,
+  );
   return `<form method="post" action="/playlist"><p><label>Playlist <select name="name" id="playlist">${none}${options.join("")}</select></label> <noscript><button>Switch</button></noscript></p></form>\n`;
 }
 

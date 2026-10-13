@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { activePlaylist, choosePlaylist, currentEntry, findEntry, restoreState } from "../src/device-state.ts";
+import {
+  activePlaylist,
+  choosePlaylist,
+  currentEntry,
+  findEntry,
+  restoreState,
+} from "../src/device-state.ts";
 import { flushState, persistTo, StateFile } from "../src/state-file.ts";
 import { restoreTelemetry } from "../src/telemetry.ts";
 
@@ -19,13 +25,19 @@ test("a state file keeps its sections, written on flush", () => {
     file.changed("playlist", () => ({ index: 1 }));
     file.changed("telemetry", () => ({ rssi: -60 }));
     file.flush();
-    assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { playlist: { index: 1 }, telemetry: { rssi: -60 } });
+    assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), {
+      playlist: { index: 1 },
+      telemetry: { rssi: -60 },
+    });
     // Read once: a section saved later replaces only itself
     const again = new StateFile(path);
     assert.deepEqual(again.saved("telemetry"), { rssi: -60 });
     again.changed("playlist", () => ({ index: 2 }));
     again.flush();
-    assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { playlist: { index: 2 }, telemetry: { rssi: -60 } });
+    assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), {
+      playlist: { index: 2 },
+      telemetry: { rssi: -60 },
+    });
   } finally {
     rmSync(dir, { recursive: true });
   }
@@ -43,13 +55,26 @@ test("a broken state file is ignored", () => {
 });
 
 test("a saved entry is found where it was, or where it moved to", () => {
-  const playlist = [entry("mvg-departures", { station: "Marienplatz" }), entry("journeys"), entry("mvg-departures", { station: "Ostbahnhof" })];
+  const playlist = [
+    entry("mvg-departures", { station: "Marienplatz" }),
+    entry("journeys"),
+    entry("mvg-departures", { station: "Ostbahnhof" }),
+  ];
   assert.equal(findEntry(playlist, { index: 2, ...playlist[2] }), 2);
   // Reordered: found by screen and inputs
   assert.equal(findEntry(playlist, { index: 0, ...playlist[2] }), 2);
-  assert.equal(findEntry(playlist, { index: 1, ...entry("mvg-departures", { station: "Marienplatz" }) }), 0);
+  assert.equal(
+    findEntry(playlist, { index: 1, ...entry("mvg-departures", { station: "Marienplatz" }) }),
+    0,
+  );
   // Inputs written in another order
-  assert.equal(findEntry([entry("journeys", { count: 3, rules: "deny:longdistance" })], { index: 0, ...entry("journeys", { rules: "deny:longdistance", count: 3 }) }), 0);
+  assert.equal(
+    findEntry([entry("journeys", { count: 3, rules: "deny:longdistance" })], {
+      index: 0,
+      ...entry("journeys", { rules: "deny:longdistance", count: 3 }),
+    }),
+    0,
+  );
   // Gone, or not an entry
   assert.equal(findEntry(playlist, { index: 0, ...entry("departures") }), undefined);
   assert.equal(findEntry(playlist, "journeys"), undefined);
@@ -60,7 +85,11 @@ test("a device's state comes back from what was saved", () => {
   const saved = JSON.parse(
     JSON.stringify({
       entry: { index: 1, ...playlist[1] },
-      checkIn: { at: new Date("2026-10-12T10:00:00Z"), refreshRate: 300, shown: { index: 0, ...playlist[0] } },
+      checkIn: {
+        at: new Date("2026-10-12T10:00:00Z"),
+        refreshRate: 300,
+        shown: { index: 0, ...playlist[0] },
+      },
     }),
   );
   assert.deepEqual(restoreState(playlist, saved), {
@@ -74,11 +103,21 @@ test("a device's state comes back from what was saved", () => {
   });
   // Nothing, or something broken, saved: the first entry
   assert.deepEqual(restoreState(playlist, undefined), { index: 0 });
-  assert.deepEqual(restoreState(playlist, { entry: 3, checkIn: { at: "yesterday" } }), { index: 0 });
+  assert.deepEqual(restoreState(playlist, { entry: 3, checkIn: { at: "yesterday" } }), {
+    index: 0,
+  });
 });
 
 test("telemetry comes back from what was saved", () => {
-  const saved = JSON.parse(JSON.stringify({ batteryVoltage: 3.9, rssi: -60, firmwareVersion: "1.6.2", charging: false, seenAt: new Date("2026-10-12T10:00:00Z") }));
+  const saved = JSON.parse(
+    JSON.stringify({
+      batteryVoltage: 3.9,
+      rssi: -60,
+      firmwareVersion: "1.6.2",
+      charging: false,
+      seenAt: new Date("2026-10-12T10:00:00Z"),
+    }),
+  );
   assert.deepEqual(restoreTelemetry(saved), {
     batteryVoltage: 3.9,
     rssi: -60,
@@ -94,15 +133,29 @@ test("telemetry comes back from what was saved", () => {
 test("when the current entry started comes back only for the same entry", () => {
   const playlist = [entry("mvg-departures"), entry("journeys")];
   const since = "2026-10-12T10:00:00.000Z";
-  assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since }), { index: 1, since: new Date(since) });
-  // Its entry moved: found there, with its start time
-  assert.deepEqual(restoreState([entry("journeys"), entry("mvg-departures")], { entry: { index: 1, ...playlist[1] }, since }), {
-    index: 0,
+  assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since }), {
+    index: 1,
     since: new Date(since),
   });
+  // Its entry moved: found there, with its start time
+  assert.deepEqual(
+    restoreState([entry("journeys"), entry("mvg-departures")], {
+      entry: { index: 1, ...playlist[1] },
+      since,
+    }),
+    {
+      index: 0,
+      since: new Date(since),
+    },
+  );
   // Its entry is gone: the first entry starts afresh
-  assert.deepEqual(restoreState([entry("placeholder")], { entry: { index: 1, ...playlist[1] }, since }), { index: 0 });
-  assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since: "soon" }), { index: 1 });
+  assert.deepEqual(
+    restoreState([entry("placeholder")], { entry: { index: 1, ...playlist[1] }, since }),
+    { index: 0 },
+  );
+  assert.deepEqual(restoreState(playlist, { entry: { index: 1, ...playlist[1] }, since: "soon" }), {
+    index: 1,
+  });
 });
 
 test("the playlist chosen comes back by name; one that's gone falls back to default", () => {
@@ -119,8 +172,16 @@ test("the playlist chosen comes back by name; one that's gone falls back to defa
       defaultScreen: entry("placeholder"),
       timeZone: "Europe/Berlin",
     });
-    writeFileSync(join(dir, "kitchen.json"), JSON.stringify({ playlist: { playlist: "travel", entry: { index: 1, ...entry("journeys") } } }));
-    writeFileSync(join(dir, "hallway.json"), JSON.stringify({ playlist: { playlist: "gone", entry: { index: 1, ...entry("journeys") } } }));
+    writeFileSync(
+      join(dir, "kitchen.json"),
+      JSON.stringify({
+        playlist: { playlist: "travel", entry: { index: 1, ...entry("journeys") } },
+      }),
+    );
+    writeFileSync(
+      join(dir, "hallway.json"),
+      JSON.stringify({ playlist: { playlist: "gone", entry: { index: 1, ...entry("journeys") } } }),
+    );
     const kitchen = device("kitchen");
     assert.equal(activePlaylist(kitchen).name, "travel");
     assert.equal(currentEntry(kitchen).index, 1);
@@ -138,9 +199,15 @@ test("the playlist chosen comes back by name; one that's gone falls back to defa
 });
 
 test("a shuffled playlist's rounds come back if they still fit, else start afresh", () => {
-  const playlist = [entry("clock"), ...["a", "b", "c"].map((title) => ({ ...entry("map", { title }), shuffle: "p[1]" }))];
+  const playlist = [
+    entry("clock"),
+    ...["a", "b", "c"].map((title) => ({ ...entry("map", { title }), shuffle: "p[1]" })),
+  ];
   const rounds = { previous: [0, 2, 1, 3], current: [0, 3, 1, 2], next: [0, 1, 3, 2] };
-  assert.deepEqual(restoreState(playlist, { entry: { index: 3, ...playlist[3] }, rounds }), { index: 3, rounds });
+  assert.deepEqual(restoreState(playlist, { entry: { index: 3, ...playlist[3] }, rounds }), {
+    index: 3,
+    rounds,
+  });
   // The clock moved: these rounds don't fit any more
   const fresh = restoreState(playlist, { rounds: { ...rounds, current: [3, 0, 1, 2] } });
   assert.notDeepEqual(fresh.rounds, rounds);

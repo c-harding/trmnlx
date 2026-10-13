@@ -5,7 +5,15 @@ import type { Departure, DepartureKind } from "../departure.ts";
 import { HEIGHT } from "../render.ts";
 import type { Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
-import { BatteryAndClock, ellipsis, Header, HEADER_GAP, HEADER_HEIGHT, PADDING_X, PADDING_Y } from "./header.tsx";
+import {
+  BatteryAndClock,
+  ellipsis,
+  Header,
+  HEADER_GAP,
+  HEADER_HEIGHT,
+  PADDING_X,
+  PADDING_Y,
+} from "./header.tsx";
 import { textSize } from "./type.ts";
 
 const ROW_HEIGHT = 38;
@@ -27,7 +35,9 @@ const LINE_MAX_WIDTH = 180;
 // towards a long label
 const LETTERS_AND_NUMBER = /^(\D*\D)\s+(\d+)$/;
 const splitNumber = (line: string) =>
-  line.length > 4 ? (LETTERS_AND_NUMBER.exec(line)?.slice(1, 3) as [string, string] | undefined) : undefined;
+  line.length > 4
+    ? (LETTERS_AND_NUMBER.exec(line)?.slice(1, 3) as [string, string] | undefined)
+    : undefined;
 const isLongLine = (line: string) => (splitNumber(line)?.[0] ?? line).length > LONG_LINE_LENGTH;
 const rowHeight = (d: Departure) =>
   d.messages.length > 0 || d.line.length > TWO_LINE_LENGTH ? NOTE_ROW_HEIGHT : ROW_HEIGHT;
@@ -47,7 +57,9 @@ function DepartureTime({ departure, timeZone }: { departure: Departure; timeZone
     <span style={{ fontWeight: 400, textDecoration: "line-through", marginRight }}>{text}</span>
   );
   // A flex container rather than a fragment, which Satori can't render
-  const row = (...children: ComponentChildren[]) => <div style={{ display: "flex", alignItems: "baseline" }}>{children}</div>;
+  const row = (...children: ComponentChildren[]) => (
+    <div style={{ display: "flex", alignItems: "baseline" }}>{children}</div>
+  );
   if (departure.cancelled) return row(struck(planned, 0));
   if (planned !== expected) return row(struck(planned), expected);
   return row(expected);
@@ -62,7 +74,14 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
   const prefix = PLAIN_PREFIXES[kind];
   const split = splitNumber(line);
   // An array rather than a fragment, which Satori can't render
-  const label = split ? [split[0], <span key="number" style={{ ...textSize(16), marginLeft: "0.25em" }}>{split[1]}</span>] : line;
+  const label = split
+    ? [
+        split[0],
+        <span key="number" style={{ ...textSize(16), marginLeft: "0.25em" }}>
+          {split[1]}
+        </span>,
+      ]
+    : line;
   const long = isLongLine(line);
   // Long labels wrap (a block of inline text), cut off with "…" after two lines
   const wrapping = long
@@ -79,12 +98,34 @@ function LineBadge({ line, kind }: { line: string; kind: DepartureKind }) {
       }
     : {};
   return (
-    <div style={{ display: "flex", minWidth: 100, maxWidth: LINE_MAX_WIDTH, flexShrink: 0, marginRight: 12 }}>
+    <div
+      style={{
+        display: "flex",
+        minWidth: 100,
+        maxWidth: LINE_MAX_WIDTH,
+        flexShrink: 0,
+        marginRight: 12,
+      }}
+    >
       {prefix ? (
         // The prefix stays beside the label, which wraps on its own in the remaining width
-        <div style={{ display: "flex", alignItems: "baseline", ...(long ? { width: LINE_MAX_WIDTH } : {}) }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            ...(long ? { width: LINE_MAX_WIDTH } : {}),
+          }}
+        >
           <span style={{ marginRight: 6, flexShrink: 0 }}>{prefix}</span>
-          <div style={{ display: "flex", alignItems: "baseline", fontWeight: 700, ...wrapping, ...(long && { flex: 1, minWidth: 0 }) }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              fontWeight: 700,
+              ...wrapping,
+              ...(long && { flex: 1, minWidth: 0 }),
+            }}
+          >
             {label}
           </div>
         </div>
@@ -133,12 +174,28 @@ function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone:
       <LineBadge line={d.line} kind={d.kind} />
       {/* Destination and time share the rest of the row: the time takes what it needs, the
           destination shrinks (and is cut off with "…") */}
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, overflow: "hidden" }}>
-        <div style={{ display: "flex", ...ellipsis, textDecoration: d.cancelled ? "line-through" : "none" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            ...ellipsis,
+            textDecoration: d.cancelled ? "line-through" : "none",
+          }}
+        >
           {d.destination}
         </div>
         {d.messages.length > 0 && (
-          <div style={{ display: "flex", ...textSize(16), ...ellipsis }}>{d.messages.join(" · ")}</div>
+          <div style={{ display: "flex", ...textSize(16), ...ellipsis }}>
+            {d.messages.join(" · ")}
+          </div>
         )}
       </div>
       <div style={{ display: "flex", flexShrink: 0, marginLeft: 16, fontWeight: 700, ...TABULAR }}>
@@ -185,11 +242,16 @@ export interface HideRule {
 export const parseHideRule = (text: string): HideRule | undefined => {
   const marker = /^(?:show\s+|!)/i.exec(text.trim())?.[0];
   const show = marker !== undefined;
-  const [departure, ...arrow] = text.trim().slice(marker?.length ?? 0).split("->");
+  const [departure, ...arrow] = text
+    .trim()
+    .slice(marker?.length ?? 0)
+    .split("->");
   const [types, line, ...extra] = departure.trim().split(/\s+/);
   const destination = arrow.join("->").trim();
   if (!types || extra.length > 0 || (arrow.length > 0 && !destination)) {
-    console.error(`Ignoring hide rule ${JSON.stringify(text)}: expected "<types> [line] [-> <destination>]"`);
+    console.error(
+      `Ignoring hide rule ${JSON.stringify(text)}: expected "<types> [line] [-> <destination>]"`,
+    );
     return undefined;
   }
   return {
@@ -241,7 +303,10 @@ export function DepartureBoard(props: {
       ? departures
           .filter(
             (other) =>
-              other.lineId === d.lineId && other.time > d.time && other.time - d.time <= NEXT_WITHIN_MS && !other.cancelled,
+              other.lineId === d.lineId &&
+              other.time > d.time &&
+              other.time - d.time <= NEXT_WITHIN_MS &&
+              !other.cancelled,
           )
           .slice(0, 2)
       : [];
@@ -301,7 +366,15 @@ export function DepartureBoard(props: {
       </Header>
 
       {rows.length === 0 && extra.length === 0 ? (
-        <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", ...textSize(32) }}>
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            ...textSize(32),
+          }}
+        >
           {/* "No departures" only on fresh data: older data that has run out says nothing about now */}
           {fresh ? "No departures" : "Departures unavailable"}
         </div>
@@ -311,7 +384,13 @@ export function DepartureBoard(props: {
             <Row key={i} d={d} next={nextOf(d)} timeZone={timeZone} />
           ))}
           {extra.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", borderTop: `${PINNED_RULE}px solid #000` }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                borderTop: `${PINNED_RULE}px solid #000`,
+              }}
+            >
               {extra.map((d, i) => (
                 <Row key={i} d={d} next={nextOf(d)} timeZone={timeZone} />
               ))}
@@ -319,7 +398,6 @@ export function DepartureBoard(props: {
           )}
         </div>
       )}
-
     </div>
   );
 }

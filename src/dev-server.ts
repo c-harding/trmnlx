@@ -19,7 +19,9 @@ const DEVICES_FILE = new URL("../devices.yaml", import.meta.url);
 const app = express();
 
 // Each screen's inputs, for generating its form fields in the browser
-const screenInputs = Object.fromEntries(Object.entries(screens).map(([name, s]) => [name, s.inputs ?? {}]));
+const screenInputs = Object.fromEntries(
+  Object.entries(screens).map(([name, s]) => [name, s.inputs ?? {}]),
+);
 // Safe inside a <script>: no "</script>" can appear in the JSON
 const screenInputsJson = JSON.stringify(screenInputs).replaceAll("<", "\\u003c");
 
@@ -56,7 +58,9 @@ body { display: flex; flex-direction: column; }
 <h1>TRMNLx screen development</h1>
 <form id="form">
 <p id="load" hidden><label>Load from <a href="/playlist" id="playlist-link">playlist</a> <select id="load-select"></select></label> <span id="load-error"></span></p>
-<p><label>Screen <select name="screen" id="screen-select">${Object.keys(screens).map((s) => `<option>${s}</option>`).join("")}</select></label></p>
+<p><label>Screen <select name="screen" id="screen-select">${Object.keys(screens)
+  .map((s) => `<option>${s}</option>`)
+  .join("")}</select></label></p>
 <details open>
 <summary>Screen settings</summary>
 <p><label>Time <input type="datetime-local" name="time" step="1"></label> (empty: now)</p>
@@ -351,13 +355,18 @@ app.get("/config", (req, res) => {
     return res.status(404).json({});
   }
   try {
-    res.json({ groups: readDevConfig(text, screenInputs, process.env.TZ || "UTC", (screen, inputs) => screens[screen]?.label(inputs)) });
+    res.json({
+      groups: readDevConfig(text, screenInputs, process.env.TZ || "UTC", (screen, inputs) =>
+        screens[screen]?.label(inputs),
+      ),
+    });
   } catch (error) {
     res.json({ error: (error as Error).message });
   }
 });
 
-const number = (value: string | undefined) => (value === undefined || value === "" ? undefined : Number(value));
+const number = (value: string | undefined) =>
+  value === undefined || value === "" ? undefined : Number(value);
 
 class InputError extends Error {}
 
@@ -372,14 +381,18 @@ function formInputs(definitions: InputDefinitions, q: Record<string, string>) {
     const text = q[`input.${name}`];
     if (text === undefined) continue;
     if (definition.type === "list") {
-      inputs[name] = text.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+      inputs[name] = text
+        .split(/\r?\n/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
     } else if (definition.type === "boolean") {
       inputs[name] = text === "true";
     } else if (text === "") {
       continue;
     } else if (definition.type === "number" || definition.type === "int") {
       inputs[name] = Number(text);
-      if (!matchesInput(definition, inputs[name])) throw new InputError(`${name} must be ${inputTypeName(definition)}`);
+      if (!matchesInput(definition, inputs[name]))
+        throw new InputError(`${name} must be ${inputTypeName(definition)}`);
     } else {
       inputs[name] = text;
     }
@@ -390,9 +403,12 @@ function formInputs(definitions: InputDefinitions, q: Record<string, string>) {
 app.get("/render", async (req, res) => {
   // Only plain values count: a repeated parameter arrives as an array
   const q = Object.fromEntries(
-    Object.entries(req.query).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    Object.entries(req.query).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
   );
-  const screen = q.screen !== undefined && Object.hasOwn(screens, q.screen) ? screens[q.screen] : undefined;
+  const screen =
+    q.screen !== undefined && Object.hasOwn(screens, q.screen) ? screens[q.screen] : undefined;
   if (!screen) return res.status(400).type("text").send(`Unknown screen ${q.screen}`);
 
   const timeZone = q.timeZone || "UTC";
@@ -402,7 +418,8 @@ app.get("/render", async (req, res) => {
     return res.status(400).type("text").send(`Unknown time zone ${timeZone}`);
   }
   const now = q.time ? new Date(q.time) : new Date();
-  if (Number.isNaN(now.getTime())) return res.status(400).type("text").send(`Invalid time ${q.time}`);
+  if (Number.isNaN(now.getTime()))
+    return res.status(400).type("text").send(`Invalid time ${q.time}`);
 
   const device = { username: q.name || "device", timeZone };
   const telemetry = {
@@ -445,6 +462,10 @@ app.use(((err, req, res, next) => {
 // "localhost" may resolve to either
 for (const host of ["127.0.0.1", "::1"]) {
   createServer(app)
-    .listen(port, host, () => console.log(`Screen development server on http://${host.includes(":") ? `[${host}]` : host}:${port}`))
+    .listen(port, host, () =>
+      console.log(
+        `Screen development server on http://${host.includes(":") ? `[${host}]` : host}:${port}`,
+      ),
+    )
     .on("error", (error) => console.error(`Not listening on ${host}: ${error.message}`));
 }

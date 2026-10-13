@@ -3,7 +3,13 @@ import express, { type ErrorRequestHandler } from "express";
 import { checkOnly, devices, serverDomain, setupEnabled, type Device } from "./config.ts";
 import { deviceApi } from "./device-api.ts";
 import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
-import { activePlaylist, choosePlaylist, currentEntry, lastCheckIn, moveOn } from "./device-state.ts";
+import {
+  activePlaylist,
+  choosePlaylist,
+  currentEntry,
+  lastCheckIn,
+  moveOn,
+} from "./device-state.ts";
 import type { MapView } from "./map-drawing.ts";
 import type { PlaylistEntry } from "./playlists.ts";
 import { renderDeviceScreen, screens, warmAtWindowChanges, warmDeviceScreens } from "./screen.ts";
@@ -26,11 +32,12 @@ persistTo(new URL("./state/", import.meta.url));
 // The views in use: what every entry's of every playlist (and default screen's) render would ask the
 // map source for
 const mapViews = devices.flatMap((device) =>
-  [...device.playlists.flatMap((playlist) => playlist.entries), device.defaultScreen].flatMap((entry) =>
-    screens[entry.screen]
-      .calls({ device, now: new Date(), telemetry: undefined, inputs: entry.inputs })
-      .filter((call) => call.source === loadMap)
-      .map((call) => call.params as MapView),
+  [...device.playlists.flatMap((playlist) => playlist.entries), device.defaultScreen].flatMap(
+    (entry) =>
+      screens[entry.screen]
+        .calls({ device, now: new Date(), telemetry: undefined, inputs: entry.inputs })
+        .filter((call) => call.source === loadMap)
+        .map((call) => call.params as MapView),
   ),
 );
 removeUnusedMaps(mapViews).catch((error) => console.error("Removing unused maps failed:", error));
@@ -74,7 +81,9 @@ function playlistStatus(device: Device): PlaylistStatus {
     index,
     position: applying.indexOf(index) + 1,
     count: applying.length,
-    otherTimes: [...new Set(playlist.entries.filter((_entry, i) => !applying.includes(i)).map(entryName))],
+    otherTimes: [
+      ...new Set(playlist.entries.filter((_entry, i) => !applying.includes(i)).map(entryName)),
+    ],
     checkIn,
     now: new Date(),
     timeZone: device.timeZone,
@@ -82,7 +91,10 @@ function playlistStatus(device: Device): PlaylistStatus {
 }
 
 // Move the device's playlist on or back, as KEY3 does; the device shows it from its next check-in
-for (const [path, step] of [["/next", 1], ["/previous", -1]] as const) {
+for (const [path, step] of [
+  ["/next", 1],
+  ["/previous", -1],
+] as const) {
   app.post(path, (req, res) => {
     const device = sessionDevice(req);
     if (!device) return res.redirect(303, "/login");
@@ -137,7 +149,8 @@ app.get("/login", (req, res) => {
 app.post("/login", express.urlencoded({ extended: false, limit: "4kb" }), (req, res) => {
   const { username, password } = req.body ?? {};
   // Repeated form fields arrive as arrays, so only plain strings count as a login attempt
-  const device = typeof username === "string" && typeof password === "string" && checkLogin(username, password);
+  const device =
+    typeof username === "string" && typeof password === "string" && checkLogin(username, password);
   if (!device) return res.redirect(303, "/login?error");
   startSession(req, res, device);
   res.redirect(303, "/");
@@ -153,13 +166,20 @@ app.use(((err, req, res, next) => {
   const status = err.status >= 400 && err.status < 500 ? err.status : 500;
   if (status === 500) console.error(err);
   if (res.headersSent) return next(err);
-  res.status(status).type("text").send(status === 500 ? "Internal error\n" : `${err.message}\n`);
+  res
+    .status(status)
+    .type("text")
+    .send(status === 500 ? "Internal error\n" : `${err.message}\n`);
 }) satisfies ErrorRequestHandler);
 
 const server = app.listen(port, () => {
   console.log(`Listening on port ${port}`);
-  if (!serverDomain) console.warn("SERVER_DOMAIN is not set: image URLs are built from each request's Host header");
-  if (setupEnabled) console.warn("SETUP_ENABLED=1: /api/setup hands out tokens to any listed MAC. Turn it off after pairing.");
+  if (!serverDomain)
+    console.warn("SERVER_DOMAIN is not set: image URLs are built from each request's Host header");
+  if (setupEnabled)
+    console.warn(
+      "SETUP_ENABLED=1: /api/setup hands out tokens to any listed MAC. Turn it off after pairing.",
+    );
 });
 
 // docker stop sends SIGTERM (node as PID 1 would otherwise ignore it until killed): end open

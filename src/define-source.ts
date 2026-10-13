@@ -46,7 +46,8 @@ export interface Fetched<T> {
  * `{ params }`): one function per field, or one function for the whole object. If that function
  * returns an array, the source is called once per entry and the dependency resolves to an array.
  */
-export type ParamsSpec<P, C> = { [K in keyof P]: (context: C) => P[K] } | ((context: C) => P | readonly P[]);
+export type ParamsSpec<P, C> =
+  { [K in keyof P]: (context: C) => P[K] } | ((context: C) => P | readonly P[]);
 
 // Any source. Its result is `unknown` rather than `any`, so a dependency whose type can't be
 // inferred shows up as an error instead of switching off the checks (params need `any`: with
@@ -56,7 +57,9 @@ export type AnyDependencies = Record<string, AnyDependency>;
 
 /** Checks each dependency's params against its source's, with C as the context. */
 export type CheckedDependencies<D, C> = {
-  [K in keyof D]: D[K] extends readonly [Source<infer P, infer T>, unknown] ? readonly [Source<P, T>, ParamsSpec<P, C>] : never;
+  [K in keyof D]: D[K] extends readonly [Source<infer P, infer T>, unknown]
+    ? readonly [Source<P, T>, ParamsSpec<P, C>]
+    : never;
 };
 
 /** The results of resolved dependencies: the source's result, or an array of them for array params. */
@@ -82,7 +85,10 @@ export async function resolveDependencies<D extends AnyDependencies, C>(
       // Typed by CheckedDependencies where the dependencies are declared; here they're erased
       const call = source as unknown as (params: unknown) => Promise<unknown>;
       const params = paramsFor(spec, context);
-      return [name, Array.isArray(params) ? await Promise.all(params.map(call)) : await call(params)] as const;
+      return [
+        name,
+        Array.isArray(params) ? await Promise.all(params.map(call)) : await call(params),
+      ] as const;
     }),
   );
   return Object.fromEntries(entries) as ResolvedDependencies<D>;
@@ -107,7 +113,10 @@ export async function resolveDependenciesWithExpiry<D extends AnyDependencies, C
         return fetched.value;
       };
       const params = paramsFor(spec, context);
-      return [name, Array.isArray(params) ? await Promise.all(params.map(fetch)) : await fetch(params)] as const;
+      return [
+        name,
+        Array.isArray(params) ? await Promise.all(params.map(fetch)) : await fetch(params),
+      ] as const;
     }),
   );
   return { dependencies: Object.fromEntries(entries) as ResolvedDependencies<D>, expiresAt, stale };
@@ -125,7 +134,10 @@ export interface SourceCall {
 }
 
 /** The calls dependencies would make with the given context: each source with its params, without calling. */
-export function dependencyCalls<C>(dependencies: AnyDependencies | undefined, context: C): SourceCall[] {
+export function dependencyCalls<C>(
+  dependencies: AnyDependencies | undefined,
+  context: C,
+): SourceCall[] {
   return Object.values(dependencies ?? {}).flatMap(([source, spec]) => {
     const params = paramsFor(spec, context);
     return (Array.isArray(params) ? params : [params]).map((each) => ({ source, params: each }));
@@ -136,7 +148,12 @@ export function dependencyCalls<C>(dependencies: AnyDependencies | undefined, co
 function paramsFor<C>(spec: unknown, context: C): unknown {
   return typeof spec === "function"
     ? (spec as (context: C) => unknown)(context)
-    : Object.fromEntries(Object.entries(spec as Record<string, (context: C) => unknown>).map(([field, get]) => [field, get(context)]));
+    : Object.fromEntries(
+        Object.entries(spec as Record<string, (context: C) => unknown>).map(([field, get]) => [
+          field,
+          get(context),
+        ]),
+      );
 }
 
 /**
@@ -215,20 +232,30 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
   // One entry per cache key, kept until restart: there are only as many as stations or routes
   const cache = new Map<string, CacheEntry<T>>();
   const maxAgeOf = (value: T) => {
-    const maxAge = typeof definition.maxAge === "function" ? definition.maxAge(value) : definition.maxAge;
+    const maxAge =
+      typeof definition.maxAge === "function" ? definition.maxAge(value) : definition.maxAge;
     // NaN means no limit, like Infinity
     return Number.isNaN(maxAge) ? Infinity : maxAge;
   };
 
   const refreshAheadOf = (value: T) =>
-    typeof definition.refreshAhead === "function" ? definition.refreshAhead(value) : (definition.refreshAhead ?? 0);
+    typeof definition.refreshAhead === "function"
+      ? definition.refreshAhead(value)
+      : (definition.refreshAhead ?? 0);
 
   const staleUntilOf = (value: T) => definition.staleUntil?.(value) ?? 0;
 
   /** Loads a result and caches it. On an error, the previous result (if any) stays until `previousExpiresAt`. */
-  async function refresh(key: string, params: P, previous: { value: T } | undefined, previousExpiresAt = 0): Promise<Loaded<T>> {
+  async function refresh(
+    key: string,
+    params: P,
+    previous: { value: T } | undefined,
+    previousExpiresAt = 0,
+  ): Promise<Loaded<T>> {
     try {
-      const dependencies = await resolveDependencies<D, { params: P }>(definition.dependencies, { params });
+      const dependencies = await resolveDependencies<D, { params: P }>(definition.dependencies, {
+        params,
+      });
       const value = await definition.load(params, dependencies, previous?.value);
       const expiresAt = Date.now() + maxAgeOf(value);
       cache.set(key, { result: { value }, expiresAt });
@@ -246,13 +273,19 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     const pending = refresh(key, params, entry?.result, entry?.expiresAt);
     cache.set(key, { result: entry?.result, expiresAt: entry?.expiresAt ?? 0, pending });
     // Nobody may wait for it: log a failure instead of leaving it unhandled
-    pending.catch((error) => console.error(`Refreshing ${definition.name} in the background failed:`, error));
+    pending.catch((error) =>
+      console.error(`Refreshing ${definition.name} in the background failed:`, error),
+    );
   }
 
-  const keyOf = (params: P) => canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
+  const keyOf = (params: P) =>
+    canonicalKey(definition.cacheKey ? definition.cacheKey(params) : params);
 
   /** A result once loaded: fresh, with its expiry. */
-  const loaded = async (pending: Promise<Loaded<T>>): Promise<Fetched<T>> => ({ ...(await pending), stale: false });
+  const loaded = async (pending: Promise<Loaded<T>>): Promise<Fetched<T>> => ({
+    ...(await pending),
+    stale: false,
+  });
 
   async function withExpiry(params: P): Promise<Fetched<T>> {
     const key = keyOf(params);
@@ -260,7 +293,8 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     const now = Date.now();
     if (entry?.result && now < entry.expiresAt) {
       // About to expire: load the next result in the background, but answer from the cache
-      if (!entry.pending && entry.expiresAt - now < refreshAheadOf(entry.result.value)) refreshInBackground(key, params, entry);
+      if (!entry.pending && entry.expiresAt - now < refreshAheadOf(entry.result.value))
+        refreshInBackground(key, params, entry);
       return { value: entry.result.value, expiresAt: entry.expiresAt, stale: false };
     }
     // Expired, but can still be shown: the same, without waiting for the next one
@@ -281,7 +315,8 @@ export function defineSource<P, T, const D extends AnyDependencies = {}>(definit
     const key = keyOf(params);
     const entry = cache.get(key);
     if (entry?.pending) return;
-    if (entry?.result && Date.now() < Math.max(entry.expiresAt, staleUntilOf(entry.result.value))) return;
+    if (entry?.result && Date.now() < Math.max(entry.expiresAt, staleUntilOf(entry.result.value)))
+      return;
     refreshInBackground(key, params, entry);
   }
 

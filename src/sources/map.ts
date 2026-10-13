@@ -10,7 +10,14 @@ import sharp from "sharp";
 import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
 import { fourGrayPng } from "../four-grays.ts";
 import { contourInterval, contourLines } from "../contours.ts";
-import { buildMapSvg, STYLE_VERSION, tilesFor, type ContourLines, type MapView, type PlacedTile } from "../map-drawing.ts";
+import {
+  buildMapSvg,
+  STYLE_VERSION,
+  tilesFor,
+  type ContourLines,
+  type MapView,
+  type PlacedTile,
+} from "../map-drawing.ts";
 import { stateDirectory } from "../state-file.ts";
 import { loadTiles, TOTAL_TIMEOUT_MS } from "./openfreemap.ts";
 import { loadElevations, TERRAIN_TILE_SIZE } from "./terrain-tiles.ts";
@@ -44,7 +51,9 @@ export interface MapResult {
 function cacheFile(view: MapView) {
   const dir = stateDirectory();
   if (!dir) return undefined;
-  const hash = createHash("sha256").update(canonicalKey({ ...view, style: STYLE_VERSION })).digest("hex");
+  const hash = createHash("sha256")
+    .update(canonicalKey({ ...view, style: STYLE_VERSION }))
+    .digest("hex");
   return join(dir, "maps", `${hash.slice(0, 20)}.png`);
 }
 
@@ -55,7 +64,8 @@ async function readCached(file: string | undefined, view: MapView) {
   try {
     png = await readFile(file);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`Can't read ${file}: ${(error as Error).message}`);
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      console.error(`Can't read ${file}: ${(error as Error).message}`);
     return undefined;
   }
   try {
@@ -123,7 +133,9 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
     await writeCached(file, png);
     return { png };
   } catch (error) {
-    console.error(`Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`);
+    console.error(
+      `Drawing the map at ${view.lat}, ${view.lon} failed: ${(error as Error).message}`,
+    );
     return { error: (error as Error).message };
   }
 }
@@ -133,11 +145,17 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
  * longitude, so it can span 180°; corners without a tile, as they don't reach the map, at sea level,
  * so their edges' lines are off the map), traced every view.contourInterval metres, or by its zoom.
  */
-function traceContours(view: MapView, tiles: PlacedTile[], elevations: Float32Array[]): ContourLines {
+function traceContours(
+  view: MapView,
+  tiles: PlacedTile[],
+  elevations: Float32Array[],
+): ContourLines {
   const z = tiles[0]?.z ?? 0;
   const count = 2 ** z;
   const centreColumn = ((view.lon + 180) / 360) * count;
-  const columns = tiles.map((tile) => tile.x + count * Math.round((centreColumn - tile.x - 0.5) / count));
+  const columns = tiles.map(
+    (tile) => tile.x + count * Math.round((centreColumn - tile.x - 0.5) / count),
+  );
   const left = Math.min(...columns);
   const top = Math.min(...tiles.map((tile) => tile.y));
   const across = Math.max(...columns) - left + 1;
@@ -148,16 +166,26 @@ function traceContours(view: MapView, tiles: PlacedTile[], elevations: Float32Ar
     const x0 = (columns[i] - left) * TERRAIN_TILE_SIZE;
     const y0 = (tile.y - top) * TERRAIN_TILE_SIZE;
     for (let row = 0; row < TERRAIN_TILE_SIZE; row++) {
-      grid.set(elevations[i].subarray(row * TERRAIN_TILE_SIZE, (row + 1) * TERRAIN_TILE_SIZE), (y0 + row) * width + x0);
+      grid.set(
+        elevations[i].subarray(row * TERRAIN_TILE_SIZE, (row + 1) * TERRAIN_TILE_SIZE),
+        (y0 + row) * width + x0,
+      );
     }
   });
-  const levels = contourLines(grid, width, down * TERRAIN_TILE_SIZE, view.contourInterval ?? contourInterval(view.zoom));
+  const levels = contourLines(
+    grid,
+    width,
+    down * TERRAIN_TILE_SIZE,
+    view.contourInterval ?? contourInterval(view.zoom),
+  );
   return {
     z,
     levels: levels.map(({ level, index, lines }) => ({
       level,
       index,
-      lines: lines.map((line) => line.map((p) => ({ x: left + p.x / TERRAIN_TILE_SIZE, y: top + p.y / TERRAIN_TILE_SIZE }))),
+      lines: lines.map((line) =>
+        line.map((p) => ({ x: left + p.x / TERRAIN_TILE_SIZE, y: top + p.y / TERRAIN_TILE_SIZE })),
+      ),
     })),
   };
 }
@@ -175,12 +203,22 @@ export async function removeUnusedMaps(views: MapView[]) {
   try {
     files = await readdir(join(dir, "maps"));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`Can't list saved maps: ${(error as Error).message}`);
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      console.error(`Can't list saved maps: ${(error as Error).message}`);
     return;
   }
   // Leftover temporary files too (a write interrupted by a crash), but not one of a map in use: it may
   // be being drawn right now, by warming at startup
-  const unused = files.filter((file) => (file.endsWith(".png") || file.endsWith(".png.tmp")) && !keep.has(file.replace(/\.tmp$/, "")));
-  await Promise.all(unused.map((file) => unlink(join(dir, "maps", file)).catch((error) => console.error(`Can't delete ${file}: ${error.message}`))));
+  const unused = files.filter(
+    (file) =>
+      (file.endsWith(".png") || file.endsWith(".png.tmp")) && !keep.has(file.replace(/\.tmp$/, "")),
+  );
+  await Promise.all(
+    unused.map((file) =>
+      unlink(join(dir, "maps", file)).catch((error) =>
+        console.error(`Can't delete ${file}: ${error.message}`),
+      ),
+    ),
+  );
   if (unused.length) console.log(`Deleted ${unused.length} saved map(s) no longer in use`);
 }

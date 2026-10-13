@@ -116,7 +116,10 @@ export function projection(view: MapView): Projection {
       // 1 at the centre, growing away from it; the far side of the Earth (where it's infinite) is
       // never in a map's tiles, but kept finite anyway
       const k = 2 / Math.max(1e-9, 1 + sin0 * sin + cos0 * cos * cosDLon);
-      return { x: cx + r * k * cos * Math.sin(dLon), y: cy - r * k * (cos0 * sin - sin0 * cos * cosDLon) };
+      return {
+        x: cx + r * k * cos * Math.sin(dLon),
+        y: cy - r * k * (cos0 * sin - sin0 * cos * cosDLon),
+      };
     },
     toLatLon(x, y) {
       const px = (x - cx) / r;
@@ -160,7 +163,10 @@ export function tilesFor(view: MapView): PlacedTile[] {
   for (let x = 0; x < view.width; x += 20) border.push({ x, y: 0 }, { x, y: view.height });
   for (let y = 0; y < view.height; y += 20) border.push({ x: 0, y }, { x: view.width, y });
   border.push({ x: view.width, y: view.height });
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity;
   for (const point of border) {
     const { lat, lon } = map.toLatLon(point.x, point.y);
     // The longitude within 180° of the view's, so columns run on across the antimeridian
@@ -172,7 +178,8 @@ export function tilesFor(view: MapView): PlacedTile[] {
     maxY = Math.max(maxY, world.y / TILE_SIZE);
   }
   // A pole in the map: its whole cap, all the way round
-  const inMap = ({ x, y }: { x: number; y: number }) => x >= 0 && x <= view.width && y >= 0 && y <= view.height;
+  const inMap = ({ x, y }: { x: number; y: number }) =>
+    x >= 0 && x <= view.width && y >= 0 && y <= view.height;
   const north = inMap(map.toPixel(90, view.lon));
   const south = inMap(map.toPixel(-90, view.lon));
   if (north) minY = 0;
@@ -186,7 +193,9 @@ export function tilesFor(view: MapView): PlacedTile[] {
       const key = `${tile.x}/${tile.y}`;
       if (tiles.has(key)) continue;
       // Its corners and edges' middles on the map: kept if their extent reaches it
-      const points = [0, 0.5, 1].flatMap((u) => [0, 0.5, 1].map((v) => tileLatLon(tile, { x: u, y: v })));
+      const points = [0, 0.5, 1].flatMap((u) =>
+        [0, 0.5, 1].map((v) => tileLatLon(tile, { x: u, y: v })),
+      );
       const pixels = points.map(({ lat, lon }) => map.toPixel(lat, lon));
       const xs = pixels.map((p) => p.x);
       const ys = pixels.map((p) => p.y);
@@ -206,14 +215,18 @@ const AEROWAY_WIDTHS: Record<string, { metres: number; min: number }> = {
 };
 
 /** Metres per pixel at a view's centre (Web Mercator). */
-const metresPerPixel = (view: MapView) => (40_075_016.686 * Math.cos((view.lat * Math.PI) / 180)) / (TILE_SIZE * 2 ** view.zoom);
+const metresPerPixel = (view: MapView) =>
+  (40_075_016.686 * Math.cos((view.lat * Math.PI) / 180)) / (TILE_SIZE * 2 ** view.zoom);
 
 /**
  * How a line is drawn, with its width in pixels, or undefined if it isn't. Tunnels are left out, as
  * on printed maps, and so are ferries, lifts, roads under construction and roads closed to the
  * public that aren't streets (e.g. an airport's or a factory's own).
  */
-function lineStyle({ layer, properties }: TileFeature, view: MapView): { color: string; width: number } | undefined {
+function lineStyle(
+  { layer, properties }: TileFeature,
+  view: MapView,
+): { color: string; width: number } | undefined {
   if (properties.brunnel === "tunnel") return undefined;
   if (layer === "aeroway") {
     const size = AEROWAY_WIDTHS[String(properties.class)];
@@ -224,28 +237,42 @@ function lineStyle({ layer, properties }: TileFeature, view: MapView): { color: 
 }
 
 /** How a road, railway or waterway is drawn at zoom 14 (widths in pixels), or undefined if it isn't. */
-function scaledLineStyle(layer: TileFeature["layer"], properties: TileFeature["properties"], zoom: number) {
+function scaledLineStyle(
+  layer: TileFeature["layer"],
+  properties: TileFeature["properties"],
+  zoom: number,
+) {
   if (layer === "waterway") {
-    const width = ({ river: 2, canal: 1.5, stream: 0.75 } as Record<string, number>)[String(properties.class)];
+    const width = ({ river: 2, canal: 1.5, stream: 0.75 } as Record<string, number>)[
+      String(properties.class)
+    ];
     return width ? { color: WATER, width } : undefined;
   }
   if (layer !== "transportation") return undefined;
   // Closed to the public, e.g. an airport's perimeter road: on a map of the streets, only fragments
   // that lead nowhere
-  if (properties.access === "no" && ["service", "track", "path"].includes(String(properties.class))) return undefined;
+  if (properties.access === "no" && ["service", "track", "path"].includes(String(properties.class)))
+    return undefined;
   // Pedestrian streets (e.g. a city's old town) are paths in OpenMapTiles, but streets on a map
   if (properties.subclass === "pedestrian") return { color: INK, width: 0.75 };
   // Railways (trains, and transit: trams, light rail, metros above ground) dark gray. Sidings, yards
   // and crossovers thinner than running lines, so a station's tracks don't run together into one
   // band further out.
   if (properties.class === "rail" || properties.class === "transit") {
-    return { color: RAIL, width: properties.service ? 0.75 : properties.class === "rail" ? 1.5 : 1 };
+    return {
+      color: RAIL,
+      width: properties.service ? 0.75 : properties.class === "rail" ? 1.5 : 1,
+    };
   }
   // What the road is: further out, OpenMapTiles files some countries' main roads under a higher class,
   // marking them with their network (e.g. Britain's trunk roads as "motorway" with "gb-trunk" at
   // zoom 5), so a network's kind counts over the class
   const network = String(properties.network ?? "");
-  const kind = network.endsWith("-trunk") ? "trunk" : network.endsWith("-primary") ? "primary" : String(properties.class);
+  const kind = network.endsWith("-trunk")
+    ? "trunk"
+    : network.endsWith("-primary")
+      ? "primary"
+      : String(properties.class);
   const width = (
     {
       motorway: 3,
@@ -281,7 +308,8 @@ function densify(points: TilePoint[]): TilePoint[] {
     const a = points[i - 1];
     const b = points[i];
     const parts = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / MAX_SEGMENT);
-    for (let j = 1; j < parts; j++) result.push({ x: a.x + ((b.x - a.x) * j) / parts, y: a.y + ((b.y - a.y) * j) / parts });
+    for (let j = 1; j < parts; j++)
+      result.push({ x: a.x + ((b.x - a.x) * j) / parts, y: a.y + ((b.y - a.y) * j) / parts });
     result.push(b);
   }
   return result;
@@ -296,10 +324,15 @@ const short = (n: number) => String(Math.round(n * 10) / 10);
  * black. Lines of the same style are one path, and features outside the view are left out, so it
  * stays small however busy the map.
  */
-export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: TileFeature[] }[], contourLines?: ContourLines) {
+export function buildMapSvg(
+  view: MapView,
+  tiles: { tile: PlacedTile; features: TileFeature[] }[],
+  contourLines?: ContourLines,
+) {
   const map = projection(view);
   // A contours map has water only, from the tiles
-  const drawn = (feature: TileFeature) => view.style !== "contours" || feature.layer === "water" || feature.layer === "waterway";
+  const drawn = (feature: TileFeature) =>
+    view.style !== "contours" || feature.layer === "water" || feature.layer === "waterway";
   const water: string[] = [];
   // Airports' aprons, filled like their runways
   const aprons: string[] = [];
@@ -316,14 +349,22 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
       const ys = pixels.map((p) => p.y);
       if (Math.max(...xs) < -MARGIN || Math.min(...xs) > view.width + MARGIN) return undefined;
       if (Math.max(...ys) < -MARGIN || Math.min(...ys) > view.height + MARGIN) return undefined;
-      return xs.map((x, i) => `${i === 0 ? "M" : "L"}${short(x)} ${short(ys[i])}`).join("") + (close ? "Z" : "");
+      return (
+        xs.map((x, i) => `${i === 0 ? "M" : "L"}${short(x)} ${short(ys[i])}`).join("") +
+        (close ? "Z" : "")
+      );
     };
 
     for (const feature of features) {
       if (!drawn(feature)) continue;
       let area: string[] | undefined;
       if (feature.type === 3 && feature.layer === "water") area = water;
-      else if (feature.type === 3 && feature.layer === "aeroway" && feature.properties.class === "apron") area = aprons;
+      else if (
+        feature.type === 3 &&
+        feature.layer === "aeroway" &&
+        feature.properties.class === "apron"
+      )
+        area = aprons;
       if (area) {
         if (feature.properties.brunnel === "tunnel") continue;
         // One path for all water (and one for all aprons): holes (islands) are rings the other way
@@ -362,21 +403,29 @@ export function buildMapSvg(view: MapView, tiles: { tile: PlacedTile; features: 
       const ys = pixels.map((p) => p.y);
       if (Math.max(...xs) < -MARGIN || Math.min(...xs) > view.width + MARGIN) continue;
       if (Math.max(...ys) < -MARGIN || Math.min(...ys) > view.height + MARGIN) continue;
-      (index ? contours.index : contours.plain).push(xs.map((x, i) => `${i === 0 ? "M" : "L"}${short(x)} ${short(ys[i])}`).join(""));
+      (index ? contours.index : contours.plain).push(
+        xs.map((x, i) => `${i === 0 ? "M" : "L"}${short(x)} ${short(ys[i])}`).join(""),
+      );
     }
   }
   const contourPaths = [
     [contours.plain, RAIL],
     [contours.index, INK],
   ].flatMap(([d, color]) =>
-    d.length > 0 ? [`<path d="${(d as string[]).join("")}" fill="none" stroke="${color}" stroke-width="1" stroke-linejoin="round" shape-rendering="crispEdges"/>`] : [],
+    d.length > 0
+      ? [
+          `<path d="${(d as string[]).join("")}" fill="none" stroke="${color}" stroke-width="1" stroke-linejoin="round" shape-rendering="crispEdges"/>`,
+        ]
+      : [],
   );
 
   // By colour (see COLOR_ORDER), then thin lines first, so major roads are drawn over the minor
   // ones they cross
   const strokes = [...lines.values()]
     .filter((group) => group.d.length > 0)
-    .sort((a, b) => COLOR_ORDER.indexOf(a.color) - COLOR_ORDER.indexOf(b.color) || a.width - b.width)
+    .sort(
+      (a, b) => COLOR_ORDER.indexOf(a.color) - COLOR_ORDER.indexOf(b.color) || a.width - b.width,
+    )
     .map(({ color, width, d }) => {
       // A thin light gray line, anti-aliased, would be mostly lighter pixels, which the display's
       // four grays round to white or light gray by how much of each the line covers: dotted. So

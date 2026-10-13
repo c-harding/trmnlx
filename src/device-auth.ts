@@ -10,10 +10,14 @@ import { safeEqual, sha256 } from "./crypto.ts";
  */
 export const deviceToken = (device: Device) =>
   device.token ??
-  createHmac("sha256", tokenSecret).update(`device-token\n${device.mac}`).digest("base64url").slice(0, 22);
+  createHmac("sha256", tokenSecret)
+    .update(`device-token\n${device.mac}`)
+    .digest("base64url")
+    .slice(0, 22);
 
 /** A short code the device shows on its screen while pairing. Not secret. */
-export const friendlyId = (device: Device) => sha256(device.mac).toString("hex").slice(0, 6).toUpperCase();
+export const friendlyId = (device: Device) =>
+  sha256(device.mac).toString("hex").slice(0, 6).toUpperCase();
 
 /**
  * The device sending this request, identified by its ID header (MAC) and checked against its

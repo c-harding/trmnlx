@@ -4,7 +4,8 @@ import sharp, { type Sharp } from "sharp";
 
 /** The display's four grays: black, dark gray, light gray, white (as #000, #555, #aaa, #fff). */
 export const LEVELS = [0, 85, 170, 255];
-const nearest = (gray: number) => LEVELS.reduce((a, b) => (Math.abs(b - gray) < Math.abs(a - gray) ? b : a));
+const nearest = (gray: number) =>
+  LEVELS.reduce((a, b) => (Math.abs(b - gray) < Math.abs(a - gray) ? b : a));
 
 /**
  * An image as a palette PNG of the display's four grays (LEVELS), the same for every image, so a
@@ -16,7 +17,11 @@ const nearest = (gray: number) => LEVELS.reduce((a, b) => (Math.abs(b - gray) < 
  * whichever grays an image would otherwise get, which could leave black specks on a thin gray line).
  */
 export async function fourGrayPng(image: Sharp) {
-  const { data: source, info } = await image.grayscale().extractChannel(0).raw().toBuffer({ resolveWithObject: true });
+  const { data: source, info } = await image
+    .grayscale()
+    .extractChannel(0)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
   const { width, height } = info;
   const out = Buffer.alloc(width * height);
   const error = new Float32Array(width * height);
@@ -46,5 +51,7 @@ export async function fourGrayPng(image: Sharp) {
     }
   }
   // Only the four levels, so the palette is exactly them and there's nothing more to dither
-  return sharp(out, { raw: { width, height, channels: 1 } }).png({ palette: true, colours: 4, dither: 0, compressionLevel: 9 }).toBuffer();
+  return sharp(out, { raw: { width, height, channels: 1 } })
+    .png({ palette: true, colours: 4, dither: 0, compressionLevel: 9 })
+    .toBuffer();
 }

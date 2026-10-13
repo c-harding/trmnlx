@@ -22,7 +22,8 @@ export function restoreTelemetry(saved: unknown): Telemetry | undefined {
   const record = saved as Record<string, unknown>;
   const seenAt = typeof record.seenAt === "string" ? new Date(record.seenAt) : undefined;
   if (!seenAt || Number.isNaN(seenAt.getTime())) return undefined;
-  const ofType = <T>(value: unknown, type: string) => (typeof value === type ? (value as T) : undefined);
+  const ofType = <T>(value: unknown, type: string) =>
+    typeof value === type ? (value as T) : undefined;
   return {
     batteryVoltage: ofType(record.batteryVoltage, "number"),
     rssi: ofType(record.rssi, "number"),
@@ -33,7 +34,8 @@ export function restoreTelemetry(saved: unknown): Telemetry | undefined {
   };
 }
 
-const number = (value: string | undefined) => (value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : Number(value));
+const number = (value: string | undefined) =>
+  value == null || value === "" || !Number.isFinite(Number(value)) ? undefined : Number(value);
 
 /** Stores the readings from the headers of a device's /api/display request. */
 export function recordTelemetry(device: StateDevice, req: Request) {

@@ -17,7 +17,9 @@ export const Paired = () => (
     }}
   >
     <div style={{ display: "flex", fontSize: 72, fontWeight: 700 }}>Paired</div>
-    <div style={{ display: "flex", fontSize: 32, color: "#555", marginTop: 16 }}>The first screen follows shortly</div>
+    <div style={{ display: "flex", fontSize: 32, color: "#555", marginTop: 16 }}>
+      The first screen follows shortly
+    </div>
   </div>
 );
 

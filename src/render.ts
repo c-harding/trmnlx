@@ -30,10 +30,12 @@ const loadFont = async (name: string, file: string, weight: FontWeight): Promise
 });
 
 const fonts = await Promise.all([
-  ...["Noto Sans", "Noto Sans Georgian", "Noto Sans Armenian", "Noto Sans Symbols"].flatMap((name) => [
-    loadFont(name, `${name.replaceAll(" ", "")}-Regular.ttf`, 400),
-    loadFont(name, `${name.replaceAll(" ", "")}-Bold.ttf`, 700),
-  ]),
+  ...["Noto Sans", "Noto Sans Georgian", "Noto Sans Armenian", "Noto Sans Symbols"].flatMap(
+    (name) => [
+      loadFont(name, `${name.replaceAll(" ", "")}-Regular.ttf`, 400),
+      loadFont(name, `${name.replaceAll(" ", "")}-Bold.ttf`, 700),
+    ],
+  ),
   ...[12, 16, 21].flatMap((size) => [
     loadFont(`TRMNL${size}`, `TRMNL${size}-Regular.ttf`, 400),
     loadFont(`TRMNL${size}`, `TRMNL${size}-Bold.ttf`, 700),
@@ -53,7 +55,11 @@ export async function renderPng(layout: VNode, { colors = 4 }: { colors?: 2 | 4 
   const svg = await satori(layout, { width: WIDTH, height: HEIGHT, fonts });
   const image = sharp(Buffer.from(svg)).grayscale();
   if (colors === 2) {
-    const { data, info } = await image.threshold(128).extractChannel(0).raw().toBuffer({ resolveWithObject: true });
+    const { data, info } = await image
+      .threshold(128)
+      .extractChannel(0)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
     return encodePng1Bit(data, info.width, info.height);
   }
   return fourGrayPng(image);
