@@ -9,7 +9,7 @@ import { basename, join } from "node:path";
 import sharp from "sharp";
 import { canonicalKey, defineSource, paramsOf } from "../define-source.ts";
 import { fourGrayPng } from "../four-grays.ts";
-import { contourInterval, contourLines } from "../contours.ts";
+import { contourInterval, contourLines, slopeInterval } from "../contours.ts";
 import {
   buildMapSvg,
   STYLE_VERSION,
@@ -127,7 +127,11 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
     // Reduced to 4 grays: a fifth of the size, and less to decode at every render
     const png = await fourGrayPng(sharp(Buffer.from(svg)));
     console.log(
-      `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom}) from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
+      `Drew the map at ${view.lat}, ${view.lon} (zoom ${view.zoom})` +
+        (contours
+          ? `, contours every ${contours.interval} m${view.contourInterval ? " (set)" : ""},`
+          : "") +
+        ` from ${tiles.length} tiles in ${Date.now() - started} ms: ` +
         `${Math.round(svg.length / 1024)} KB of SVG, ${Math.round(png.length / 1024)} KB of PNG`,
     );
     await writeCached(file, png);
@@ -143,7 +147,8 @@ async function draw(view: MapView, file: string | undefined, deadline: number): 
 /**
  * A contours map's lines: its tiles' elevations as one grid (columns counted on from the view's
  * longitude, so it can span 180°; corners without a tile, as they don't reach the map, at sea level,
- * so their edges' lines are off the map), traced every view.contourInterval metres, or by its zoom.
+ * so their edges' lines are off the map), traced every view.contourInterval metres, or by its
+ * steepness (see slopeInterval).
  */
 function traceContours(
   view: MapView,
@@ -172,14 +177,16 @@ function traceContours(
       );
     }
   });
-  const levels = contourLines(
-    grid,
-    width,
-    down * TERRAIN_TILE_SIZE,
-    view.contourInterval ?? contourInterval(view.zoom),
-  );
+  // By its land's steepness, at the zoom's grid cells per screen pixel (the tiles are the zoom
+  // rounded up, shown smaller), unless the view says
+  const interval =
+    view.contourInterval ??
+    slopeInterval(grid, width, down * TERRAIN_TILE_SIZE, 2 ** (z - view.zoom)) ??
+    contourInterval(view.zoom);
+  const levels = contourLines(grid, width, down * TERRAIN_TILE_SIZE, interval);
   return {
     z,
+    interval,
     levels: levels.map(({ level, index, lines }) => ({
       level,
       index,

@@ -11,9 +11,49 @@ export interface ContourLevel {
   lines: { x: number; y: number }[][];
 }
 
+// Contour intervals to choose from (m): the usual 1, 2.5, 5 steps, at least 10 m, as the elevations
+// are about 30 m apart in most of the world
+const INTERVALS = [10, 25, 50, 100, 250, 500, 1000];
+// The interval is about this many times the steep slopes' height difference per screen pixel: their
+// lines about 2.5 px apart, which merge where it's steepest but leave gentler ground lines enough
+// (chosen to match hand-picked intervals for maps from Snowdonia to Everest)
+const SPACING = 2.5;
+// How steep "the steep slopes" are: this share of the land is less steep
+const STEEP = 0.9;
+
 /**
- * Metres between contour lines at a zoom: close enough to show a valley's shape, far enough apart
- * that steep slopes don't turn black. Every fifth is an index contour.
+ * Metres between contour lines for a grid of elevations (`width` × `height`, row by row), shown at
+ * `cellsPerPixel` grid cells per screen pixel: from how steep its land is (see SPACING), the nearest
+ * of INTERVALS (by ratio); undefined if there's no land to judge by. Every fifth is an index contour.
+ */
+export function slopeInterval(
+  grid: ArrayLike<number>,
+  width: number,
+  height: number,
+  cellsPerPixel: number,
+): number | undefined {
+  // The height difference per grid cell (central differences), above sea level only, where the
+  // lines are
+  const slopes: number[] = [];
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (!(grid[y * width + x] > 1)) continue;
+      const dx = (grid[y * width + x + 1] - grid[y * width + x - 1]) / 2;
+      const dy = (grid[(y + 1) * width + x] - grid[(y - 1) * width + x]) / 2;
+      slopes.push(Math.hypot(dx, dy));
+    }
+  }
+  if (slopes.length === 0) return undefined;
+  slopes.sort((a, b) => a - b);
+  const target = SPACING * slopes[Math.floor(STEEP * (slopes.length - 1))] * cellsPerPixel;
+  return INTERVALS.reduce((best, interval) =>
+    Math.abs(Math.log(interval / target)) < Math.abs(Math.log(best / target)) ? interval : best,
+  );
+}
+
+/**
+ * Metres between contour lines at a zoom, where there's no land to judge by (see slopeInterval):
+ * close enough to show a valley's shape, far enough apart that steep slopes don't turn black.
  */
 export function contourInterval(zoom: number) {
   if (zoom >= 13.5) return 20;

@@ -18,11 +18,11 @@ export default defineScreen({
     // The map's centre
     lat: { type: "number", default: 45.9237 },
     lon: { type: "number", default: 6.8694 },
-    // As on web maps (and the street map): contour lines every 20 m from zoom 13.5, up to every
-    // 1000 m below 8 (see contours.ts)
+    // As on web maps (and the street map)
     zoom: { type: "number", default: 12.5 },
-    // Metres between contour lines, e.g. 100 for a whole island at a zoom that would give 500; 0:
-    // by the zoom. At least 5, so a typo can't ask for thousands of lines
+    // Metres between contour lines, e.g. 100 for an island next to steep mountains, which would
+    // otherwise decide; 0: by how steep the land is (see slopeInterval in contours.ts). At least 5,
+    // so a typo can't ask for thousands of lines
     contours: { type: "number", default: 0 },
   },
 

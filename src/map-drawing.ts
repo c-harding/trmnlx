@@ -30,6 +30,8 @@ export interface MapView {
 export interface ContourLines {
   z: number;
   levels: { level: number; index: boolean; lines: TilePoint[][] }[];
+  /** Metres between the lines, for the log */
+  interval?: number;
 }
 
 /** A point in a tile: 0 to 1 across it, left to right and top to bottom. */
@@ -56,7 +58,7 @@ export interface PlacedTile {
 }
 
 // Changes when the drawing does: maps saved on disk with another version are drawn again
-export const STYLE_VERSION = 10;
+export const STYLE_VERSION = 11;
 
 // Web maps' tiles are 256 px at their zoom. OpenMapTiles' are made for 512, so their detail would
 // fit one zoom level further in, but it leaves out too much (e.g. most of a main station's tracks
