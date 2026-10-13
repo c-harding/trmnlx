@@ -15,8 +15,9 @@ export const HEIGHT = 480;
 
 // Noto Sans for text of 32 px and more (scripts/build copies assets/fonts next to the server).
 // Satori takes a character the font lacks from the next font listed that has it: so Noto Sans
-// Georgian and Noto Sans Armenian give titles in those scripts ("Tbilisi · თბილისი"), and Noto Sans
-// Symbols the arrow (→). Not Arabic, Hebrew or Indian scripts: Satori loses the spaces in
+// Georgian and Noto Sans Armenian give titles in those scripts ("Tbilisi · თბილისი"), Noto Sans
+// Symbols the arrow (→), and Noto Emoji black and white emoji (e.g. in a Strava activity's name;
+// without the modifiers it can't combine, see plainEmoji in components/type.ts). Not Arabic, Hebrew or Indian scripts: Satori loses the spaces in
 // right-to-left text, and doesn't apply the fonts' mark positioning (Arabic dots, Indian vowel signs).
 //
 // Smaller text uses TRMNL's pixel fonts (see `textSize` in components/type.ts), each drawn on a
@@ -30,12 +31,16 @@ const loadFont = async (name: string, file: string, weight: FontWeight): Promise
 });
 
 const fonts = await Promise.all([
-  ...["Noto Sans", "Noto Sans Georgian", "Noto Sans Armenian", "Noto Sans Symbols"].flatMap(
-    (name) => [
-      loadFont(name, `${name.replaceAll(" ", "")}-Regular.ttf`, 400),
-      loadFont(name, `${name.replaceAll(" ", "")}-Bold.ttf`, 700),
-    ],
-  ),
+  ...[
+    "Noto Sans",
+    "Noto Sans Georgian",
+    "Noto Sans Armenian",
+    "Noto Sans Symbols",
+    "Noto Emoji",
+  ].flatMap((name) => [
+    loadFont(name, `${name.replaceAll(" ", "")}-Regular.ttf`, 400),
+    loadFont(name, `${name.replaceAll(" ", "")}-Bold.ttf`, 700),
+  ]),
   ...[12, 16, 21].flatMap((size) => [
     loadFont(`TRMNL${size}`, `TRMNL${size}-Regular.ttf`, 400),
     loadFont(`TRMNL${size}`, `TRMNL${size}-Bold.ttf`, 700),

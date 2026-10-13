@@ -3,7 +3,7 @@
 import type { ComponentChildren } from "preact";
 import { batteryLines, type Telemetry } from "../telemetry.ts";
 import { formatTime } from "../time.ts";
-import { type LargeSize, textSize } from "./type.ts";
+import { type LargeSize, plainEmoji, textSize } from "./type.ts";
 
 // The space around the screens' content: above and below, and left and right
 export const PADDING_Y = 6;
@@ -63,7 +63,7 @@ export function Header(props: {
           ...ellipsis,
         }}
       >
-        {title}
+        {plainEmoji(title)}
       </div>
       {/* What's on the right, centred in a box as high as the title's line: the title's capitals sit
           in its middle, so they line up */}

@@ -1,5 +1,7 @@
 Noto Sans, Noto Sans Georgian, Noto Sans Armenian and Noto Sans Symbols: Copyright 2022 The Noto Project Authors
 (https://github.com/notofonts: latin-greek-cyrillic, georgian, armenian, symbols).
+Noto Emoji (black and white; the static Regular and Bold instances served by Google Fonts):
+Copyright 2013 Google LLC (https://github.com/googlefonts/noto-emoji).
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
