@@ -9,19 +9,16 @@ import { untilNextMinute } from "../time.ts";
 export default defineScreen({
   inputs: {
     // The station's name as MVG spells it
-    station: { type: "string", default: "Marienplatz" },
+    station: { type: "string", default: "München Hbf" },
     // Departures that are always shown: the next direct connection of MVG transport types to a
     // station, as "<types> -> <station>" (see parsePin in departure-rules.ts): "UBAHN ->
     // Hauptbahnhof", "SBAHN|UBAHN -> Ostbahnhof" (either), "-> Ostbahnhof" (any). Shown in their
     // place if they fit, otherwise pinned at the bottom under a thicker line.
-    pinned: { type: "list", default: ["UBAHN -> Hauptbahnhof", "SBAHN -> Ostbahnhof"] },
+    pinned: { type: "list", default: [] },
     // Departures left out, one rule per line, with MVG's transport types (see HideRule in
     // departure-rules.ts); later rules win. They don't take up rows, and apply to pinned
     // connections too.
-    hide: {
-      type: "list",
-      default: ["BUS|REGIONAL_BUS", "show BUS 54", "TRAM -> Amalienburgstraße"],
-    },
+    hide: { type: "list", default: [] },
   },
 
   // Only black and white: the firmware then uses its fast partial refresh, without the flashing of

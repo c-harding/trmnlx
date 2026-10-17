@@ -3,11 +3,11 @@
 import type { ComponentChildren } from "preact";
 import { BatteryAndClock, ellipsis, Header, PADDING_X, PADDING_Y } from "../components/header.tsx";
 import { JourneyList } from "../components/journeys.tsx";
+import { textSize } from "../components/type.ts";
 import { defineScreen } from "../define-screen.ts";
 import { parseRoute, parseRules, routeTitle, type Route, type Rule } from "../journey-routes.ts";
 import { loadJourneys, TRANSITOUS_CREDITS, type JourneysResult } from "../sources/transitous.ts";
 import { untilNextMinute } from "../time.ts";
-import { textSize } from "../components/type.ts";
 
 /** The routes that parse, at most MAX_ROUTES of them (the rest are logged and ignored). */
 function validRoutes(texts: string[]) {
@@ -74,11 +74,7 @@ export default defineScreen({
     // Long-distance trains only from Kufstein: the Klimaticket covers them in Austria.
     routes: {
       type: "list",
-      default: [
-        "Marienplatz -> München Ost",
-        "Marienplatz -> München Hbf",
-        "Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]> Innsbruck Hbf",
-      ],
+      default: ["München Hbf -> Berlin Ost"],
     },
     // Which transport counts on every route, before each stretch's own rules (see journey-routes.ts):
     // no long-distance trains or coaches, as with a Deutschlandticket
