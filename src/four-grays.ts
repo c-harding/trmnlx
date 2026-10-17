@@ -15,8 +15,12 @@ const nearest = (gray: number) =>
  * takes the nearest level and passes on the difference to its neighbours to the right and below, so
  * an edge keeps its average darkness, mixed from the two nearest levels (85 apart, rather than
  * whichever grays an image would otherwise get, which could leave black specks on a thin gray line).
+ *
+ * With `maxBytes`, a PNG larger than that has rows at the bottom made white until it fits (a white
+ * row compresses to almost nothing): for a screen, which the firmware wouldn't draw otherwise (see
+ * MAX_SCREEN_BYTES). Only a very busy image needs it, e.g. a dense city map.
  */
-export async function fourGrayPng(image: Sharp) {
+export async function fourGrayPng(image: Sharp, { maxBytes }: { maxBytes?: number } = {}) {
   const { data: source, info } = await image
     .grayscale()
     .extractChannel(0)
@@ -51,7 +55,31 @@ export async function fourGrayPng(image: Sharp) {
     }
   }
   // Only the four levels, so the palette is exactly them and there's nothing more to dither
-  return sharp(out, { raw: { width, height, channels: 1 } })
-    .png({ palette: true, colours: 4, dither: 0, compressionLevel: 9 })
-    .toBuffer();
+  const encode = () =>
+    sharp(out, { raw: { width, height, channels: 1 } })
+      .png({ palette: true, colours: 4, dither: 0, compressionLevel: 9 })
+      .toBuffer();
+  let png = await encode();
+  if (maxBytes === undefined || png.length <= maxBytes) return png;
+  const size = png.length;
+  let white = 0;
+  while (png.length > maxBytes && white < height) {
+    // As many more rows as the excess would take at the average row's size, and a few more, as
+    // rows don't compress equally
+    const perRow = png.length / (height - white);
+    white = Math.min(height, white + Math.ceil(((png.length - maxBytes) / perRow) * 1.2) + 2);
+    out.fill(255, (height - white) * width);
+    png = await encode();
+  }
+  console.log(
+    `A ${size}-byte image is more than ${maxBytes}: made the bottom ${white} rows white (${png.length} bytes)`,
+  );
+  return png;
 }
+
+/**
+ * The largest screen PNG the firmware draws: its MAX_IMAGE_SIZE on boards other than the X (which
+ * takes 750,000). An 800 × 480 image at 2 bits per pixel can reach about 96,700 bytes (random
+ * noise, which doesn't compress); real screens stay below about 70,000 (the densest city maps).
+ */
+export const MAX_SCREEN_BYTES = 90_000;

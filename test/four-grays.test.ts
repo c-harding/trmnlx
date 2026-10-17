@@ -43,3 +43,29 @@ test("an edge between grays keeps its darkness, mixed from the two nearest level
   const mean = out.reduce((a, b) => a + b, 0) / out.length;
   assert.ok(Math.abs(mean - 120) < 3, `mean ${mean}`);
 });
+
+test("an image too large for the firmware has rows at the bottom made white until it fits", async () => {
+  const width = 800,
+    height = 480;
+  // Random grays: about 96,700 bytes as a PNG, more than any real screen
+  const noise = Buffer.alloc(width * height);
+  for (let i = 0; i < noise.length; i++) noise[i] = LEVELS[(Math.random() * 4) | 0];
+  const image = () => sharp(noise, { raw: { width, height, channels: 1 } });
+  assert.ok((await fourGrayPng(image())).length > 90_000);
+  const png = await fourGrayPng(image(), { maxBytes: 90_000 });
+  assert.ok(png.length <= 90_000, `${png.length}`);
+  const out = await grays(png);
+  // The top unchanged, the bottom white, and not much of it: about 7% too large
+  assert.ok(out.subarray(0, 400 * width).equals(noise.subarray(0, 400 * width)));
+  assert.ok(out.subarray((height - 1) * width).every((gray) => gray === 255));
+  const white = Array.from({ length: height }, (_, y) =>
+    out.subarray(y * width, (y + 1) * width).every((gray) => gray === 255),
+  ).filter(Boolean).length;
+  assert.ok(white > 0 && white < 80, `${white} rows`);
+  // One that fits is left alone
+  const small = Buffer.alloc(width * height, 255);
+  const fits = await fourGrayPng(sharp(small, { raw: { width, height, channels: 1 } }), {
+    maxBytes: 90_000,
+  });
+  assert.ok((await grays(fits)).every((gray) => gray === 255));
+});

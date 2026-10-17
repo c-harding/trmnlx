@@ -3,7 +3,7 @@ import opentype from "opentype.js";
 import type { VNode } from "preact";
 import satori, { type Font, type FontWeight } from "satori";
 import sharp from "sharp";
-import { fourGrayPng } from "./four-grays.ts";
+import { fourGrayPng, MAX_SCREEN_BYTES } from "./four-grays.ts";
 import { encodePng1Bit } from "./png1bit.ts";
 
 // Screens are rendered one at a time and rarely, so sharp's cache and thread pool only cost
@@ -99,5 +99,6 @@ export async function renderPng(layout: VNode, { colors = 4 }: { colors?: 2 | 4 
       .toBuffer({ resolveWithObject: true });
     return encodePng1Bit(data, info.width, info.height);
   }
-  return fourGrayPng(image);
+  // (A 1-bit image can't get that large: 48,000 bytes uncompressed)
+  return fourGrayPng(image, { maxBytes: MAX_SCREEN_BYTES });
 }
