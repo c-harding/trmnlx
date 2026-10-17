@@ -201,16 +201,22 @@ refresh();
 /**
  * The device's live logs (see logs.ts): entries as they arrive from /logs/stream, newest at the
  * bottom, kept only while the page is open. "Autoscroll" (on after every load) keeps the newest in
- * view.
+ * view. Laid out like the dev server's playlist page: a breadcrumb back to the screen page and a bar
+ * stay at the top, the entries scroll below.
  */
 export const logsPage = (name: string) =>
   page(
     `TRMNLx logs: ${name}`,
     `<style>
-body { margin: 0; padding: 8px; font-family: system-ui, sans-serif; }
-p { margin: 0 0 8px; }
-.bar { position: sticky; top: 0; background: Canvas; padding: 4px 0; display: flex; gap: 1em; align-items: baseline; flex-wrap: wrap; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; padding: 0 8px; box-sizing: border-box; }
+h1, #bar { flex: none; }
+/* The breadcrumb's link in the text's colour, still underlined */
+h1 a { color: inherit; }
+#bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin: 0 0 16px; }
 #status { color: GrayText; }
+#log { flex: 1; min-height: 0; overflow: auto; padding-bottom: 8px; }
+#empty { margin: 0; }
 table { border-collapse: collapse; font: 13px/1.4 ui-monospace, monospace; width: 100%; }
 td { padding: 2px 8px 2px 0; vertical-align: top; }
 td.time, td.level, td.source { white-space: nowrap; }
@@ -221,14 +227,19 @@ tr.error td.level, tr.fatal td.level { color: #c00; font-weight: bold; }
 tr.debug { color: GrayText; }
 #empty { color: GrayText; }
 </style>
-<div class="bar"><strong>Logs: ${escapeHtml(name)}</strong> <span id="status">Connecting…</span> <label><input type="checkbox" id="autoscroll" checked> Autoscroll</label> <button id="clear">Clear</button> <a href="/">Screen</a></div>
+<h1><a href="/">TRMNLx: ${escapeHtml(name)}</a> › logs</h1>
+<p id="bar"><span id="status">Connecting…</span> <label><input type="checkbox" id="autoscroll" checked> Autoscroll</label> <button id="clear">Clear</button></p>
+<div id="log">
 <p id="empty">Nothing yet: entries show here as they happen, from the device (after a failure) and from the server (each check-in). Nothing earlier is kept.</p>
 <table><tbody id="entries"></tbody></table>
+</div>
 <script>
 const entries = document.getElementById("entries");
 const status = document.getElementById("status");
 const autoscroll = document.getElementById("autoscroll");
 const empty = document.getElementById("empty");
+const log = document.getElementById("log");
+const toEnd = () => (log.scrollTop = log.scrollHeight);
 const time = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "medium" });
 const cell = (className, text) => {
   const td = document.createElement("td");
@@ -250,14 +261,14 @@ function show(entry) {
   row.append(cell("time", time.format(entry.time)), cell("source", entry.source), cell("level", entry.level), message);
   entries.append(row);
   empty.hidden = true;
-  if (autoscroll.checked) row.scrollIntoView({ block: "end" });
+  if (autoscroll.checked) toEnd();
 }
 document.getElementById("clear").addEventListener("click", () => {
   entries.replaceChildren();
   empty.hidden = false;
 });
 autoscroll.addEventListener("change", () => {
-  if (autoscroll.checked) entries.lastElementChild?.scrollIntoView({ block: "end" });
+  if (autoscroll.checked) toEnd();
 });
 // Reconnects by itself after a dropped connection (e.g. a server restart); entries from while it
 // was away are lost
