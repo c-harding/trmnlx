@@ -318,8 +318,10 @@ form.addEventListener("input", markChanged);
 form.addEventListener("change", markChanged);
 
 // Renders the screen with the form's settings, and renders it again when its X-TTL runs out (as the
-// server's screen page does), unless the time is fixed. Clicking Load renders straight away.
+// server's screen page does), unless the time is fixed. Clicking Load renders straight away,
+// cancelling a render still loading, so an older one can't replace the newer settings' image.
 let timer;
+let loading;
 const schedule = (seconds) => {
   clearTimeout(timer);
   // setTimeout treats delays beyond 2^31 - 1 ms (about 24.8 days), and Infinity, as 0
@@ -328,12 +330,15 @@ const schedule = (seconds) => {
 
 async function render() {
   clearTimeout(timer);
+  loading?.abort();
+  const controller = new AbortController();
+  loading = controller;
   const params = settings();
   const time = form.elements.time.value;
   preview.classList.add("loading");
   let res, blob;
   try {
-    res = await fetch("/render?" + params);
+    res = await fetch("/render?" + params, { signal: controller.signal });
     if (!res.ok) {
       // Not again by itself: the settings need fixing
       info.textContent = "Error: " + (await res.text());
@@ -343,12 +348,17 @@ async function render() {
     rendered = params.toString();
     markChanged();
   } catch (error) {
+    // Cancelled by a newer render, which shows its own
+    if (controller.signal.aborted) return;
     // The request itself failed, e.g. because the dev server is restarting after a change
     info.textContent = "Error: could not reach the dev server (" + error.message + "); trying again";
     schedule(2);
     return;
   } finally {
-    preview.classList.remove("loading");
+    if (loading === controller) {
+      loading = undefined;
+      preview.classList.remove("loading");
+    }
   }
   // Sent URI-encoded, as header values can't take all of Unicode
   showCredits(JSON.parse(decodeURIComponent(res.headers.get("X-Credits") ?? "%5B%5D")));
