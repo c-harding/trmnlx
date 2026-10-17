@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import opentype from "opentype.js";
 import type { VNode } from "preact";
 import satori, { type Font, type FontWeight } from "satori";
 import sharp from "sharp";
@@ -46,6 +47,37 @@ const fonts = await Promise.all([
     loadFont(`TRMNL${size}`, `TRMNL${size}-Bold.ttf`, 700),
   ]),
 ]);
+
+// The fonts as opentype.js reads them, for measuring text (see textWidth): each parsed when first
+// needed
+const parsed = new Map<Font, opentype.Font>();
+const opentypeFont = (font: Font) => {
+  let result = parsed.get(font);
+  if (!result) {
+    const data = font.data as Buffer;
+    result = opentype.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+    parsed.set(font, result);
+  }
+  return result;
+};
+
+/**
+ * How wide `text` is drawn in `family` at `size` px (and `weight`), in px: each character from the
+ * first font that has it, the family's, then the others in the order Satori falls back to them. E.g.
+ * to place a label by its width. Without kerning, which the pixel fonts don't have.
+ */
+export function textWidth(text: string, family: string, size: number, weight: FontWeight = 400) {
+  const candidates = [
+    ...fonts.filter((font) => font.name === family && font.weight === weight),
+    ...fonts.filter((font) => font.name !== family && font.weight === weight),
+  ];
+  let width = 0;
+  for (const char of text) {
+    const font = candidates.find((candidate) => opentypeFont(candidate).charToGlyphIndex(char) > 0);
+    if (font) width += opentypeFont(font).getAdvanceWidth(char, size);
+  }
+  return width;
+}
 
 /**
  * Renders a layout to a PNG the display can show, 800 × 480. The firmware picks its display mode

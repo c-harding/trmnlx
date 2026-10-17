@@ -2,6 +2,18 @@
 // pixels and without anti-aliasing, so it scans from the display. Encoded by qrcode-generator.
 import qrcode from "qrcode-generator";
 
+// Medium error correction: some damage (or e-ink ghosting) is fine
+const encode = (text: string) => {
+  const code = qrcode(0, "M");
+  code.addData(text);
+  code.make();
+  return code;
+};
+
+/** How wide (and high) QrCode draws `text`, e.g. to make what's beside it as high. */
+export const qrSize = (text: string, module: number, margin = 2) =>
+  (encode(text).getModuleCount() + 2 * margin) * module;
+
 /**
  * `text` as a QR code `module` px per module, with a quiet zone of `margin` modules around it
  * (scanners want some white around a code; 2 is usually enough on a white screen).
@@ -15,10 +27,7 @@ export function QrCode({
   module: number;
   margin?: number;
 }) {
-  // Medium error correction: some damage (or e-ink ghosting) is fine
-  const code = qrcode(0, "M");
-  code.addData(text);
-  code.make();
+  const code = encode(text);
   const count = code.getModuleCount();
   const size = (count + 2 * margin) * module;
   // One path for all dark modules, a square each

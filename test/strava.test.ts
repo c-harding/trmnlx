@@ -6,10 +6,13 @@ import {
   decodePolyline,
   depthFor,
   loadStravaActivity,
+  loadStravaStreams,
   onContours,
+  prominence,
   routeView,
   readStravaApp,
   savedTokenStore,
+  summitIndices,
   type StravaTokens,
 } from "../src/sources/strava.ts";
 
@@ -178,4 +181,51 @@ test("a contour map for hikes, trail runs and alpine sports with 150 m of relief
   // No heights: the sport decides
   assert.equal(onContours({ sportType: "TrailRun", relief: undefined, highest: undefined }), true);
   assert.equal(onContours({ sportType: "Run", relief: 900, highest: 2000 }), false);
+});
+
+test("an activity's heights are thinned to about 300 points, keeping its end", async () => {
+  configureStrava(
+    { clientId: "1", clientSecret: "s" },
+    {
+      get: () => ({ accessToken: "a", refreshToken: "r", expiresAt: Date.now() + 3_600_000 }),
+      set: () => {},
+    },
+  );
+  const fetchMock = mock.method(globalThis, "fetch", async (url: string) => {
+    assert.match(String(url), /\/activities\/42\/streams\?keys=distance,altitude/);
+    return Response.json({
+      distance: { data: Array.from({ length: 1000 }, (_, i) => i * 10) },
+      altitude: { data: Array.from({ length: 1000 }, (_, i) => 500 + i) },
+    });
+  });
+  try {
+    const profile = await loadStravaStreams({ account: "kitchen", id: 42, connection: 0 });
+    assert.ok(profile);
+    assert.ok(profile.distance.length <= 301, `${profile.distance.length}`);
+    assert.deepEqual([profile.distance[0], profile.distance.at(-1)], [0, 9990]);
+    assert.deepEqual([profile.altitude[0], profile.altitude.at(-1)], [500, 1499]);
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("summits: no higher point within a quarter of the route either side", () => {
+  const distance = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+  // A summit at 300 m, a lower bump at 500 (within 250 m of it: not a summit), one at 900
+  const altitude = [10, 20, 30, 50, 40, 45, 30, 20, 30, 40, 35];
+  assert.deepEqual(summitIndices(distance, altitude), [3, 9]);
+  // As high twice within the window: the first
+  assert.deepEqual(summitIndices(distance, [10, 20, 30, 50, 50, 45, 30, 20, 30, 40, 35]), [3, 9]);
+  // A climb ending at the top: the end
+  assert.deepEqual(summitIndices(distance, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), [10]);
+});
+
+test("prominence: how far a summit rises above the lowest point on the way to higher ground", () => {
+  const altitude = [100, 300, 200, 250, 150, 400, 50];
+  // The highest: above the lowest point of all
+  assert.equal(prominence(altitude, 5), 350);
+  // Higher ground either side: the higher col (200 on the way to 300, not 150 on the way to 400)
+  assert.equal(prominence(altitude, 3), 50);
+  // Higher ground on one side only
+  assert.equal(prominence(altitude, 1), 150);
 });

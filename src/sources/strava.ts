@@ -13,6 +13,7 @@ import { ConfigError } from "../playlists.ts";
 import { type MapView, worldPixel } from "../map-drawing.ts";
 import { USER_AGENT } from "../version.ts";
 import { loadMap, type MapResult } from "./map.ts";
+import { loadPeaks, peakTileOf } from "./openfreemap.ts";
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
 const TOKEN_URL = "https://www.strava.com/oauth/token";
@@ -531,5 +532,204 @@ export const loadStravaRoute = defineSource({
     return { view, points, map: await loadMap(view) };
   },
   // As often as the activity (the map itself is drawn once per view, see sources/map.ts)
+  maxAge: MAX_AGE_MS,
+});
+
+// Points kept of an activity's elevation profile: a few per pixel of the screen's chart
+const PROFILE_POINTS = 300;
+
+/** An activity's elevation profile: heights (m) at distances (m) along it, and its summits. */
+export interface Profile {
+  distance: number[];
+  altitude: number[];
+  /** Its summits (see summitIndices): where in the profile, and the peak's name if it's known */
+  summits: { index: number; name: string | undefined }[];
+}
+
+/**
+ * The summits of a profile: the points with no higher one within `share` of its length either side
+ * (the first, where two are as high), so they're at least that far apart.
+ */
+export function summitIndices(distance: number[], altitude: number[], share = 0.25): number[] {
+  const window = share * (distance[distance.length - 1] - distance[0]);
+  return altitude.flatMap((height, i) => {
+    for (let j = 0; j < altitude.length; j++) {
+      if (j === i || Math.abs(distance[j] - distance[i]) > window) continue;
+      if (altitude[j] > height || (altitude[j] === height && j < i)) return [];
+    }
+    return [i];
+  });
+}
+
+/**
+ * How far a point of a profile rises above the land between it and any higher point along it: its
+ * height less the higher of the lowest points on the way to the nearest higher point either side
+ * (one side only if there's none on the other; the lowest point of all if there's none at all).
+ */
+export function prominence(altitude: number[], index: number): number {
+  const height = altitude[index];
+  const cols: number[] = [];
+  for (const step of [-1, 1]) {
+    let low = height;
+    for (let i = index + step; i >= 0 && i < altitude.length; i += step) {
+      if (altitude[i] > height) {
+        cols.push(low);
+        break;
+      }
+      low = Math.min(low, altitude[i]);
+    }
+  }
+  return height - (cols.length ? Math.max(...cols) : Math.min(...altitude));
+}
+
+// A summit is named after the nearest named OpenStreetMap peak or pass this close (m) to the route
+// around it, the stretch within STRETCH_M of it either way along the route: paths often pass a little
+// below or beside a top, and the profile's highest point (where the altitude peaked, a few tens of
+// metres apart after thinning) needn't be where the route comes closest
+const PEAK_RADIUS_M = 200;
+const STRETCH_M = 300;
+
+/** The distance between two places (m), near enough for a few hundred metres. */
+function metresBetween(a: [number, number], b: [number, number]) {
+  const dLat = (b[0] - a[0]) * 111_320;
+  const dLon = (b[1] - a[1]) * 111_320 * Math.cos((a[0] * Math.PI) / 180);
+  return Math.hypot(dLat, dLon);
+}
+
+// A peak's height (where OpenStreetMap has it) and the route's at a summit named after it differ by
+// at most this (m): GPS heights are a few tens of metres out, but a station or shoulder below a top
+// is further
+const HEIGHT_TOLERANCE_M = 50;
+
+/**
+ * The names of summits, each given by the route's places around it (see STRETCH_M) and its height:
+ * the OpenStreetMap peak or pass nearest that stretch (a route over a pass has a summit there too),
+ * from the tiles it passes through, of a height that agrees (see HEIGHT_TOLERANCE_M). A peak names
+ * only the summit whose stretch comes closest to it. Undefined where there's none.
+ */
+async function summitNames(
+  summits: { stretch: [number, number][]; altitude: number }[],
+): Promise<(string | undefined)[]> {
+  // Each summit's candidates: name and how close its stretch comes
+  const candidates = await Promise.all(
+    summits.map(async ({ stretch, altitude }) => {
+      try {
+        // Each tile the stretch passes through once (usually one, two near an edge)
+        const tiles = new Map(stretch.map((place) => [peakTileOf(place[0], place[1]), place]));
+        const peaks = (
+          await Promise.all([...tiles.values()].map((place) => loadPeaks(place[0], place[1])))
+        ).flat();
+        return peaks
+          .filter(
+            (peak) => peak.ele === undefined || Math.abs(peak.ele - altitude) <= HEIGHT_TOLERANCE_M,
+          )
+          .map((peak) => ({
+            name: peak.name,
+            metres: Math.min(...stretch.map((place) => metresBetween(place, [peak.lat, peak.lon]))),
+          }))
+          .filter(({ metres }) => metres <= PEAK_RADIUS_M)
+          .sort((a, b) => a.metres - b.metres);
+      } catch (error) {
+        console.error(
+          `Looking up the peak at ${stretch[0].join(", ")} failed: ${(error as Error).message}`,
+        );
+        return [];
+      }
+    }),
+  );
+  // How close each name comes to any summit: it names only that one
+  const closest = new Map<string, number>();
+  for (const list of candidates)
+    for (const { name, metres } of list)
+      closest.set(name, Math.min(closest.get(name) ?? Infinity, metres));
+  return candidates.map(
+    (list) => list.find(({ name, metres }) => closest.get(name) === metres)?.name,
+  );
+}
+
+/**
+ * An activity's heights along its distance (Strava's streams), thinned to PROFILE_POINTS, with its
+ * summits named from OpenStreetMap (one tile each); undefined if it has none (e.g. no altitude
+ * recorded). Kept until restart: a finished activity's don't change.
+ */
+export const loadStravaStreams = defineSource({
+  name: "strava.streams",
+  params: paramsOf<{ account: string; id: number; connection: number }>(),
+  async load({ account, id }): Promise<Profile | undefined> {
+    const token = await accessToken(account);
+    if (!token) return undefined;
+    const res = await fetch(
+      `${API_URL}/activities/${id}/streams?keys=distance,altitude,latlng&key_by_type=true`,
+      {
+        headers: { Authorization: `Bearer ${token}`, "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      },
+    );
+    if (res.status === 404) return undefined;
+    if (!res.ok) throw new Error(`Strava answered ${res.status}`);
+    const streams = (await res.json()) as {
+      distance?: { data: number[] };
+      altitude?: { data: number[] };
+      latlng?: { data: [number, number][] };
+    };
+    const distance = streams.distance?.data ?? [];
+    const altitude = streams.altitude?.data ?? [];
+    const count = Math.min(distance.length, altitude.length);
+    if (count < 2) return undefined;
+    const step = Math.max(1, Math.ceil(count / PROFILE_POINTS));
+    const kept = Array.from({ length: Math.ceil(count / step) }, (_, i) => i * step);
+    if (kept.at(-1) !== count - 1) kept.push(count - 1);
+    const thinned = {
+      distance: kept.map((i) => distance[i]),
+      altitude: kept.map((i) => altitude[i]),
+    };
+    // Its summits, named where the route's place is known
+    const latlng = streams.latlng?.data;
+    const indices = summitIndices(thinned.distance, thinned.altitude);
+    // Each summit's stretch of the route, at full resolution
+    const stretch = (at: number) =>
+      latlng!.filter((_, j) => j < count && Math.abs(distance[j] - distance[at]) <= STRETCH_M);
+    const names =
+      latlng?.length === count
+        ? await summitNames(
+            indices.map((i) => ({ stretch: stretch(kept[i]), altitude: thinned.altitude[i] })),
+          )
+        : [];
+    return { ...thinned, summits: indices.map((index, k) => ({ index, name: names[k] })) };
+  },
+  maxAge: Infinity,
+});
+
+/**
+ * The elevation profile of the account's activity `offset` back from the latest, if it's shown on
+ * a contour map (see onContours) and has one. A failed fetch shows none, rather than failing the
+ * screen, and is tried again with the next activities.
+ */
+export const loadStravaProfile = defineSource({
+  name: "strava.profile",
+  params: paramsOf<{ account: string; offset: number; connection: number }>(),
+  dependencies: {
+    strava: [
+      loadStravaActivity,
+      {
+        account: ({ params }) => params.account,
+        depth: ({ params }) => depthFor(params.offset),
+        connection: ({ params }) => params.connection,
+      },
+    ],
+  },
+  async load({ account, offset, connection }, { strava }): Promise<Profile | undefined> {
+    const activity = strava.connected ? strava.activities[offset] : undefined;
+    if (!activity || !onContours(activity)) return undefined;
+    try {
+      return await loadStravaStreams({ account, id: activity.id, connection });
+    } catch (error) {
+      console.error(
+        `Fetching Strava activity ${activity.id}'s heights failed: ${(error as Error).message}`,
+      );
+      return undefined;
+    }
+  },
+  // As often as the activities (the streams themselves are kept, see loadStravaStreams)
   maxAge: MAX_AGE_MS,
 });

@@ -162,3 +162,68 @@ export async function loadTiles(
   }
   return results;
 }
+
+/** A named peak or pass (a saddle) from OpenStreetMap: its name, height (m, if known) and place. */
+export interface Peak {
+  kind: "peak" | "pass";
+  name: string;
+  ele: number | undefined;
+  lat: number;
+  lon: number;
+}
+
+// The zoom whose tiles have all peaks (OpenMapTiles' mountain_peak layer thins them further out)
+const PEAK_ZOOM = 14;
+
+/** The zoom-14 tile around a place, whose peaks loadPeaks gives: e.g. to look each up once. */
+export function peakTileOf(lat: number, lon: number) {
+  const n = 2 ** PEAK_ZOOM;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const y = Math.floor(((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * n);
+  return `${x}/${y}`;
+}
+
+/**
+ * The named peaks (and volcanoes) and passes in the zoom-14 tile around a place, from OpenMapTiles'
+ * mountain_peak layer (not its ridges, cliffs and arêtes). Throws if it can't be fetched.
+ */
+export async function loadPeaks(lat: number, lon: number): Promise<Peak[]> {
+  const n = 2 ** PEAK_ZOOM;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const y = Math.floor(((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * n);
+  const url = (await loadTileUrl({}))
+    .replace("{z}", String(PEAK_ZOOM))
+    .replace("{x}", String(x))
+    .replace("{y}", String(y));
+  const { status, body: data } = await get(
+    url,
+    "application/x-protobuf",
+    async (res) => new Uint8Array(await res.arrayBuffer()),
+  );
+  if (status === 204 || data.length === 0) return [];
+  const layer = new VectorTile(new PbfReader(data)).layers.mountain_peak;
+  const peaks: Peak[] = [];
+  for (let i = 0; i < (layer?.length ?? 0); i++) {
+    const feature = layer!.feature(i);
+    const name = feature.properties.name;
+    const kind =
+      feature.properties.class === "peak" || feature.properties.class === "volcano"
+        ? "peak"
+        : feature.properties.class === "saddle"
+          ? "pass"
+          : undefined;
+    if (feature.type !== 1 || !kind || typeof name !== "string" || !name) continue;
+    const [[point]] = feature.loadGeometry();
+    // The point's place: its tile column and row, back to longitude and latitude
+    const px = x + point.x / feature.extent;
+    const py = y + point.y / feature.extent;
+    peaks.push({
+      kind,
+      name,
+      ele: typeof feature.properties.ele === "number" ? feature.properties.ele : undefined,
+      lon: (px / n) * 360 - 180,
+      lat: (Math.atan(Math.sinh(Math.PI * (1 - (2 * py) / n))) * 180) / Math.PI,
+    });
+  }
+  return peaks;
+}
