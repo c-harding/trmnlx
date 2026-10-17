@@ -70,8 +70,7 @@ function Panel(props: {
 
 export default defineScreen({
   inputs: {
-    // One route per line (see journey-routes.ts), up to four, placed column by column (see COLUMNS).
-    // Long-distance trains only from Kufstein: the Klimaticket covers them in Austria.
+    // One route per line (see journey-routes.ts), up to four, placed column by column (see COLUMNS)
     routes: {
       type: "list",
       default: ["München Hbf -> Berlin Ost"],
