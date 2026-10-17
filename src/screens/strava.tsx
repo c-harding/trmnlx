@@ -122,6 +122,9 @@ function pace(activity: Activity): [string, string] {
 }
 
 /** A stat: its value large, with its unit, and what it is under it. */
+// Kilometres to two decimals below 10 (9.99 at most: from 9,995 m it would round to 10.00), else one
+const kilometres = (metres: number) => (metres / 1000).toFixed(metres < 9995 ? 2 : 1);
+
 const Stat = (props: { value: string; unit: string; label: string }) => (
   <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
     <div style={{ display: "flex", alignItems: "baseline" }}>
@@ -794,11 +797,7 @@ export default defineScreen({
                     <span style={{ ...textSize(16) }}>{when}</span>
                   </div>
                   <div style={{ display: "flex" }}>
-                    <Stat
-                      value={(activity.distance / 1000).toFixed(1)}
-                      unit="km"
-                      label="Distance"
-                    />
+                    <Stat value={kilometres(activity.distance)} unit="km" label="Distance" />
                     <Stat value={duration(activity.movingTime)} unit="" label="Moving time" />
                   </div>
                   <div style={{ display: "flex" }}>
