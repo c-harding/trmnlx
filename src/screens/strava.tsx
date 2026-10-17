@@ -1,5 +1,5 @@
 // Your latest Strava activity that isn't private: its name, sport, when, kudos, its route on a map,
-// stats (distance, time, pace or speed, ascent) and a QR code of its page on Strava. Needs the device's account connected to Strava: until then, the
+// stats (distance, ascent and descent, time, pace or speed) and a QR code of its page on Strava. Needs the device's account connected to Strava: until then, the
 // browser's preview has a "Connect Strava" link (see sources/strava.ts).
 import type { ComponentChildren } from "preact";
 import {
@@ -125,9 +125,25 @@ function pace(activity: Activity): [string, string] {
 // Kilometres to two decimals below 10 (9.99 at most: from 9,995 m it would round to 10.00), else one
 const kilometres = (metres: number) => (metres / 1000).toFixed(metres < 9995 ? 2 : 1);
 
-const Stat = (props: { value: string; unit: string; label: string }) => (
+// Where an activity ends more than this much higher or lower than it starts, its descent is
+// shown after its ascent (otherwise about the same)
+const DESCENT_SHOWN_M = 50;
+
+/**
+ * The descent (m), if the profile's ends are more than DESCENT_SHOWN_M apart in height: the ascent,
+ * plus how much lower it ends than it starts.
+ */
+function descent(activity: Activity, profile: Profile | undefined) {
+  if (!profile) return undefined;
+  const drop = profile.altitude[0] - profile.altitude[profile.altitude.length - 1];
+  if (Math.abs(drop) <= DESCENT_SHOWN_M) return undefined;
+  return Math.round(activity.elevationGain + drop);
+}
+
+// A stat: its value and unit over its label; the value in `color` (e.g. gray for the descent)
+const Stat = (props: { value: string; unit: string; label: string; color?: string }) => (
   <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-    <div style={{ display: "flex", alignItems: "baseline" }}>
+    <div style={{ display: "flex", alignItems: "baseline", color: props.color }}>
       <span style={{ ...textSize(36), fontWeight: 700 }}>{props.value}</span>
       {props.unit && <span style={{ ...textSize(21), marginLeft: 4 }}>{props.unit}</span>}
     </div>
@@ -697,6 +713,7 @@ export default defineScreen({
 
   view({ device, inputs, now, telemetry, data }) {
     const activity = data.connected ? data.activity : undefined;
+    const down = activity && descent(activity, data.profile);
     const when =
       activity &&
       new Intl.DateTimeFormat("en-GB", {
@@ -798,9 +815,17 @@ export default defineScreen({
                   </div>
                   <div style={{ display: "flex" }}>
                     <Stat value={kilometres(activity.distance)} unit="km" label="Distance" />
-                    <Stat value={duration(activity.movingTime)} unit="" label="Moving time" />
+                    <Stat
+                      value={String(Math.round(activity.elevationGain))}
+                      unit="m"
+                      label="Ascent"
+                    />
+                    {down !== undefined && (
+                      <Stat value={String(down)} unit="m" label="Descent" color="#555" />
+                    )}
                   </div>
                   <div style={{ display: "flex" }}>
+                    <Stat value={duration(activity.movingTime)} unit="" label="Moving time" />
                     <Stat
                       value={pace(activity)[0]}
                       unit={pace(activity)[1]}
@@ -809,11 +834,6 @@ export default defineScreen({
                           ? "Pace"
                           : "Speed"
                       }
-                    />
-                    <Stat
-                      value={String(Math.round(activity.elevationGain))}
-                      unit="m"
-                      label="Ascent"
                     />
                   </div>
                 </div>
