@@ -225,55 +225,6 @@ function Row({ d, next, timeZone }: { d: Departure; next: Departure[]; timeZone:
 }
 
 /**
- * A rule for which departures are hidden, as "<types> [line] [-> <destination>]", with the source's
- * own types (MVG's "BUS", "SBAHN", …; Transitous' "BUS", "METRO", …): "BUS" hides all buses,
- * "TRAM -> Amalienburgstraße" trams going there, "BUS 54" one bus line. Several types are separated
- * by "|" ("BUS|REGIONAL_BUS"), "*" means any; line and destination are compared ignoring case.
- * "show" in front ("show BUS 54") makes it an exception that shows matching departures again; "!"
- * does too, but in YAML only quoted ("- '!BUS 54'"), since an unquoted "!" starts a YAML tag.
- */
-export interface HideRule {
-  show: boolean;
-  types: string[] | undefined;
-  line: string | undefined;
-  destination: string | undefined;
-}
-
-export const parseHideRule = (text: string): HideRule | undefined => {
-  const marker = /^(?:show\s+|!)/i.exec(text.trim())?.[0];
-  const show = marker !== undefined;
-  const [departure, ...arrow] = text
-    .trim()
-    .slice(marker?.length ?? 0)
-    .split("->");
-  const [types, line, ...extra] = departure.trim().split(/\s+/);
-  const destination = arrow.join("->").trim();
-  if (!types || extra.length > 0 || (arrow.length > 0 && !destination)) {
-    console.error(
-      `Ignoring hide rule ${JSON.stringify(text)}: expected "<types> [line] [-> <destination>]"`,
-    );
-    return undefined;
-  }
-  return {
-    show,
-    types: types === "*" ? undefined : types.toUpperCase().split("|"),
-    line,
-    destination: destination || undefined,
-  };
-};
-
-const sameText = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
-const matchesRule = (rule: HideRule, d: Departure) =>
-  (!rule.types || rule.types.includes(d.type)) &&
-  (!rule.line || sameText(rule.line, d.line)) &&
-  (!rule.destination || sameText(rule.destination, d.destination));
-
-/** Whether a departure is shown: the last rule matching it decides, and without one it is. */
-export const isShown = (rules: HideRule[], d: Departure) =>
-  rules.reduce((shown, rule) => (matchesRule(rule, d) ? rule.show : shown), true);
-
-/**
  * A departures screen: the station, battery and clock, then as many departures as fit, each with
  * the next two on its line. `shown` are the departures to list (hidden ones already left out);
  * `pins` are connections that are always shown (one list per pin, earliest first), in the list if

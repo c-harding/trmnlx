@@ -1,6 +1,7 @@
 // Departures from a stop anywhere Transitous has data. In Munich, mvg-departures has MVG's notes
 // ("Fährt nur bis …") and pinned connections.
-import { DepartureBoard, isShown, parseHideRule } from "../components/departures.tsx";
+import { DepartureBoard } from "../components/departures.tsx";
+import { isShown, parseHideRule } from "../departure-rules.ts";
 import { defineScreen } from "../define-screen.ts";
 import { loadDepartures, TRANSITOUS_CREDITS } from "../sources/transitous.ts";
 import { untilNextMinute } from "../time.ts";
@@ -11,7 +12,7 @@ export default defineScreen({
     station: { type: "string", default: "Innsbruck Hbf" },
     // Departures left out, one rule per line, with Transitous' modes ("BUS", "TRAM", "METRO" for
     // the S-Bahn, "REGIONAL_RAIL", "HIGHSPEED_RAIL", …) and "RAIL_REPLACEMENT" for replacement
-    // buses (see HideRule in components/departures.tsx); later rules win. They don't take up rows.
+    // buses (see HideRule in departure-rules.ts); later rules win. They don't take up rows.
     // By default only trains, and buses replacing them.
     hide: { type: "list", default: ["BUS|COACH", "TRAM"] },
   },

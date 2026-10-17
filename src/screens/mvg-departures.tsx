@@ -1,28 +1,22 @@
 // Departures from a station in Munich, from MVG: with MVG's notes ("Fährt nur bis …") and pinned
 // connections. The departures screen shows departures anywhere, from Transitous.
-import { DepartureBoard, isShown, parseHideRule } from "../components/departures.tsx";
+import { DepartureBoard } from "../components/departures.tsx";
+import { isShown, parseHideRule, parsePin } from "../departure-rules.ts";
 import { defineScreen } from "../define-screen.ts";
 import { loadConnections, loadDepartures } from "../sources/mvg.ts";
 import { untilNextMinute } from "../time.ts";
-
-const parsePin = (text: string) => {
-  const [types, ...target] = text.trim().split(/\s+/);
-  return target.length > 0
-    ? { types: types.toUpperCase().split("|").filter(Boolean), target: target.join(" ") }
-    : undefined;
-};
 
 export default defineScreen({
   inputs: {
     // The station's name as MVG spells it
     station: { type: "string", default: "Marienplatz" },
-    // Departures that are always shown: the next direct connection of a transport type to a station,
-    // as "<MVG transport type> <station>"; several types separated by "|" ("SBAHN|UBAHN Ostbahnhof")
-    // mean any of them. Shown in their place if they fit, otherwise pinned at the bottom under a
-    // thicker line.
-    pinned: { type: "list", default: ["UBAHN Hauptbahnhof", "SBAHN Ostbahnhof"] },
+    // Departures that are always shown: the next direct connection of MVG transport types to a
+    // station, as "<types> -> <station>" (see parsePin in departure-rules.ts): "UBAHN ->
+    // Hauptbahnhof", "SBAHN|UBAHN -> Ostbahnhof" (either), "-> Ostbahnhof" (any). Shown in their
+    // place if they fit, otherwise pinned at the bottom under a thicker line.
+    pinned: { type: "list", default: ["UBAHN -> Hauptbahnhof", "SBAHN -> Ostbahnhof"] },
     // Departures left out, one rule per line, with MVG's transport types (see HideRule in
-    // components/departures.tsx); later rules win. They don't take up rows, and apply to pinned
+    // departure-rules.ts); later rules win. They don't take up rows, and apply to pinned
     // connections too.
     hide: {
       type: "list",

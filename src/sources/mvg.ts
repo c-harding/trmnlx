@@ -212,7 +212,9 @@ async function fetchNextDirect(from: Station, to: Station, types: string[]): Pro
     .filter(
       (parts) =>
         parts.length === 1 &&
-        types.includes(parts[0].line?.transportType ?? "") &&
+        (types.length > 0 ? types : TRANSPORT_TYPES.split(",")).includes(
+          parts[0].line?.transportType ?? "",
+        ) &&
         !parts[0].isCancelled,
     )
     .map(([part]): Departure => {
@@ -236,8 +238,9 @@ async function fetchNextDirect(from: Station, to: Station, types: string[]): Pro
 }
 
 /**
- * The next direct connections of any of some transport types (e.g. ["SBAHN", "UBAHN"]) from one
- * station to another, both given by name: `{ target, connections, error }`.
+ * The next direct connections of any of some transport types (e.g. ["SBAHN", "UBAHN"], or none for
+ * any of TRANSPORT_TYPES, not walking) from one station to another, both given by name:
+ * `{ target, connections, error }`.
  * `connections` are shaped like departures, earliest first (several, since the first may have left
  * by the time it's shown). If the lookup or fetch failed, `error` is set, and the connections are
  * the latest ones for the same search, if any.
@@ -263,7 +266,7 @@ export const loadConnections = defineSource({
       return { target: to.name, connections: await fetchNextDirect(from, to, types) };
     } catch (error) {
       console.error(
-        `Fetching the next ${types.join("/")} from ${from.name} to ${to.name} failed: ${asError(error).message}`,
+        `Fetching the next ${types.join("/") || "connection"} from ${from.name} to ${to.name} failed: ${asError(error).message}`,
       );
       return fallBack(asError(error));
     }
