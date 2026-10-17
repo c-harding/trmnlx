@@ -145,7 +145,7 @@ ${loadingMarkCss("#preview")}
 <div class="preview-area"><div id="preview"><img id="screen" width="800" height="480" alt="Screen for ${escapeHtml(name)}">${LOADING_MARK}</div></div>
 ${creditsHtml([])}
 <noscript><p><img src="/screen.png" width="800" height="480" alt="Screen for ${escapeHtml(name)}" style="max-width: 100%; height: auto"></p></noscript>
-<form method="post" action="/logout" class="footer"><p>${version ? `Version <code>${escapeHtml(version)}</code> • ` : ""}Logged in as: <strong>${escapeHtml(name)}</strong> <button>Log out</button></p></form>
+<form method="post" action="/logout" class="footer"><p>${version ? `Version <code>${escapeHtml(version)}</code> • ` : ""}Logged in as: <strong>${escapeHtml(name)}</strong> • <a href="/logs">Logs</a> <button>Log out</button></p></form>
 <script>
 // Fetches the screen, shows it, and fetches it again when its X-TTL (seconds) runs out, or soon
 // after the device's expected check-in (X-Check-In, in ms) if that's sooner, to update the text
@@ -197,3 +197,82 @@ refresh();
 </script>`,
   );
 };
+
+/**
+ * The device's live logs (see logs.ts): entries as they arrive from /logs/stream, newest at the
+ * bottom, kept only while the page is open. "Autoscroll" (on after every load) keeps the newest in
+ * view.
+ */
+export const logsPage = (name: string) =>
+  page(
+    `TRMNLx logs: ${name}`,
+    `<style>
+body { margin: 0; padding: 8px; font-family: system-ui, sans-serif; }
+p { margin: 0 0 8px; }
+.bar { position: sticky; top: 0; background: Canvas; padding: 4px 0; display: flex; gap: 1em; align-items: baseline; flex-wrap: wrap; }
+#status { color: GrayText; }
+table { border-collapse: collapse; font: 13px/1.4 ui-monospace, monospace; width: 100%; }
+td { padding: 2px 8px 2px 0; vertical-align: top; }
+td.time, td.level, td.source { white-space: nowrap; }
+td.message { width: 100%; overflow-wrap: anywhere; }
+.details { color: GrayText; }
+tr.warn td.level { color: #b26b00; font-weight: bold; }
+tr.error td.level, tr.fatal td.level { color: #c00; font-weight: bold; }
+tr.debug { color: GrayText; }
+#empty { color: GrayText; }
+</style>
+<div class="bar"><strong>Logs: ${escapeHtml(name)}</strong> <span id="status">Connecting…</span> <label><input type="checkbox" id="autoscroll" checked> Autoscroll</label> <button id="clear">Clear</button> <a href="/">Screen</a></div>
+<p id="empty">Nothing yet: entries show here as they happen, from the device (after a failure) and from the server (each check-in). Nothing earlier is kept.</p>
+<table><tbody id="entries"></tbody></table>
+<script>
+const entries = document.getElementById("entries");
+const status = document.getElementById("status");
+const autoscroll = document.getElementById("autoscroll");
+const empty = document.getElementById("empty");
+const time = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "medium" });
+const cell = (className, text) => {
+  const td = document.createElement("td");
+  td.className = className;
+  td.textContent = text;
+  return td;
+};
+function show(entry) {
+  const row = document.createElement("tr");
+  row.className = entry.level;
+  const message = cell("message", entry.message);
+  const details = Object.entries(entry.details ?? {}).map(([key, value]) => key + ": " + value).join(" · ");
+  if (details) {
+    const span = document.createElement("div");
+    span.className = "details";
+    span.textContent = details;
+    message.append(span);
+  }
+  row.append(cell("time", time.format(entry.time)), cell("source", entry.source), cell("level", entry.level), message);
+  entries.append(row);
+  empty.hidden = true;
+  if (autoscroll.checked) row.scrollIntoView({ block: "end" });
+}
+document.getElementById("clear").addEventListener("click", () => {
+  entries.replaceChildren();
+  empty.hidden = false;
+});
+autoscroll.addEventListener("change", () => {
+  if (autoscroll.checked) entries.lastElementChild?.scrollIntoView({ block: "end" });
+});
+// Reconnects by itself after a dropped connection (e.g. a server restart); entries from while it
+// was away are lost
+const source = new EventSource("/logs/stream");
+source.addEventListener("open", () => (status.textContent = "Live"));
+source.addEventListener("message", (event) => show(JSON.parse(event.data)));
+source.addEventListener("error", () => {
+  // Closed for good (e.g. 401 after logging out elsewhere) rather than reconnecting
+  if (source.readyState === EventSource.CLOSED) {
+    status.textContent = "Disconnected: ";
+    const link = document.createElement("a");
+    link.href = "/logs";
+    link.textContent = "reload";
+    status.append(link);
+  } else status.textContent = "Reconnecting…";
+});
+</script>`,
+  );

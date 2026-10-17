@@ -79,7 +79,12 @@ export async function renderDeviceScreen(device: Device) {
     telemetry: telemetryFor(device),
     inputs: entry.inputs,
   });
-  return { ...rendered, ttl: Math.min(rendered.ttl, untilMove + SAFETY_SECONDS), index };
+  return {
+    ...rendered,
+    ttl: Math.min(rendered.ttl, untilMove + SAFETY_SECONDS),
+    index,
+    screen: entry.screen,
+  };
 }
 
 /**

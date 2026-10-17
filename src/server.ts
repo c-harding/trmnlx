@@ -10,7 +10,8 @@ import {
   type Device,
 } from "./config.ts";
 import { deviceApi } from "./device-api.ts";
-import { loginPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
+import { streamLogs } from "./logs.ts";
+import { loginPage, logsPage, screenPage, statusText, type PlaylistStatus } from "./pages.ts";
 import {
   activePlaylist,
   choosePlaylist,
@@ -163,6 +164,19 @@ app.get("/screen.png", async (req, res) => {
       "X-Credits": encodeURIComponent(JSON.stringify(credits)),
     })
     .send(png);
+});
+
+// The logged-in user's device's logs, live (see logs.ts)
+app.get("/logs", (req, res) => {
+  const device = sessionDevice(req);
+  if (!device) return res.redirect(303, "/login");
+  res.type("html").send(logsPage(device.username));
+});
+
+app.get("/logs/stream", (req, res) => {
+  const device = sessionDevice(req);
+  if (!device) return res.status(401).type("text").send("Not logged in\n");
+  streamLogs(device, req, res);
 });
 
 // Connecting Strava, for the logged-in user's device

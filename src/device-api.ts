@@ -11,6 +11,7 @@ import { renderPng } from "./render.ts";
 import { renderDeviceScreen, warmDeviceScreens } from "./screen.ts";
 import { Paired } from "./screens/paired.tsx";
 import { buttonStep, pressButton, recordCheckIn } from "./device-state.ts";
+import { firmwareLogEntries, logEntry, serverLog } from "./logs.ts";
 import { recordTelemetry } from "./telemetry.ts";
 
 export const deviceApi = express.Router();
@@ -30,6 +31,9 @@ function requireDevice(
     console.log(
       `Rejected ${req.method} ${req.path} from ${req.get("ID") ?? "a device without ID"}`,
     );
+    // A known MAC with the wrong token: worth seeing in its logs (e.g. after a re-pairing elsewhere)
+    const known = findDeviceByMac(req.get("ID") ?? "");
+    if (known) serverLog(known, "warn", `Rejected ${req.method} ${req.path}: wrong token`);
     return res.status(401).type("text").send("Unknown device or wrong token\n");
   }
   res.locals.device = device;
@@ -57,6 +61,7 @@ deviceApi.get("/api/setup", (req, res) => {
   // HTTP 200 with a body status of 404 makes the firmware show "MAC not registered" with this
   // message, and try again in 15 minutes. It keeps its Wi-Fi.
   if (!setupEnabled || !device) {
+    if (device) serverLog(device, "warn", "Refused setup: setup is disabled");
     console.log(
       `Refused setup for ${mac || "a device without ID"}: ${setupEnabled ? "unknown MAC" : "setup is disabled"}`,
     );
@@ -71,6 +76,8 @@ deviceApi.get("/api/setup", (req, res) => {
     });
   }
   console.log(`Paired ${device.username} (${device.mac})`);
+  // A second setup for a device already paired is worth noticing
+  serverLog(device, "info", "Paired");
   res.json({
     status: 200,
     api_key: deviceToken(device),
@@ -117,7 +124,14 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   // KEY3: a short press moves to the next playlist entry, the special function back to the previous
   const step = buttonStep(req.get("Update-Source"), req.get("special_function"));
   if (step) pressButton(device, step, req.get("Wake-Time"));
-  const { png, ttl, index } = await renderDeviceScreen(device);
+  let rendered;
+  try {
+    rendered = await renderDeviceScreen(device);
+  } catch (error) {
+    serverLog(device, "error", `Rendering failed: ${(error as Error).message}`);
+    throw error;
+  }
+  const { png, ttl, index, screen } = rendered;
   // Named after its content: the firmware skips the download and the redraw if it's unchanged
   const filename = createHash("sha256").update(png).digest("hex").slice(0, 16);
   rememberImage(device, filename, png);
@@ -126,6 +140,18 @@ deviceApi.get("/api/display", requireDevice, async (req, res: DeviceResponse) =>
   // device shows: what it was sent, as the firmware doesn't confirm it. (A Next pressed while this
   // rendered isn't in this image: it only shows from the check-in after.)
   recordCheckIn(device, sleep, index);
+  serverLog(
+    device,
+    "info",
+    `Checked in${step ? (step > 0 ? " (next)" : " (back)") : ""}: sent ${screen} (entry ${index + 1}), ${png.length} bytes, sleeping ${sleep} s`,
+    {
+      image: filename,
+      ...(req.get("Battery-Voltage") && { "battery (V)": String(req.get("Battery-Voltage")) }),
+      ...(req.get("RSSI") && { "Wi-Fi signal (dBm)": String(req.get("RSSI")) }),
+      ...(req.get("Wake-Time") && { "awake last time (ms)": String(req.get("Wake-Time")) }),
+      ...(req.get("FW-Version") && { firmware: String(req.get("FW-Version")) }),
+    },
+  );
   // So whatever a press shows next needn't wait for slow data
   warmDeviceScreens(device);
   res.json({
@@ -158,7 +184,14 @@ deviceApi.get(
   },
 );
 
-// Sent by the firmware after a failure. Accepted and dropped for now; a live log stream comes later.
-deviceApi.post("/api/log", requireDevice, express.json({ limit: "256kb" }), (req, res) => {
-  res.status(204).end();
-});
+// Sent by the firmware after a failure (or with logs stored while it couldn't send them): passed on
+// to whoever watches the device's logs (see logs.ts), and otherwise dropped
+deviceApi.post(
+  "/api/log",
+  requireDevice,
+  express.json({ limit: "256kb" }),
+  (req, res: DeviceResponse) => {
+    for (const entry of firmwareLogEntries(req.body)) logEntry(res.locals.device, entry);
+    res.status(204).end();
+  },
+);
