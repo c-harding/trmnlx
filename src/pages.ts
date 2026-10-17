@@ -214,7 +214,13 @@ h1, #bar { flex: none; }
 /* The breadcrumb's link in the text's colour, still underlined */
 h1 a { color: inherit; }
 #bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin: 0 0 16px; }
+/* The connection's status, after the buttons, with a dot: green while live, amber while
+   reconnecting, red once disconnected for good */
 #status { color: GrayText; }
+#status::before { content: "●"; margin-right: 0.4em; color: GrayText; }
+#status.live::before { color: #1a7f37; }
+#status.reconnecting::before { color: #d29922; }
+#status.disconnected::before { color: #cf222e; }
 #log { flex: 1; min-height: 0; overflow: auto; padding-bottom: 8px; }
 #empty { margin: 0; }
 table { border-collapse: collapse; font: 13px/1.4 ui-monospace, monospace; width: 100%; }
@@ -225,10 +231,12 @@ td.message { width: 100%; overflow-wrap: anywhere; }
 tr.warn td.level { color: #b26b00; font-weight: bold; }
 tr.error td.level, tr.fatal td.level { color: #c00; font-weight: bold; }
 tr.debug { color: GrayText; }
+/* Where entries are missing, while the page was disconnected */
+tr.gap td { color: GrayText; font-style: italic; padding: 4px 0; }
 #empty { color: GrayText; }
 </style>
 <h1><a href="/">TRMNLx: ${escapeHtml(name)}</a> › logs</h1>
-<p id="bar"><span id="status">Connecting…</span> <label><input type="checkbox" id="autoscroll" checked> Autoscroll</label> <button id="clear">Clear</button></p>
+<p id="bar"><label><input type="checkbox" id="autoscroll" checked> Autoscroll</label> <button id="clear">Clear</button> <span id="status">Connecting…</span></p>
 <div id="log">
 <p id="empty">Nothing yet: entries show here as they happen, from the device (after a failure) and from the server (each check-in). Nothing earlier is kept.</p>
 <table><tbody id="entries"></tbody></table>
@@ -241,12 +249,18 @@ const empty = document.getElementById("empty");
 const log = document.getElementById("log");
 const toEnd = () => (log.scrollTop = log.scrollHeight);
 const time = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "medium" });
+const clock = new Intl.DateTimeFormat(undefined, { timeStyle: "medium" });
 const cell = (className, text) => {
   const td = document.createElement("td");
   td.className = className;
   td.textContent = text;
   return td;
 };
+function append(row) {
+  entries.append(row);
+  empty.hidden = true;
+  if (autoscroll.checked) toEnd();
+}
 function show(entry) {
   const row = document.createElement("tr");
   row.className = entry.level;
@@ -259,9 +273,16 @@ function show(entry) {
     message.append(span);
   }
   row.append(cell("time", time.format(entry.time)), cell("source", entry.source), cell("level", entry.level), message);
-  entries.append(row);
-  empty.hidden = true;
-  if (autoscroll.checked) toEnd();
+  append(row);
+}
+// A row where entries are missing: from when the connection was lost until it was back
+function showGap(from, to) {
+  const row = document.createElement("tr");
+  row.className = "gap";
+  const td = cell("message", "Disconnected " + clock.format(from) + "–" + clock.format(to) + ": entries in between are missing");
+  td.colSpan = 4;
+  row.append(td);
+  append(row);
 }
 document.getElementById("clear").addEventListener("click", () => {
   entries.replaceChildren();
@@ -271,19 +292,32 @@ autoscroll.addEventListener("change", () => {
   if (autoscroll.checked) toEnd();
 });
 // Reconnects by itself after a dropped connection (e.g. a server restart); entries from while it
-// was away are lost
+// was away are lost, which a row in the list says
 const source = new EventSource("/logs/stream");
-source.addEventListener("open", () => (status.textContent = "Live"));
+let live = false;
+let lostAt;
+const setStatus = (state, text) => {
+  status.className = state;
+  status.textContent = text;
+};
+source.addEventListener("open", () => {
+  setStatus("live", "Live");
+  live = true;
+  if (lostAt) showGap(lostAt, Date.now());
+  lostAt = undefined;
+});
 source.addEventListener("message", (event) => show(JSON.parse(event.data)));
 source.addEventListener("error", () => {
+  if (live) lostAt = Date.now();
+  live = false;
   // Closed for good (e.g. 401 after logging out elsewhere) rather than reconnecting
   if (source.readyState === EventSource.CLOSED) {
-    status.textContent = "Disconnected: ";
+    setStatus("disconnected", "Disconnected: ");
     const link = document.createElement("a");
     link.href = "/logs";
     link.textContent = "reload";
     status.append(link);
-  } else status.textContent = "Reconnecting…";
+  } else setStatus("reconnecting", "Reconnecting…");
 });
 </script>`,
   );
