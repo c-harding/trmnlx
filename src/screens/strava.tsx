@@ -13,10 +13,11 @@ import {
 } from "../components/header.tsx";
 import { QrCode, qrSize } from "../components/qr-code.tsx";
 import { POWERED_BY_STRAVA, POWERED_BY_STRAVA_RATIO } from "../components/strava-logo.ts";
-import { textSize } from "../components/type.ts";
+import { plainEmoji, textSize } from "../components/type.ts";
 import { defineScreen } from "../define-screen.ts";
 import { projection } from "../map-drawing.ts";
 import { HEIGHT, textWidth, WIDTH } from "../render.ts";
+import { batteryLines, type Telemetry } from "../telemetry.ts";
 import {
   type Activity,
   depthFor,
@@ -124,6 +125,31 @@ function pace(activity: Activity): [string, string] {
 /** A stat: its value large, with its unit, and what it is under it. */
 // Kilometres to two decimals below 10 (9.99 at most: from 9,995 m it would round to 10.00), else one
 const kilometres = (metres: number) => (metres / 1000).toFixed(metres < 9995 ? 2 : 1);
+
+/**
+ * The title's size: 32 px, or the largest smaller one that fits beside the header's right (the logo
+ * if connected, and the battery), down to 25, where it's still cut off with "…" if need be.
+ */
+function titleSize(title: string, connected: boolean, telemetry: Telemetry | undefined) {
+  const right =
+    (connected ? Math.round(LOGO_HEIGHT * POWERED_BY_STRAVA_RATIO) + 16 : 0) +
+    Math.max(...batteryLines(telemetry).map((line) => textWidth(line, "TRMNL16", 16)));
+  // The header's padding, and the title's margin before what's on the right
+  const room = WIDTH - 2 * PADDING_X - 16 - right;
+  const text = plainEmoji(title);
+  const width = (size: number) => textWidth(text, "Noto Sans", size, 700);
+  const full = width(32);
+  if (full <= room) return 32;
+  const sizes = [25, 26, 27, 28, 29, 30, 31] as const;
+  const fits = (k: number) => width(sizes[k]) <= room;
+  // Straight to the size it's as much smaller than 32 px as the title is too long at 32 (text is
+  // about as wide as it's large), then up or down a pixel at a time to the largest that fits
+  const guess = Math.floor((32 * room) / full);
+  let k = Math.min(Math.max(guess - sizes[0], 0), sizes.length - 1);
+  if (fits(k)) while (k < sizes.length - 1 && fits(k + 1)) k++;
+  else while (k > 0 && !fits(k)) k--;
+  return sizes[k];
+}
 
 // Where an activity ends more than this much higher or lower than it starts, its descent is
 // shown after its ascent (otherwise about the same)
@@ -738,7 +764,10 @@ export default defineScreen({
           fontFamily: "Noto Sans",
         }}
       >
-        <Header title={activity?.name ?? "Strava"}>
+        <Header
+          title={activity?.name ?? "Strava"}
+          fittedSize={titleSize(activity?.name ?? "Strava", data.connected, telemetry)}
+        >
           <div style={{ display: "flex", alignItems: "center" }}>
             {data.connected && (
               <img

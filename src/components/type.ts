@@ -4,9 +4,9 @@
 /** Sizes of the pixel fonts TRMNL12, TRMNL16 and TRMNL21 */
 export type PixelSize = 12 | 16 | 21;
 /** Sizes in Noto Sans, for headings, clocks and other large text */
-export type LargeSize = 32 | 36 | 72 | 120;
+export type LargeSize = 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 36 | 72 | 120;
 
-/** The font for text of `size` px: a pixel font up to 21, Noto Sans from 32. */
+/** The font for text of `size` px: a pixel font up to 21, Noto Sans from 25. */
 export const textSize = (size: PixelSize | LargeSize) =>
   ({ fontFamily: size < 32 ? `TRMNL${size}` : "Noto Sans", fontSize: size }) as const;
 

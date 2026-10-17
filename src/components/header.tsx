@@ -25,7 +25,9 @@ export const ellipsis = {
 /**
  * The title, cut off with "…" if long, leaving room for what's on the right; over a rule unless
  * `rule` is false. Without it, the header ends where the rule would start, with no gap: the title
- * stays where it is, and what's below (e.g. a map) moves up.
+ * stays where it is, and what's below (e.g. a map) moves up. `fittedSize` draws it smaller (e.g. to
+ * fit) in the line of a `titleSize` one, so the header's height and what's on the right stay where
+ * they are.
  */
 // The title's line height: "normal" would take the tallest font in the line, e.g. Noto Sans Symbols'
 // for an arrow, and push the title onto the rule. 1.4, as Noto Sans reaches 1.36 em, which the
@@ -35,10 +37,11 @@ const TITLE_LINE_HEIGHT = 1.4;
 export function Header(props: {
   title: string;
   titleSize?: LargeSize;
+  fittedSize?: LargeSize;
   rule?: boolean;
   children?: ComponentChildren;
 }) {
-  const { title, titleSize = 32, rule = true, children } = props;
+  const { title, titleSize = 32, fittedSize = titleSize, rule = true, children } = props;
   return (
     <div
       style={{
@@ -57,8 +60,8 @@ export function Header(props: {
           flex: 1,
           minWidth: 0,
           marginRight: children ? 16 : 0,
-          ...textSize(titleSize),
-          lineHeight: TITLE_LINE_HEIGHT,
+          ...textSize(fittedSize),
+          lineHeight: `${titleSize * TITLE_LINE_HEIGHT}px`,
           fontWeight: 700,
           ...ellipsis,
         }}
