@@ -8,7 +8,7 @@ export type LargeSize = 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 36 | 72 | 120;
 
 /** The font for text of `size` px: a pixel font up to 21, Noto Sans from 25. */
 export const textSize = (size: PixelSize | LargeSize) =>
-  ({ fontFamily: size < 32 ? `TRMNL${size}` : "Noto Sans", fontSize: size }) as const;
+  ({ fontFamily: size <= 21 ? `TRMNL${size}` : "Noto Sans", fontSize: size }) as const;
 
 /**
  * Text with its emoji reduced to what Noto Emoji draws on its own: without variation selectors
