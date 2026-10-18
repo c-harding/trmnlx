@@ -7,7 +7,7 @@ A server for [TRMNL](https://trmnl.com) e-ink displays, in place of TRMNL's own 
 
 ## What it does
 
-**Screens**, each with its own settings (see [Screens](ARCHITECTURE.md#screens) for the details):
+**Screens**, each with its own settings (see [Screens](#screens)):
 
 | Screen           | Shows                                                                                                                              |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -135,3 +135,103 @@ Everything else comes from environment variables: `dist/.env` when deployed (cop
 | `DEPLOY_HOST`                                 | Deploy   | The server `scripts/deploy` and `scripts/connect` connect to                                                                                                                                                     |
 | `DEPLOY_USER`, `DEPLOY_KEYPAIR`, `DEPLOY_DIR` | No       | Who to connect as, with which key, and the directory there (`.` by default; `dist/sample.env` sets `trmnl`, which the logs command under [Running](#running) assumes)                                            |
 | `SETUP_ENABLED`                               | No       | `1` to answer `/api/setup` while pairing a device. Default `0`. Deployed, only `npm run pair` sets it (Docker's settings override a value in `.env`); locally, `SETUP_ENABLED=1 npm start`, or a value in `.env` |
+
+## Screens
+
+Each screen's inputs, set per playlist entry under `inputs` (see [Configuration](#configuration)); missing ones take their defaults. How the screens work: [Screens](ARCHITECTURE.md#screens).
+
+### `mvg-departures`
+
+Departures from a station in Munich, from MVG, as many as fit, in order of their actual departure, each with the next two on its line.
+
+| Input     | Type   | Default       | Meaning                                                                                                             |
+| --------- | ------ | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `station` | string | `München Hbf` | The station, as MVG spells it                                                                                       |
+| `pinned`  | list   | none          | Connections always shown: in their place if they fit, otherwise at the bottom under a thicker line (see pins below) |
+| `hide`    | list   | none          | Departures left out (see hide rules below); they don't take up rows, and apply to pinned connections too            |
+
+MVG's transport types: `UBAHN`, `SBAHN`, `TRAM`, `BUS`, `REGIONAL_BUS`, `BAHN`.
+
+**Pins**, one per line, as `<types> -> <station>`: the next direct connection of those types to that station, including trains ending there (which never appear in its own departures).
+
+- `UBAHN -> Hauptbahnhof`: the next U-Bahn there
+- `SBAHN|UBAHN -> Ostbahnhof`: either
+- `-> Ostbahnhof`: any type
+
+A pin without the arrow is ignored, with an error in the log.
+
+**Hide rules**, one per line, as `<types> [line] [-> <destination>]`; the last rule matching a departure decides, and without one it's shown. Lines and destinations are compared ignoring case.
+
+- `BUS|REGIONAL_BUS`: all buses
+- `BUS 54`: one bus line
+- `TRAM -> Amalienburgstraße`: trams going there
+- `-> Messestadt Ost`: anything going there
+- `show BUS 54`: an exception, showing matching departures again after a rule that hid them (also `!BUS 54`, but only quoted in YAML: `- '!BUS 54'`, as an unquoted `!` starts a YAML tag)
+
+The types come first: `show 54` would mean a transport type "54", which matches nothing.
+
+### `departures`
+
+Departures from a stop anywhere Transitous has data, with the same rows as `mvg-departures`.
+
+| Input     | Type   | Default              | Meaning                                                                                                   |
+| --------- | ------ | -------------------- | --------------------------------------------------------------------------------------------------------- |
+| `station` | string | `Innsbruck Hbf`      | The stop, as Transitous names it (it searches, so "Innsbruck Hbf" finds Innsbruck Hauptbahnhof)           |
+| `hide`    | list   | `BUS\|COACH`, `TRAM` | Departures left out, as for `mvg-departures`; by default only trains, and buses replacing them, are shown |
+
+Transitous' modes: `BUS`, `COACH`, `TRAM`, `METRO` (the S-Bahn), `SUBWAY`, `REGIONAL_RAIL`, `HIGHSPEED_RAIL`, …, and `RAIL_REPLACEMENT` for buses replacing trains.
+
+### `journeys`
+
+The next connections on one to four routes, from Transitous: one route fills the screen, two are side by side, three are two on the left and one on the right, four are two by two.
+
+| Input    | Type   | Default                     | Meaning                                                                                                                             |
+| -------- | ------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `routes` | list   | `München Hbf -> Berlin Ost` | One route per line, up to four (see routes below)                                                                                   |
+| `rules`  | string | `deny:longdistance`         | Which transport counts on every route (see rules below): by default no long-distance trains or coaches, as with a Deutschlandticket |
+| `count`  | int    | `8`                         | At most this many connections per route, as many as fit                                                                             |
+
+**Routes**: stops separated by `->`, from, any via stops in order, to, as Transitous names them: `Marienplatz -> München Hbf`. A stop in brackets is searched but left out of titles: `Marienplatz -> (Raubling) -> Innsbruck Hbf` shows "Marienplatz → Innsbruck Hbf".
+
+**Rules**: `allow:<mode>` and `deny:<mode>`, separated by commas or spaces, with a Transitous mode (`bus`, `tram`, `subway` for the U-Bahn, `metro` for the S-Bahn, `regional_rail`, `highspeed_rail`, …) or a group (`longdistance`: high-speed, long-distance and night trains and coaches; `regional`; `local`). The `rules` input applies everywhere; a stretch written `-[rules]>` instead of `->` adds its own, and the last rule mentioning a mode decides (without one, it's allowed). E.g. `Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]> Innsbruck Hbf` allows Railjets from Kufstein, but not from Munich. A via stop can matter: see [`journeys`](ARCHITECTURE.md#screens) for why `(Raubling)` is there.
+
+### `map`
+
+A street map like a printed one: roads black, railways and airports dark gray, water light gray.
+
+| Input        | Type   | Default              | Meaning                                                                                                 |
+| ------------ | ------ | -------------------- | ------------------------------------------------------------------------------------------------------- |
+| `title`      | string | `München`            | Shown above the map                                                                                     |
+| `lat`, `lon` | number | `48.1374`, `11.5755` | The map's centre                                                                                        |
+| `zoom`       | number | `12.1`               | As on web maps, fractions allowed: 14 shows about 5 km across in Munich, each step one more halves that |
+
+### `contours`
+
+A contour map: the land's shape in contour lines, and the water over them.
+
+| Input        | Type   | Default             | Meaning                                                                 |
+| ------------ | ------ | ------------------- | ----------------------------------------------------------------------- |
+| `title`      | string | `Chamonix`          | Shown above the map                                                     |
+| `lat`, `lon` | number | `45.9237`, `6.8694` | The map's centre                                                        |
+| `zoom`       | number | `12.5`              | As for `map`                                                            |
+| `contours`   | number | `0`                 | Metres between contour lines, at least 5; `0`: by how steep the land is |
+
+### `weather`
+
+The weather where the device is (its `location`'s `lat` and `lon`): now, the next 24 hours as a chart, and the next days.
+
+| Input   | Type   | Default | Meaning                                                          |
+| ------- | ------ | ------- | ---------------------------------------------------------------- |
+| `title` | string | empty   | Shown above the weather, e.g. the place's name; empty: "Weather" |
+
+### `strava`
+
+One of the latest Strava activities that aren't private, of the account connected on the screen page (see [Configuration](#configuration) for the app's credentials).
+
+| Input    | Type | Default | Meaning                                                       |
+| -------- | ---- | ------- | ------------------------------------------------------------- |
+| `offset` | int  | `0`     | Which activity: `0` the latest, `1` the one before, and so on |
+
+### `placeholder`
+
+The device's name, battery, and the time and date. No inputs.
