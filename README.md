@@ -61,6 +61,16 @@ Pairing a new device (after adding it to `devices.yaml` and deploying):
 npm run pair    # turns /api/setup on until you press Enter, then off again
 ```
 
+## Using the screen page
+
+Each device has a page at the server's address (http://localhost:7777 locally), behind a login with the device's `username` and `password` from `devices.yaml`.
+
+- **The preview**: what the device shows now, rendered as it looks on the display, and rendered again when the screen changes. Its caption says whether the device has it: "Live preview" if it got that entry at its last check-in, otherwise when it will (its next check-in, or "when device comes online"). A click on the preview toggles its actual size.
+- **Prev and Next** move the device's playlist back or on, through the entries that apply now, as its button does. Above them, which entry shows and where it is: "journeys (2/3)" is the second of three entries that apply now; a tooltip on the count names those that apply at other times. The device shows the change at its next check-in.
+- **Playlist**: a dropdown, when the device has other playlists (its `playlists`, see [Configuration](#configuration)), switches to another one straight away, starting at its first entry that applies.
+- **Links under the preview**: the attributions the current screen asks for (e.g. a map's data), and any other links it provides, e.g. to connect an account a screen needs.
+- **Logs** (in the footer): the device's logs, live, at `/logs`: what the device reports after a failure, and each check-in, rejected request and render error. Nothing is kept: the page shows what happens while it's open. A coloured dot shows the connection (green live, amber reconnecting, red disconnected), and a row in the list marks any gap.
+
 ## Configuration
 
 The server works with a fixed set of devices, configured in `devices.yaml`. The file is deployed with the code, so changes take effect on the next deploy. It contains passwords, so it is gitignored: copy [devices.yaml.sample](devices.yaml.sample) to `devices.yaml` and edit it.
@@ -281,7 +291,9 @@ The weather where the device is (its `location`'s `lat` and `lon`): now, the nex
 
 ### `strava`
 
-One of the latest Strava activities that aren't private, of the account connected on the screen page (see [Configuration](#configuration) for the app's credentials).
+One of the latest Strava activities that aren't private, of the account connected for the device.
+
+To connect one, the server needs a Strava app: register it at [strava.com/settings/api](https://www.strava.com/settings/api), with this server's domain as its callback domain, and put its `client_id` and `client_secret` under `tokens.strava` in `devices.yaml`. Then, while the device shows this screen, its page has a "Connect Strava" link under the preview: it logs in to Strava, which asks to allow access to the account's activities, and comes back to the page connected. "Disconnect Strava" there forgets the connection again (Strava still lists the app under the account's settings, where it can be revoked).
 
 | Input    | Type | Default | Meaning                                                       |
 | -------- | ---- | ------- | ------------------------------------------------------------- |
