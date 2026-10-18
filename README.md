@@ -2,6 +2,12 @@
 
 A server for [TRMNL](https://trmnl.com) e-ink displays, in place of TRMNL's own service: for a small, fixed set of devices, each showing screens written for this server, on a schedule. It runs on a small server in Docker, renders the screens itself (no headless browser, no database) and talks to the devices with TRMNL's firmware as it is.
 
+<p>
+  <img src="docs/screenshots/departures.png" width="32%" alt="Departures from Marienplatz in Munich: U-Bahn and S-Bahn lines, destinations and times, with MVG's notes">
+  <img src="docs/screenshots/weather.png" width="32%" alt="The weather in Munich: now, a 24-hour chart of the temperature with the night shaded, and the next days">
+  <img src="docs/screenshots/contours.png" width="32%" alt="A contour map of the mountains around Chamonix">
+</p>
+
 - How it's built: [ARCHITECTURE.md](ARCHITECTURE.md)
 - What a TRMNL device expects from a server: [TRMNL.md](TRMNL.md)
 
