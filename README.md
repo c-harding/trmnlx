@@ -33,6 +33,7 @@ You need Node 24 (as in the Docker image).
 Locally:
 
 ```sh
+git clone https://github.com/c-harding/trmnlx.git && cd trmnlx
 npm install
 cp sample.env .env                    # then set TOKEN_SECRET (openssl rand -base64 32)
 cp devices.yaml.sample devices.yaml   # then add your devices

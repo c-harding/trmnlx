@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/c-harding/trmnlx.git"
+  },
   "description": "A self-hosted server for TRMNL e-ink displays",
   "type": "module",
   "engines": {
