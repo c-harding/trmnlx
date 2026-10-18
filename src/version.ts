@@ -6,8 +6,13 @@ declare const BUILD_VERSION: string | undefined;
 export const version =
   typeof BUILD_VERSION === "string" && BUILD_VERSION !== "" ? BUILD_VERSION : undefined;
 
+// Who runs this server, e.g. an email address: CONTACT in .env. Each deployment gives its own, so
+// the services hear from whoever runs it
+const contact = process.env.CONTACT?.trim();
+
 /**
  * Sent with every request to other services (Transitous, OpenFreeMap, MVG): the application's name,
- * its version and a contact, as Transitous' usage policy asks, so they can reach us if needed.
+ * its version and the contact if there is one, as Transitous' usage policy asks, so they can reach
+ * whoever runs it if needed.
  */
-export const USER_AGENT = `TRMNLx/${version ?? "dev"} (self-hosted e-ink display server; trmnlx@example.com)`;
+export const USER_AGENT = `TRMNLx/${version ?? "dev"} (self-hosted e-ink display server${contact ? `; ${contact}` : ""})`;
