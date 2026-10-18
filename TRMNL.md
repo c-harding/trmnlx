@@ -152,7 +152,7 @@ For reference, black-and-white 1-bit images in BMP3 or PNG also still work.
 
 ### Notes for implementing a server
 
-- Only `Access-Token` matters for authentication. The other headers are telemetry, so store whatever is useful (battery, RSSI) for a status page.
+- `Access-Token` authenticates the device, and `ID` (its MAC) says which device it is. The other headers are telemetry, so store whatever is useful (battery, RSSI) for a status page.
 - Return a new `filename` only when the image actually changes. That saves the device a download and an e-ink refresh, though most of the battery goes on the wake itself (Wi-Fi and the request), so how often the device wakes matters more.
 - A short `refresh_rate` drains the battery quickly. One update cycle takes about 5–10 s of Wi-Fi time. At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months.
 - The device can't be reached between polls. Any change you make on the server takes effect at the next wake, at most `refresh_rate` seconds later.
