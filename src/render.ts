@@ -84,7 +84,8 @@ export function textWidth(text: string, family: string, size: number, weight: Fo
  * from the bit depth:
  * - 4 colours (2 bits per pixel, palette): 4-gray mode, always a full refresh, which flashes. The
  *   firmware maps the palette colours to gray itself;
- * - 2 colours (1 bit per pixel, grayscale): black and white, with a fast partial refresh.
+ * - 2 colours (1 bit per pixel, grayscale): black and white, with a fast partial refresh unless
+ *   the device gets full refreshes (fullRefresh, the default).
  *   Anti-aliased edges are thresholded, so nothing in between survives. Not a palette PNG, which
  *   the firmware would show inverted (see png1bit.ts).
  */

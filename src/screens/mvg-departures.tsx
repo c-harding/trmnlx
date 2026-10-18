@@ -21,8 +21,9 @@ export default defineScreen({
     hide: { type: "list", default: [] },
   },
 
-  // Only black and white: the firmware then uses its fast partial refresh, without the flashing of
-  // a 4-gray refresh, which matters for a screen that changes every minute.
+  // Only black and white: the firmware can then use its fast partial refresh, without the flashing
+  // of a 4-gray refresh, which matters for a screen that changes every minute (only for a device
+  // with fullRefresh: false; see config.ts)
   colors: 2,
 
   // A courtesy rather than a requirement: MVG publishes no terms for this (unofficial) interface

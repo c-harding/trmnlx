@@ -1,6 +1,6 @@
 // The weather where the device is (its location in devices.yaml): now, the next 24 hours as a chart
-// (temperature, rain and its chance, night shaded from sunset to sunrise), and the next days. From
-// Open-Meteo (see sources/open-meteo.ts).
+// (temperature, rain and its chance, snow, and the night shaded, dithered through twilight), and the
+// next days. From Open-Meteo (see sources/open-meteo.ts).
 import type { ComponentChildren } from "preact";
 import { Battery, Header, PADDING_X, PADDING_Y, RULE } from "../components/header.tsx";
 import { type PixelSize, textSize } from "../components/type.ts";

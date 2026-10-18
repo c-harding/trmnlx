@@ -1,3 +1,5 @@
+// The default screen, for a device with nothing else to show: its name, its battery, and the time
+// and date in its time zone.
 import { defineScreen } from "../define-screen.ts";
 import { batteryText } from "../telemetry.ts";
 import { untilNextMinute } from "../time.ts";

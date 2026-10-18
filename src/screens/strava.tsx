@@ -1,6 +1,8 @@
-// Your latest Strava activity that isn't private: its name, sport, when, kudos, its route on a map,
-// stats (distance, ascent and descent, time, pace or speed) and a QR code of its page on Strava. Needs the device's account connected to Strava: until then, the
-// browser's preview has a "Connect Strava" link (see sources/strava.ts).
+// One of your latest Strava activities that aren't private, by its offset (0, the latest): its
+// name, sport, when, kudos, its route on a map, stats (distance, ascent and descent, time, pace or
+// speed), its elevation profile and a QR code of its page on Strava. Needs the device's account
+// connected to Strava: until then, the browser's preview has a "Connect Strava" link (see
+// sources/strava.ts).
 import type { ComponentChildren } from "preact";
 import {
   Battery,

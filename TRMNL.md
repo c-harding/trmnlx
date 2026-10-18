@@ -134,7 +134,7 @@ We use **4-shade grayscale**. Our device runs firmware 1.8.x, and grayscale need
 - **800 × 480 PNG, 2 bits per pixel**, with 4 shades: black, dark gray, light gray, white.
 - The device detects grayscale from the PNG's bit depth. Nothing in the API response switches it on. A 2-bit PNG is drawn in 4 shades, and a 1-bit PNG or BMP3 is drawn in black and white.
 - **Keep files under 90,000 bytes.** The firmware won't draw a larger image on the OG. Use maximum PNG compression. Dithering makes files bigger, so check the size when you dither.
-- By default the device uses a fast, partial refresh. Send `"maximum_compatibility": true` in the `/api/display` response to force a full refresh instead (slower, with flashing, but it clears ghosting).
+- A 2-bit (grayscale) image always gets a full refresh. For a 1-bit (black and white) image the device uses a fast, partial refresh by default; send `"maximum_compatibility": true` in the `/api/display` response to force a full refresh instead (slower, with flashing, but it clears ghosting).
 
 Example conversion with ImageMagick (drop the `-dither` option for flat UI graphics):
 
