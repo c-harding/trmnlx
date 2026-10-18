@@ -95,34 +95,89 @@ At the top level:
 - `playlists` names playlists, which devices can use (`playlist: kitchen`) and playlists can include.
 - `tokens` holds other services' credentials: `strava` with the Strava app's `client_id` and `client_secret`, for the `strava` screen. Never sent to a browser.
 
-A playlist is a list of entries, each either a screen with its inputs, or an include of a named playlist:
+### Playlists
+
+A device shows a playlist: entries it moves through, each a screen with its inputs. Playlists can be named at the top level, shared by devices and included in other playlists:
 
 ```yaml
 playlists:
+  morning:
+    - screen: mvg-departures
+      inputs:
+        station: Marienplatz
+        hide:
+          - BUS|REGIONAL_BUS
+          - show BUS 54
   travel:
     - screen: journeys
+      duration: 10m
       inputs:
         routes:
           - Marienplatz -> München Ost
           - Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]-> Innsbruck Hbf
 
+location: # For public and school holidays (PH, SH in `when`), sunrise and sunset, and the weather screen; a device can have its own
+  country: de
+  state: Bayern
+  lat: 48.14
+  lon: 11.58
+
 devices:
-  - mac: "AA:BB:CC:DD:EE:FF"
-    username: kitchen
-    password: change-me
+  - username: kitchen
     playlist:
-      - screen: mvg-departures
-        inputs:
-          station: Marienplatz
-          hide:
-            - BUS|REGIONAL_BUS
-            - show BUS 54
-      - playlist: travel
+      - playlist: morning
+        when: Mo-Fr 06:30-09:00; PH off
+      - travel
+      - screen: placeholder
+        duration: 5m
+        when: otherwise
+  - username: innsbruck
+    location: { country: at, state: Tirol }
+    playlist: travel
 ```
 
-An include can also be just the playlist's name (`- travel`). A name where a playlist is expected that is only a screen's name gets a message saying to write `screen: …`. Includes are expanded when the file is read, so each device has one flat list. A device starts at its playlist's first entry; the screen page's Prev and Next buttons and KEY3 move it (see [Playlists](ARCHITECTURE.md#playlists)). Inputs are checked against the screen's definitions: an unknown input or a value of the wrong type (e.g. `routes` written as one string instead of a list) stops the server with a message saying where. Write lists as block lists (`- …` per line): routes and hide rules then need no quotes.
+Each entry has these fields:
+
+| Field      | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `screen`   | The screen to show                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `inputs`   | Its inputs, typed as the screen defines them (string, number, int, boolean, list); missing ones take the defaults. So the same screen can appear more than once (e.g. two stations)                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `duration` | How long the entry stays before the playlist moves on: `90s`, `10m`, `1h`, `1h30m`, at least `10s` (a device wakes at most every 5 s). Without it, the entry stays while its `when` applies                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `when`     | When the entry applies, in the device's time zone, in OpenStreetMap's [`opening_hours`](https://wiki.openstreetmap.org/wiki/Key:opening_hours/specification) syntax: `Mo-Fr 06:30-09:00`, `Sa,Su` (whole days), `22:00-02:00` (over midnight, counting for the day it starts), `Mo-Fr 06:30-09:00; We off` (a later rule replaces earlier ones for its days), `Dec 24 14:00-24:00`, `Mo[1]` (the first Monday of the month), `PH off` (not on public holidays), `SH` (school holidays), `(sunrise-01:00)-sunset` (from an hour before sunrise; needs `lat` and `lon` in `location`). Or `otherwise` (see below). Without it, always |
+| `playlist` | Instead of `screen`: includes a named playlist's entries here. It can have a `when`, which applies to all of them on top of their own (both must apply), and a `duration`, which applies to those without their own                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `shuffle`  | Only with `playlist`: `true` plays the included entries in a random order, new each round (see below). Default `false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+`when: otherwise` applies when no other entry of the same playlist applies: the playlist it is written in, not the ones including it, which may have entries of their own (an included playlist counts as applying if any of its entries does). So a playlist covers all times without writing out the gaps, as `placeholder` above does.
+
+- **Covering all times**: an entry without `when` applies always. Gaps are allowed: when no entry applies, the device shows `defaultScreen`.
+- **Named playlists** are lists of entries, whose entries can have their own `when` and `duration`; the playlist itself has none. A device's `playlist` is a list of entries, or a named playlist's name (`playlist: travel`), and a device's `screen: x` is a playlist of one entry.
+- **Includes** are written `- playlist: travel`, or just `- travel` when they need nothing else. An include's `when` applies to all its entries on top of their own (both must apply), and its `duration` to those without their own. A screen's name where a playlist is expected gets a message saying to write `screen: …`.
+- **Shuffling**: `shuffle: true` on an include plays its entries in a random order, new each round (each entry once per round); the rest of the playlist keeps its order.
+- **Holidays**: `PH` (public holidays) and `SH` (school holidays) need a `location`, at the top level or per device: `country` as a code such as `de` or `at`, and for `SH` the `state` as OpenStreetMap names it (`Bayern`, `Tirol`). Holidays of part of a state count for all of it: in Bavaria, the Augsburger Hohes Friedensfest (8 August) counts in Munich too; a later rule turns a day back on: `Mo-Fr 06:30-09:00; PH off; Aug 08 Mo-Fr 06:30-09:00`. School holidays are known a few years ahead (e.g. Tirol's until 2029); past that, an entry with `SH` doesn't apply, and the error is logged.
+- **The sun**: `sunrise`, `sunset`, `dawn` and `dusk` (civil twilight), also with offsets such as `(sunrise-01:00)-sunrise` or `sunset-(sunset+00:30)`, need the location's `lat` and `lon`.
+- **Moving through it**: a device starts at its playlist's first entry, and moves on when the entry's `duration` runs out or its `when` stops applying, to the next entry that applies. The screen page's Prev and Next move it too, and so does the device's button: a short press goes on, a double click or a 1–5 s hold goes back. Either way the entry shown gets its full `duration`.
+- **Inputs** are checked against the screen's definitions (see [Screens](#screens)): an unknown input or a value of the wrong type (e.g. `routes` written as one string instead of a list) stops the server with a message saying where. Write lists as block lists (`- …` per line): routes and hide rules then need no quotes, while on one line (`[…]`) the brackets in `-[…]>` confuse YAML. Quote anything starting with `!` (a YAML tag) or containing `: ` (a key).
+
+### Battery
+
+Most of a device's battery goes on waking up (Wi-Fi and an HTTPS request, around 5–10 s at roughly 100 mA or more), much less on the download and the e-ink refresh. At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months, roughly 10,000 wakes per charge (the DIY kit's battery and sleep current may differ). Rough estimates:
+
+| Pattern                                                         | Wakes per day | Battery lasts |
+| --------------------------------------------------------------- | ------------- | ------------- |
+| Departures all day, every minute                                | 1,440         | About 1 week  |
+| Departures 06:30–09:00 every minute, otherwise every 15 minutes | About 235     | About 6 weeks |
+| Every 5 minutes                                                 | 288           | About 5 weeks |
+| Every 15 minutes                                                | 96            | 3–4 months    |
+
+So the number of wakes matters far more than the number of redraws, and a `when` window around a screen that updates every minute saves the most.
+
+A device wakes when its screen changes (every minute for departures), so a `when` window around a screen that updates every minute saves the most.
+
+### Checks
 
 The server checks the file at startup (required fields, unique usernames and MACs, valid time zones, existing playlists and `defaultScreen`, playlists that don't include each other, inputs, `location`, `duration`, and `when`: a syntax error, `PH`/`SH` without a `location`, or sunrise and the like without its `lat` and `lon`) and refuses to start if it's wrong. A playlist entry with an unknown screen is left out with a warning instead (see [Playlists](ARCHITECTURE.md#playlists)), which `scripts/deploy` shows with its config check.
+
+### Environment variables
 
 Everything else comes from environment variables: `dist/.env` when deployed (copied to the server by `scripts/deploy`, see [Deployment](ARCHITECTURE.md#deployment)), `.env` for `npm start` locally. Both are gitignored; `sample.env` and `dist/sample.env` document them.
 
