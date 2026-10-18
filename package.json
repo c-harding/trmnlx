@@ -2,6 +2,7 @@
   "name": "trmnlx",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "A self-hosted server for TRMNL e-ink displays",
   "type": "module",
   "engines": {

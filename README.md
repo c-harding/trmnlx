@@ -323,3 +323,11 @@ To connect one, the server needs a Strava app: register it at [strava.com/settin
 ### `placeholder`
 
 The device's name, battery, and the time and date. No inputs.
+
+## Licence
+
+The code is under the [MIT licence](LICENSE). It doesn't cover:
+
+- the fonts in `assets/fonts/` (TRMNL's pixel fonts and Noto), each under the SIL Open Font License, as their licence files there say;
+- Strava's "Powered by Strava" logo (`src/components/strava-logo.ts`), Strava's trademark, used unmodified as its [brand guidelines](https://developers.strava.com/guidelines/) allow;
+- the dependencies, each under its own licence (see [Dependencies](ARCHITECTURE.md#dependencies)).
