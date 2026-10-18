@@ -28,6 +28,8 @@ A server for [TRMNL](https://trmnl.com) e-ink displays, in place of TRMNL's own 
 
 ## Running
 
+You need Node 24 (as in the Docker image).
+
 Locally:
 
 ```sh
@@ -36,6 +38,8 @@ cp sample.env .env                    # then set TOKEN_SECRET (openssl rand -bas
 cp devices.yaml.sample devices.yaml   # then add your devices
 npm run build && npm start            # http://localhost:7777
 ```
+
+The build copies `devices.yaml` into `dist/`, where the server reads it, so after editing it, run `npm run build` again (and restart).
 
 Developing screens:
 
@@ -47,7 +51,7 @@ No `devices.yaml` or `.env` needed. Saving a file rebuilds and restarts it; relo
 
 Tests: `npm test` runs `test/*.test.ts` with Node's test runner (bundled by esbuild first, like the server).
 
-Deploying:
+Deploying needs a server set up as in the [virtual server gist](https://gist.github.com/c-harding/59686990f42f4dddae01dffa56618ea4) (Docker, and Caddy with `add-site`), ssh access to it, and DNS for `SERVER_DOMAIN` pointing at it (see [Deployment](ARCHITECTURE.md#deployment)):
 
 ```sh
 cp dist/sample.env dist/.env          # once: fill in the deploy settings and TOKEN_SECRET
@@ -55,11 +59,14 @@ npm run build-deploy
 npm run connect -- 'docker compose -f trmnl/docker-compose.yml logs -f'   # follow the server's logs
 ```
 
-Pairing a new device (after adding it to `devices.yaml` and deploying):
+Setting up a device:
 
-```sh
-npm run pair    # turns /api/setup on until you press Enter, then off again
-```
+1. Add it to `devices.yaml` (at least its `mac`, `username` and `password`) and deploy.
+2. Put the device into its setup mode: a new one starts there; otherwise a long press of the reset button clears its settings, Wi-Fi included. It opens a Wi-Fi access point with a setup page.
+3. On that page, enter your Wi-Fi, and under the advanced settings this server's `SERVER_DOMAIN` as the custom server URL, exactly as written there (see [TRMNL.md](TRMNL.md#pointing-the-device-at-this-server) for why it must match).
+4. Run `npm run pair`: it lets the server hand out the device's token until you press Enter, then turns that off again. Wake the device with a short press of its button; it fetches its token, shows "Paired", and then its screens. The server's log, and the device's page under Logs, say "Paired".
+
+A device that was set up with TRMNL's own service still has that token: reset it as above, or put its old token in its `token` field instead of pairing.
 
 ## Using the screen page
 
@@ -94,7 +101,7 @@ devices:
 | `playlists`          | No       | Other playlists the screen page can switch the device to (see [Playlists](ARCHITECTURE.md#playlists)): a mapping of names to playlists, each like `playlist` (a list of entries, or a named playlist's name) or an include's fields alone (`maps: { duration: 10m, shuffle: true }`: the named playlist of the same name, or the one `playlist:` gives) or nothing (`maps:`, that named playlist as it is), or a list of named playlists' names (`[travel, maps]`), each offered under its own name. Offered in this order, after `default`, the name of `playlist` or `screen`, which therefore can't name one of these |
 | `refreshRate`        | No       | The longest the device sleeps between polls, in seconds, at least 60. Default 900, the firmware's own default. It wakes sooner when the screen's `ttl` runs out first                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `fullRefresh`        | No       | Default `true`: sends `maximum_compatibility: true`, so the firmware does a full refresh (with a flash) on every update. `false` lets it use partial refreshes for black-and-white screens, which don't flash but currently leave traces of earlier screens on the DIY kit                                                                                                                                                                                                                                                                                                                                               |
-| `temperatureProfile` | No       | Sent to the device as `temperature_profile`: how the firmware drives the panel. For the 7.5" panel, `default` uses the `EP75_800x480` driver, `a` the panel's built-in fast mode (`EP75_800x480_GEN2`), `b` darker grays. Takes effect from the device's next wake; leaving it out means `default`. With `default`, the firmware doesn't rewrite the previous image before a partial refresh, which may leave traces of earlier screens                                                                                                                                                                                  |
+| `temperatureProfile` | No       | Sent to the device as `temperature_profile`: how the firmware drives the panel. For the 7.5" panel, `default` uses the `EP75_800x480` driver, `a` the panel's built-in fast and 4-gray modes (`EP75_800x480_GEN2`), `b` darker grays. Takes effect from the device's next wake; leaving it out means `default`. With `default`, the firmware doesn't rewrite the previous image before a partial refresh, which may leave traces of earlier screens                                                                                                                                                                      |
 | `location`           | No       | Where the device is, overriding the top-level `location` (see below), e.g. for holidays in another state                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `token`              | No       | The device's existing token, for a device paired with another server. If set, it is used instead of a derived token (see [Authentication](ARCHITECTURE.md#authentication))                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -195,7 +202,7 @@ Everything else comes from environment variables: `dist/.env` when deployed (cop
 | --------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TOKEN_SECRET`                                | Yes      | At least 32 characters. Derives the devices' tokens and signs login sessions (see [Authentication](ARCHITECTURE.md#authentication))                                                                              |
 | `SERVER_PORT`                                 | No       | Locally: the port to listen on. Deployed: the host port Caddy forwards to (inside the container it's always 7777). Default `7777`                                                                                |
-| `SERVER_DOMAIN`                               | Deploy   | The public address, e.g. `https://trmnl.charding.dev`; registered with Caddy on deploy                                                                                                                           |
+| `SERVER_DOMAIN`                               | Deploy   | The public address, e.g. `https://trmnl.example.com`; registered with Caddy on deploy                                                                                                                            |
 | `TZ`                                          | No       | Default time zone for devices without `timezone`                                                                                                                                                                 |
 | `DEPLOY_HOST`                                 | Deploy   | The server `scripts/deploy` and `scripts/connect` connect to                                                                                                                                                     |
 | `DEPLOY_USER`, `DEPLOY_KEYPAIR`, `DEPLOY_DIR` | No       | Who to connect as, with which key, and the directory there (`.` by default; `dist/sample.env` sets `trmnl`, which the logs command under [Running](#running) assumes)                                            |

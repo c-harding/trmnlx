@@ -8,7 +8,7 @@ The TRMNL device does all the talking. It sleeps most of the time, wakes up on a
 
 ### Pointing the device at this server
 
-On first boot (or after a long press of the reset button) the device opens a Wi-Fi access point with a captive portal. You enter your Wi-Fi credentials there. The portal's advanced settings also take a custom server URL, which replaces the default `https://trmnl.com`. All endpoints below are relative to that URL.
+On first boot (or after a long press of the reset button) the device opens a Wi-Fi access point with a captive portal. You enter your Wi-Fi credentials there. The portal's advanced settings also take a custom server URL, which replaces the default `https://trmnl.com`. All endpoints below are relative to that URL. It must be exactly the URL the server builds its image URLs from (the same scheme, no `www.`, port or trailing slash that the server doesn't use too), or the device won't send its credentials with the image download (see [the image download](#get-image_url-the-image-download)).
 
 ### Lifecycle
 
@@ -96,6 +96,8 @@ Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connect
 | `reset_firmware`                  | Tell the device to clear **all** its settings, including Wi-Fi, and restart into the captive portal                                                                                                                                                                                                                                                                                                                      |
 | `special_function`                | What the device should do when the button's special function is used (e.g. `identify`), saved for its next press. In the response to a press, `action` must repeat it, or the firmware ignores the response. Each function behaves differently: `rewind` redraws the previous image from flash, while `identify`, `restart_playlist` and `guest_mode` download `image_url` (only `guest_mode` also takes `refresh_rate`) |
 | `temperature_profile`             | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays)                                                                                                                                                                                                                                                                                                        |
+| `maximum_compatibility`           | `true` forces a full refresh (with a flash) on every update, also for a 1-bit image, which would otherwise get a fast, partial one (see [Image format](#image-format))                                                                                                                                                                                                                                                   |
+| `action`                          | Only in the response to a press of the button's special function: must repeat the `special_function` saved on the device, or the firmware ignores the response                                                                                                                                                                                                                                                           |
 
 ### `GET <image_url>`: the image download
 
@@ -129,7 +131,7 @@ Reply with `204 No Content`. Whatever the server returns, the device doesn't act
 
 ### Image format
 
-We use **4-shade grayscale**. Our device runs firmware 1.8.x, and grayscale needs 1.6.0 or later.
+Grayscale needs firmware 1.6.0 or later.
 
 - **800 × 480 PNG, 2 bits per pixel**, with 4 shades: black, dark gray, light gray, white.
 - The device detects grayscale from the PNG's bit depth. Nothing in the API response switches it on. A 2-bit PNG is drawn in 4 shades, and a 1-bit PNG or BMP3 is drawn in black and white.
@@ -152,7 +154,7 @@ For reference, black-and-white 1-bit images in BMP3 or PNG also still work.
 
 - Only `Access-Token` matters for authentication. The other headers are telemetry, so store whatever is useful (battery, RSSI) for a status page.
 - Return a new `filename` only when the image actually changes. That saves the device a download and an e-ink refresh, though most of the battery goes on the wake itself (Wi-Fi and the request), so how often the device wakes matters more.
-- A short `refresh_rate` drains the battery quickly. One update cycle takes about 10 s of Wi-Fi time. At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months.
+- A short `refresh_rate` drains the battery quickly. One update cycle takes about 5–10 s of Wi-Fi time. At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months.
 - The device can't be reached between polls. Any change you make on the server takes effect at the next wake, at most `refresh_rate` seconds later.
 
 ### Sources

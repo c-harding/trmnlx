@@ -187,7 +187,7 @@ export const tokenSecret = loadTokenSecret();
 export const setupEnabled = process.env.SETUP_ENABLED === "1";
 
 /**
- * The public address, e.g. https://trmnl.charding.dev. Image URLs must start with exactly the URL
+ * The public address, e.g. https://trmnl.example.com. Image URLs must start with exactly the URL
  * configured on the device, or the firmware doesn't send its token with the image request.
  */
 export const serverDomain = process.env.SERVER_DOMAIN?.replace(/\/+$/, "") || undefined;
