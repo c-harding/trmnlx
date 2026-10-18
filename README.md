@@ -1,6 +1,30 @@
-# A server for an e-ink display
+# TRMNLx
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for how the server is built and configured.
+A server for [TRMNL](https://trmnl.com) e-ink displays, in place of TRMNL's own service: for a small, fixed set of devices, each showing screens written for this server, on a schedule. It runs on a small server in Docker, renders the screens itself (no headless browser, no database) and talks to the devices with TRMNL's firmware as it is.
+
+- How it's built: [ARCHITECTURE.md](ARCHITECTURE.md)
+- What a TRMNL device expects from a server: [TRMNL.md](TRMNL.md)
+
+## What it does
+
+**Screens**, each with its own settings (see [Screens](ARCHITECTURE.md#screens) for the details):
+
+| Screen           | Shows                                                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `mvg-departures` | Departures from a station in Munich, from MVG, with notes, delays and cancellations, and pinned connections to chosen stations     |
+| `departures`     | Departures from a stop anywhere Transitous has data                                                                                |
+| `journeys`       | The next connections on one to four routes, with via stops and rules for which transport counts (e.g. a Deutschlandticket)         |
+| `map`            | A street map, like a printed one, from OpenStreetMap data                                                                          |
+| `contours`       | A contour map of the land, with its interval chosen by how steep it is                                                             |
+| `weather`        | The weather for the next 24 hours where the device is: temperature, rain and snow, daylight, sunrise and sunset                    |
+| `strava`         | One of your latest Strava activities: its route on a map, its stats, its elevation profile with named summits, and a QR code to it |
+| `placeholder`    | The default, for a device with nothing else to show                                                                                |
+
+**Playlists**: a device shows its screens in turn, each for a `duration` and only `when` it applies (e.g. departures on weekday mornings, in OpenStreetMap's opening-hours syntax, with holidays and sunrise). The device's button moves on or back. A device can have several playlists to switch between.
+
+**A page in the browser** for each device, behind a login: what it shows now, as it looks on the display, with buttons to move its playlist on or back and to switch playlists, its live logs (what it reports after a failure, and each check-in), and connecting its Strava account.
+
+**A development server** that renders any screen with any settings, and a device's or a playlist's screens all at once, from `devices.yaml`.
 
 ## Running
 
@@ -37,228 +61,78 @@ Pairing a new device (after adding it to `devices.yaml` and deploying):
 npm run pair    # turns /api/setup on until you press Enter, then off again
 ```
 
-## Protocol
+## Configuration
 
-The TRMNL device does all the talking. It sleeps most of the time, wakes up on a timer (or on a button press), polls the server over HTTP(S), downloads one image, draws it, and goes back to deep sleep. The server never pushes anything to the device. It can only steer the device through the response to the next poll.
+The server works with a fixed set of devices, configured in `devices.yaml`. The file is deployed with the code, so changes take effect on the next deploy. It contains passwords, so it is gitignored: copy [devices.yaml.sample](devices.yaml.sample) to `devices.yaml` and edit it.
 
-### Pointing the device at this server
-
-On first boot (or after a long press of the reset button) the device opens a Wi-Fi access point with a captive portal. You enter your Wi-Fi credentials there. The portal's advanced settings also take a custom server URL, which replaces the default `https://trmnl.com`. All endpoints below are relative to that URL.
-
-### Lifecycle
-
-```
-wake ─► Wi-Fi ─► have API key? ──no──► GET /api/setup ─► store api_key + friendly_id
-                     │yes                                      │
-                     ▼                                         ▼
-               GET /api/display  ◄─────────────────────────────┘
-                     │
-                     ├─ filename unchanged? ─► skip download
-                     ├─ otherwise GET image_url, draw it
-                     ├─ update_firmware? ─► download firmware_url, flash, reboot
-                     ├─ reset_firmware?  ─► wipe API key and Wi-Fi, back to captive portal
-                     ▼
-               deep sleep for refresh_rate seconds
+```yaml
+devices:
+  - mac: "AA:BB:CC:DD:EE:FF"
+    username: kitchen
+    password: change-me
+    timezone: Europe/Berlin
 ```
 
-If something goes wrong, the device may also `POST /api/log`.
+| Field                | Required | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mac`                | Yes      | The device's MAC address, as sent in the `ID` header. Always quote it: some YAML parsers read an unquoted all-digit MAC such as `12:34:56:12:34:56` as a number                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `username`           | Yes      | User name for the browser login; it selects which device's screen is shown                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `password`           | Yes      | Password for the browser login                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `timezone`           | No       | IANA time zone for the device's screens, e.g. `Europe/Berlin`. Defaults to `TZ`, then UTC                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `screen`             | No       | Which screen the device shows, e.g. `mvg-departures`, with its default inputs: a playlist of one entry. Without it or `playlist`, `defaultScreen` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `playlist`           | No       | What the device shows, with inputs: a list of entries, or the name of a named playlist (see below). Not together with `screen`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `playlists`          | No       | Other playlists the screen page can switch the device to (see [Playlists](ARCHITECTURE.md#playlists)): a mapping of names to playlists, each like `playlist` (a list of entries, or a named playlist's name) or an include's fields alone (`maps: { duration: 10m, shuffle: true }`: the named playlist of the same name, or the one `playlist:` gives) or nothing (`maps:`, that named playlist as it is), or a list of named playlists' names (`[travel, maps]`), each offered under its own name. Offered in this order, after `default`, the name of `playlist` or `screen`, which therefore can't name one of these |
+| `refreshRate`        | No       | The longest the device sleeps between polls, in seconds, at least 60. Default 900, the firmware's own default. It wakes sooner when the screen's `ttl` runs out first                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `fullRefresh`        | No       | Default `true`: sends `maximum_compatibility: true`, so the firmware does a full refresh (with a flash) on every update. `false` lets it use partial refreshes for black-and-white screens, which don't flash but currently leave traces of earlier screens on the DIY kit                                                                                                                                                                                                                                                                                                                                               |
+| `temperatureProfile` | No       | Sent to the device as `temperature_profile`: how the firmware drives the panel. For the 7.5" panel, `default` uses the `EP75_800x480` driver, `a` the panel's built-in fast mode (`EP75_800x480_GEN2`), `b` darker grays. Takes effect from the device's next wake; leaving it out means `default`. With `default`, the firmware doesn't rewrite the previous image before a partial refresh, which may leave traces of earlier screens                                                                                                                                                                                  |
+| `location`           | No       | Where the device is, overriding the top-level `location` (see below), e.g. for holidays in another state                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `token`              | No       | The device's existing token, for a device paired with another server. If set, it is used instead of a derived token (see [Authentication](ARCHITECTURE.md#authentication))                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
-### `GET /api/setup`: registration
+At the top level:
 
-The device sends this once, when it has no stored API key. It is identified by its MAC address.
+- `defaultScreen` is the screen for devices with neither `screen` nor `playlist`: a screen's name (`defaultScreen: placeholder`), or `screen` and `inputs` like a playlist entry. Without it, the server uses `placeholder` if that screen exists, otherwise the first screen found (alphabetically).
+- `location` is where the devices are: `country` and `state` for public and school holidays in `when` (see [Playlists](ARCHITECTURE.md#playlists)), and `lat` and `lon` for sunrise and sunset in `when` and the `weather` screen. A device's own `location` overrides it.
+- `playlists` names playlists, which devices can use (`playlist: kitchen`) and playlists can include.
+- `tokens` holds other services' credentials: `strava` with the Strava app's `client_id` and `client_secret`, for the `strava` screen. Never sent to a browser.
 
-| Request header | Meaning                                   |
-| -------------- | ----------------------------------------- |
-| `ID`           | MAC address, e.g. `AA:BB:CC:DD:EE:FF`     |
-| `Model`        | Device model identifier from the firmware |
-| `Panel-Rev`    | Optional: identifier of the e-paper panel |
+A playlist is a list of entries, each either a screen with its inputs, or an include of a named playlist:
 
-```json
-{
-  "status": 200,
-  "api_key": "2r--SahjsAKCFksVcped2Q",
-  "friendly_id": "917F0B",
-  "image_url": "https://example.com/setup.bmp",
-  "filename": "empty_state",
-  "message": "Register device 917F0B"
-}
+```yaml
+playlists:
+  travel:
+    - screen: journeys
+      inputs:
+        routes:
+          - Marienplatz -> München Ost
+          - Marienplatz -> (Raubling) -> (Kufstein) -[allow:longdistance]-> Innsbruck Hbf
+
+devices:
+  - mac: "AA:BB:CC:DD:EE:FF"
+    username: kitchen
+    password: change-me
+    playlist:
+      - screen: mvg-departures
+        inputs:
+          station: Marienplatz
+          hide:
+            - BUS|REGIONAL_BUS
+            - show BUS 54
+      - playlist: travel
 ```
 
-- The device stores `api_key` and uses it as `Access-Token` on every later request.
-- `friendly_id` is a short code the device shows to the user, for pairing it in a UI.
-- If the MAC is unknown or rejected, the body has `"status": 404` and null fields. The **body `status` can differ from the HTTP status code**: TRMNL's own server answers HTTP 200 here. A self-hosted server can simply register any MAC it sees.
+An include can also be just the playlist's name (`- travel`). A name where a playlist is expected that is only a screen's name gets a message saying to write `screen: …`. Includes are expanded when the file is read, so each device has one flat list. A device starts at its playlist's first entry; the screen page's Prev and Next buttons and KEY3 move it (see [Playlists](ARCHITECTURE.md#playlists)). Inputs are checked against the screen's definitions: an unknown input or a value of the wrong type (e.g. `routes` written as one string instead of a list) stops the server with a message saying where. Write lists as block lists (`- …` per line): routes and hide rules then need no quotes.
 
-### `GET /api/display`: the poll
+The server checks the file at startup (required fields, unique usernames and MACs, valid time zones, existing playlists and `defaultScreen`, playlists that don't include each other, and inputs) and refuses to start if it's wrong; a playlist entry with an unknown screen is left out with a warning instead (see [Playlists](ARCHITECTURE.md#playlists)), which `scripts/deploy` shows with its config check. That includes `when` (a syntax error, or `PH`/`SH` without a `location`), `location` and `duration` (see [Playlists](ARCHITECTURE.md#playlists)).
 
-This is the main endpoint, called on every wake.
+Everything else comes from environment variables: `dist/.env` when deployed (copied to the server by `scripts/deploy`, see [Deployment](ARCHITECTURE.md#deployment)), `.env` for `npm start` locally. Both are gitignored; `sample.env` and `dist/sample.env` document them.
 
-| Request header        | Meaning                                                                                                                                                                                              |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Access-Token`        | **Required.** The `api_key` from setup                                                                                                                                                               |
-| `ID`                  | MAC address                                                                                                                                                                                          |
-| `Refresh-Rate`        | The sleep interval the device currently uses (seconds)                                                                                                                                               |
-| `Battery-Voltage`     | e.g. `4.1`                                                                                                                                                                                           |
-| `FW-Version`          | e.g. `1.6.2`                                                                                                                                                                                         |
-| `RSSI`                | Wi-Fi signal strength, e.g. `-69`                                                                                                                                                                    |
-| `Width`, `Height`     | Screen size in pixels (`800` × `480` for the OG)                                                                                                                                                     |
-| `Model`               | Device model                                                                                                                                                                                         |
-| `Update-Source`       | What woke the device: `timer`, `powercycle` (also after a restart or update), or the button as `EXT0`, `EXT1` or `button` depending on the chip; `unknown` otherwise                                 |
-| `Temperature-Profile` | `true`: the device understands the `temperature_profile` response field                                                                                                                              |
-| `special_function`    | `true` if the user triggered the button's special function (a double click or a 1–5 s hold; 5–15 s resets the Wi-Fi, 15 s or more all settings). Note the underscore: this is not `Special-Function` |
+| Variable                                                     | Required | Meaning                                                                                                                                 |
+| ------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `TOKEN_SECRET`                                               | Yes      | At least 32 characters. Derives the devices' tokens and signs login sessions (see [Authentication](ARCHITECTURE.md#authentication))     |
+| `SERVER_PORT`                                                | No       | Locally: the port to listen on. Deployed: the host port Caddy forwards to (inside the container it's always 7777). Default `7777`       |
+| `SERVER_DOMAIN`                                              | Deploy   | The public address, e.g. `https://trmnl.charding.dev`; registered with Caddy on deploy                                                  |
+| `TZ`                                                         | No       | Default time zone for devices without `timezone`                                                                                        |
+| `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEYPAIR`, `DEPLOY_DIR` | Deploy   | Where `scripts/deploy` and `scripts/connect` connect to                                                                                 |
+| `SETUP_ENABLED`                                              | No       | `1` to answer `/api/setup` while pairing a device. Set only from the shell by `npm run pair`; a value in `.env` is ignored. Default `0` |
 
-Newer firmware may send more telemetry headers (`Battery-Charging`, `USB-Connected`, `Image-Cached`, `Wake-Time`, `WiFi-Band`, …). All of them are optional, and a server can ignore any it doesn't care about. A failed `/api/display` (an HTTP error or a timeout) is retried up to 5 times, 2 s apart, with the same headers.
-
-```json
-{
-  "status": 0,
-  "image_url": "https://example.com/screens/abc123.png",
-  "filename": "abc123",
-  "refresh_rate": 900,
-  "update_firmware": false,
-  "firmware_url": null,
-  "reset_firmware": false,
-  "special_function": "identify"
-}
-```
-
-| Response field                    | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `status`                          | `0` = OK. `202` ("device not yet linked to a user") makes the device poll again every 5 seconds. `500` (TRMNL's answer to an unknown token) makes it clear all its settings, including Wi-Fi, like `reset_firmware`. An HTTP error status (e.g. 401) only shows an error screen and keeps the settings                                                                                                                   |
-| `image_url`                       | Absolute URL of the image to show. It can be hosted anywhere, but only images on this server receive the device's credentials (see below)                                                                                                                                                                                                                                                                                |
-| `filename`                        | Cache key. If it equals the last one, the device skips the download and the redraw                                                                                                                                                                                                                                                                                                                                       |
-| `refresh_rate`                    | Seconds to sleep before the next poll. **This is how the server controls the schedule.** Older examples send it as a string                                                                                                                                                                                                                                                                                              |
-| `update_firmware`, `firmware_url` | Tell the device to OTA-update from `firmware_url`                                                                                                                                                                                                                                                                                                                                                                        |
-| `reset_firmware`                  | Tell the device to clear **all** its settings, including Wi-Fi, and restart into the captive portal                                                                                                                                                                                                                                                                                                                      |
-| `special_function`                | What the device should do when the button's special function is used (e.g. `identify`), saved for its next press. In the response to a press, `action` must repeat it, or the firmware ignores the response. Each function behaves differently: `rewind` redraws the previous image from flash, while `identify`, `restart_playlist` and `guest_mode` download `image_url` (only `guest_mode` also takes `refresh_rate`) |
-| `temperature_profile`             | How the panel drives grayscale: `default`, `a` (the panel's built-in fast and 4-gray modes) or `b` (darker grays)                                                                                                                                                                                                                                                                                                        |
-
-### `GET <image_url>`: the image download
-
-The device sends the same `ID` and `Access-Token` headers as on `/api/display`, but only if `image_url` starts with the exact server URL configured on the device. It's a plain string prefix check, so a different scheme, a `www.` or an explicit port counts as a different server and the image is fetched without credentials. Build image URLs from the same base URL the device uses.
-
-This means image routes can require a valid `Access-Token` too, so screens aren't readable by anyone who knows the URL. It was added in firmware v1.8.10 ([bl.cpp](https://github.com/usetrmnl/trmnl-firmware/blob/main/src/bl.cpp)); older firmware fetches images without any headers.
-
-The device sends no `Accept` header, but it checks the response:
-
-- **`Content-Type` must be exactly `image/png`** (or `image/jpeg`). The firmware compares the whole header value, so `image/png; charset=binary` or `application/octet-stream` means the PNG isn't decoded as a PNG. BMPs are recognised by their first bytes, whatever the header says.
-- **Send a `Content-Length`.** With it, the firmware streams the image into a buffer of that size. Without it, the firmware falls back to reading the whole response as a string.
-
-### `POST /api/log`: diagnostics
-
-The device sends this when something fails, e.g. a bad display response or an image download error. It authenticates with the `Access-Token` header and sends a JSON body:
-
-```json
-{
-  "logs": [
-    {
-      "message": "...",
-      "battery_voltage": 3.9,
-      "refresh_rate": 900,
-      ...
-    }
-  ]
-}
-```
-
-Reply with `204 No Content`. Whatever the server returns, the device doesn't act on it.
-
-### Image format
-
-We use **4-shade grayscale**. Our device runs firmware 1.8.x, and grayscale needs 1.6.0 or later.
-
-- **800 × 480 PNG, 2 bits per pixel**, with 4 shades: black, dark gray, light gray, white.
-- The device detects grayscale from the PNG's bit depth. Nothing in the API response switches it on. A 2-bit PNG is drawn in 4 shades, and a 1-bit PNG or BMP3 is drawn in black and white.
-- **Keep files under 90,000 bytes.** The firmware won't draw a larger image on the OG. Use maximum PNG compression. Dithering makes files bigger, so check the size when you dither.
-- By default the device uses a fast, partial refresh. Send `"maximum_compatibility": true` in the `/api/display` response to force a full refresh instead (slower, with flashing, but it clears ghosting).
-
-Example conversion with ImageMagick (drop the `-dither` option for flat UI graphics):
-
-```sh
-magick input.png -resize 800x480\! -colorspace Gray -dither FloydSteinberg \
-  -posterize 4 -alpha off -depth 2 -define png:compression-level=9 -strip \
-  png:output.png
-```
-
-`magick identify` reports this as `8-bit Grayscale Gray 4c`, but the file itself is stored at 2 bits per pixel, which is what the device checks.
-
-For reference, black-and-white 1-bit images in BMP3 or PNG also still work.
-
-### Notes for implementing a server
-
-- Only `Access-Token` matters for authentication. The other headers are telemetry, so store whatever is useful (battery, RSSI) for a status page.
-- Return a new `filename` only when the image actually changes. That saves the device a download and an e-ink refresh, though most of the battery goes on the wake itself (Wi-Fi and the request), so how often the device wakes matters more.
-- A short `refresh_rate` drains the battery quickly. One update cycle takes about 10 s of Wi-Fi time. At 15-minute intervals the stock 2500 mAh battery lasts about 3–4 months.
-- The device can't be reached between polls. Any change you make on the server takes effect at the next wake, at most `refresh_rate` seconds later.
-
-### Sources
-
-- Firmware README, "Web Server Endpoints": <https://github.com/usetrmnl/trmnl-firmware/blob/main/README.md#web-server-endpoints>
-- TRMNL OpenAPI spec: <https://trmnl.com/api-docs/openapi.yaml>
-- TRMNL ImageMagick guide (image formats): <https://docs.trmnl.com/go/diy/imagemagick-guide>
-
-## TRMNL plugins
-
-On TRMNL's hosted service, everything a screen shows comes from a plugin: calendar, weather, a custom dashboard. Plugins run entirely on the server. The device knows nothing about them; it only downloads the finished image through `/api/display`, as described above. A plugin is a recipe for producing that image from some data.
-
-### What a plugin consists of
-
-- **A data source** (the "strategy"), which supplies the variables.
-- **Markup**: [Liquid](https://shopify.github.io/liquid/) templates (`{{ variable }}`, loops, filters) that turn the variables into HTML, styled with TRMNL's CSS framework.
-- **Settings**: form fields that whoever installs the plugin fills in (e.g. a city or an API key), plus the fastest refresh rate the plugin allows.
-
-### Data strategies
-
-| Strategy     | How the data arrives                                                                                                                                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Polling      | TRMNL fetches one or more URLs on each refresh (GET by default, POST possible, with custom headers). Responses can be JSON, RSS, XML, plain text or CSV. With several URLs, each response is available as `IDX_0`, `IDX_1`, … |
-| Webhook      | Your own code POSTs the data to TRMNL. The stored variables are limited to 5 KB (10 KB with TRMNL+)                                                                                                                           |
-| Plugin merge | The template gets the data of your other plugins                                                                                                                                                                              |
-
-Form field values can be used in the markup and in polling URLs, headers and bodies, e.g. `{{ city }}`. TRMNL also provides globals such as `{{ trmnl.user.first_name }}`.
-
-### Layouts
-
-A plugin has one template per size, so it can share the screen with other plugins in a "mashup":
-
-| Template          | Space on the screen |
-| ----------------- | ------------------- |
-| `full`            | The whole screen    |
-| `half_horizontal` | Top or bottom half  |
-| `half_vertical`   | Left or right half  |
-| `quadrant`        | One quarter         |
-
-The markup uses the framework's CSS classes (e.g. `view view--full`), which are designed for the e-ink panel's resolution and gray levels. A `shared` template holds markup used by all four.
-
-### Rendering
-
-TRMNL merges the variables into the template and renders the result as an image for the device. TRMNL's own documentation doesn't describe the pipeline, but the tools that reproduce it (trmnlp, LaraPaper) render the HTML in a headless browser, take a screenshot and convert it to a PNG for the device with ImageMagick. If the variables haven't changed since the last refresh, TRMNL doesn't render a new screen.
-
-**Playlists** decide which plugin (or mashup) the device shows on each refresh. **Recipes** are plugins other people have published, which you can install as they are.
-
-### Building plugins locally
-
-[trmnlp](https://github.com/usetrmnl/trmnlp) is TRMNL's local development server for plugins. A plugin project looks like this:
-
-```
-src/
-  full.liquid
-  half_horizontal.liquid
-  half_vertical.liquid
-  quadrant.liquid
-  shared.liquid
-  settings.yml        # strategy, polling URLs, form fields; uploaded to TRMNL
-.trmnlp.yml           # local settings, e.g. variable overrides; not uploaded
-```
-
-`trmnlp serve` previews the plugin as HTML or as PNG (PNG needs Firefox and ImageMagick 7), and `trmnlp push` uploads it to your TRMNL account.
-
-### Relevance for this server
-
-Our server has to produce the images itself, so it plays the role of TRMNL's plugin system. We can copy the same model: Liquid templates (e.g. with [LiquidJS](https://liquidjs.com/)) and the TRMNL framework CSS, rendered in a headless browser and converted to a 2-bit grayscale PNG. That would also let us develop screens with trmnlp. Of the existing self-hosted servers, Terminus, LaraPaper, Inker and BYOS Next.js support plugins; only Terminus supports recipes.
-
-### Plugin sources
-
-- Custom plugins (help article): <https://help.trmnl.com/en/articles/9510536-custom-plugins>
-- Framework docs (views and mashups): <https://trmnl.com/framework/docs/3.4/view>
-- trmnlp: <https://github.com/usetrmnl/trmnlp>
-- BYOS overview and feature matrix: <https://docs.trmnl.com/go/diy/byos>
+Other services' credentials go here too, under `tokens` (so far Strava's app).

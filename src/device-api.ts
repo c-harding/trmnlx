@@ -1,4 +1,4 @@
-// The routes the TRMNL firmware calls. See the Protocol section of README.md for what it expects.
+// The routes the TRMNL firmware calls. See TRMNL.md for what it expects.
 //
 // Rejected requests get an HTTP error status: the firmware then shows an error screen and keeps its
 // token and Wi-Fi. Never answer with a body status of 500 or reset_firmware: true, which make it

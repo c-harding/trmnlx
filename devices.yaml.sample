@@ -47,6 +47,6 @@ devices:
     #     - screen: journeys
     #   maps: travel
     # playlists: [travel, maps]  # Or just playlists above, each offered under its own name
-    # fullRefresh: false  # Default true: full refresh on every update; false allows partial refreshes (see ARCHITECTURE.md)
-    # temperatureProfile: a  # How the firmware drives the panel: default, a or b (see ARCHITECTURE.md)
+    # fullRefresh: false  # Default true: full refresh on every update; false allows partial refreshes (see README.md)
+    # temperatureProfile: a  # How the firmware drives the panel: default, a or b (see README.md)
     # token: …  # Only for a device paired with another server: its existing token, used instead of a derived one
